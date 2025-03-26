@@ -109,4 +109,30 @@ public class MediaController : ControllerBase
             ? throw new EntityNotFoundException(nameof(Media), pathToFile)
             : (ActionResult)File(uploadedImageData!.Data, uploadedImageData.MimeType, fname);
     }
+
+    [HttpDelete]
+    [Route("{*pathToFile}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult> Delete([Required] string pathToFile)
+    {
+        pathToFile = Uri.UnescapeDataString(pathToFile);
+
+        var scope = Path.GetDirectoryName(pathToFile)!.Replace(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var fname = Path.GetFileName(pathToFile);
+
+        var mediaToDelete = await pgDbContext!.Media!.FirstOrDefaultAsync(e => e.ScopeUid == scope && e.Name == fname);
+
+        if (mediaToDelete == null)
+        {
+            throw new EntityNotFoundException(nameof(Media), pathToFile);
+        }
+
+        pgDbContext.Media!.Remove(mediaToDelete);
+        await pgDbContext.SaveChangesAsync();
+
+        return NoContent();
+    }
 }

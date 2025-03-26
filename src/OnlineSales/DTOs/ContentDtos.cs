@@ -19,9 +19,9 @@ public class ContentCreateDto
     [Required]
     public string Body { get; set; } = string.Empty;
 
-    public string? CoverImageUrl { get; set; }
+    public string CoverImageUrl { get; set; } = string.Empty;
 
-    public string? CoverImageAlt { get; set; }
+    public string CoverImageAlt { get; set; } = string.Empty;
 
     [Required]
     public string Slug { get; set; } = string.Empty;
@@ -60,9 +60,9 @@ public class ContentUpdateDto
     [MinLength(1)]
     public string? Body { get; set; }
 
-    public string? CoverImageUrl { get; set; }
+    public string CoverImageUrl { get; set; } = string.Empty;
 
-    public string? CoverImageAlt { get; set; }
+    public string CoverImageAlt { get; set; } = string.Empty;
 
     [MinLength(1)]
     public string? Slug { get; set; }
@@ -111,10 +111,10 @@ public class ContentImportDto : BaseImportDto
     public string? Body { get; set; }
 
     [Optional]
-    public string? CoverImageUrl { get; set; }
+    public string CoverImageUrl { get; set; } = string.Empty;
 
     [Optional]
-    public string? CoverImageAlt { get; set; }
+    public string CoverImageAlt { get; set; } = string.Empty;
 
     [Optional]
     [SwaggerUnique]
