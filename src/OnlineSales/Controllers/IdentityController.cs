@@ -5,6 +5,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -22,50 +23,57 @@ public class IdentityController : ControllerBase
 {
     private readonly SignInManager<User> signInManager;
     private readonly IOptions<JwtConfig> jwtConfig;
+    private readonly IOptions<AzureADConfig> azureAdConfig;
 
-    public IdentityController(SignInManager<User> signInManager, IOptions<JwtConfig> jwtConfig)
+    public IdentityController(
+        SignInManager<User> signInManager, 
+        IOptions<JwtConfig> jwtConfig,
+        IOptions<AzureADConfig> azureAdConfig)
     {
         this.signInManager = signInManager;
         this.jwtConfig = jwtConfig;
+        this.azureAdConfig = azureAdConfig;
     }
 
-    [HttpGet("external-login")]
-    public ActionResult ExternalLogin(string returnUrl)
+    [HttpGet("azure-login")]
+    public IActionResult AzureLogin(string returnUrl = "/")
     {
-        const string provider = "OpenIdConnect";
-        var properties = signInManager.ConfigureExternalAuthenticationProperties(provider, returnUrl);
-        return new ChallengeResult(provider, properties);
+        // Check if Azure AD is properly configured
+        if (string.IsNullOrEmpty(azureAdConfig.Value.TenantId) || 
+            azureAdConfig.Value.TenantId == "$AZUREAD__TENANTID")
+        {
+            return BadRequest("Azure AD authentication is not configured.");
+        }
+
+        // Use the AzureAd OpenID Connect scheme for the challenge
+        var redirectUri = Url.Action(nameof(AzureLoginCallback), new { returnUrl });
+        var properties = new AuthenticationProperties { RedirectUri = redirectUri };
+        
+        // Challenge with Azure AD OpenID Connect scheme
+        return Challenge(properties, "AzureAdOpenID");
     }
 
-    [HttpGet("callback")]
-    public async Task<ActionResult> ExternalLoginCallback(string returnUrl)
+    [HttpGet("azure-login-callback")]
+    public async Task<IActionResult> AzureLoginCallback(string returnUrl = "/")
     {
-        var info = await signInManager.GetExternalLoginInfoAsync();
-        if (info == null)
+        // At this point, the user should be authenticated by Azure AD
+        if (!User.Identity?.IsAuthenticated ?? true)
         {
-            throw new IdentityException("Failed to retrieve external login info");
+            return Unauthorized("Azure AD authentication failed.");
         }
 
-        var result = await signInManager.ExternalLoginSignInAsync(
-            info.LoginProvider,
-            info.ProviderKey,
-            isPersistent: false,
-            bypassTwoFactor: true);
+        // Get the Azure AD access token if available
+        var accessToken = await HttpContext.GetTokenAsync("AzureAdOpenID", "access_token");
 
-        if (!result.Succeeded)
+        // Redirect back to the client application with the token
+        // In a real implementation, you might need a more secure way to transmit the token
+        if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
         {
-            if (result.IsLockedOut)
-            {
-                throw new IdentityException("Account locked out");
-            }
-
-            if (result.IsNotAllowed)
-            {
-                throw new IdentityException("Sign in with specified account is prohibited");
-            }
+            return Redirect($"{returnUrl}?token={accessToken}");
         }
 
-        return LocalRedirect(returnUrl);
+        // Token response for API clients
+        return Ok(new { token = accessToken, tokenType = "Bearer" });
     }
 
     [HttpPost("login")]
@@ -108,6 +116,10 @@ public class IdentityController : ControllerBase
                 throw new UnauthorizedException();
             }
         }
+
+        // Update last login time
+        user.LastTimeLoggedIn = DateTime.UtcNow;
+        await userManager.UpdateAsync(user);
 
         var authClaims = new List<Claim>
         {

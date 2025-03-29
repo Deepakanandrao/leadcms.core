@@ -86,6 +86,7 @@ public class Program
 
         ConfigureConventions(builder);
         IdentityHelper.ConfigureAuthentication(builder);
+        IdentityHelper.ConfigureAuthorization(builder);
         ConfigureControllers(builder);
 
         builder.Services.AddDbContext<PgDbContext>();
