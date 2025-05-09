@@ -68,7 +68,7 @@ jobs:
         context: ./
         file: src/LeadCMS/Dockerfile
         push: true
-        tags: wavepoint/LeadCMS:latest, wavepoint/LeadCMS:${{ steps.branch_name.outputs.value }}
+        tags: leadcms/core:latest, leadcms/core:${{ steps.branch_name.outputs.value }}
         
     - name: Build & Push Docker image without latest tag
       uses: docker/build-push-action@v3
@@ -77,7 +77,7 @@ jobs:
         context: ./
         file: src/LeadCMS/Dockerfile
         push: true
-        tags: wavepoint/LeadCMS:develop, wavepoint/LeadCMS:${{ steps.branch_name.outputs.value }}
+        tags: leadcms/core:develop, leadcms/core:${{ steps.branch_name.outputs.value }}
     
     - name: Publish to NuGet
       if: success()

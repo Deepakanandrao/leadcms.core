@@ -73,4 +73,4 @@ jobs:
         context: ./
         file: src/LeadCMS/Dockerfile
         push: true
-        tags: wavepoint/LeadCMS:develop
+        tags: leadcms/core:develop

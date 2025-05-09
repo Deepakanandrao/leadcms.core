@@ -18,7 +18,7 @@
 <a id="overview"></a>
 ## Overview
 
-OnlineSale is a light-weight, extendable headless CMS written in .NET 7. It is used to manage content for software product sites as well as automate processes like free trial activation, license generation, automated sales of licenses from website, customer journey tracking and more.
+OnlineSale is a light-weight, extendable headless CMS written in .NET 8. It is used to manage content for software product sites as well as automate processes like free trial activation, license generation, automated sales of licenses from website, customer journey tracking and more.
 
 <a id="sites-powered-by-LeadCMS"></a>
 ## Sites powered by LeadCMS
@@ -52,10 +52,10 @@ OnlineSale is a light-weight, extendable headless CMS written in .NET 7. It is u
         * `CPU virtualization` should be enabled in BIOS settings.
         * `Hyper-V` and `Containers` windows features should be enabled.
 
-2. Install [.NET 7 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/7.0)
+2. Install [.NET 8 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/7.0)
 
 3. Install/Upgrade Visual Studio IDE.
-    - Visual Studio Version should be `2022 17.4` or higher, which supports .NET 7
+    - Visual Studio Version should be `2022 17.4` or higher, which supports .NET 8
 
 4. Install [CLI tools for Entity Framework Core](https://learn.microsoft.com/en-us/ef/core/cli/dotnet).
 

@@ -1,1 +1,1 @@
-Lightweight, extendable headless CMS for product websites written in .NET 7
+Lightweight, extendable headless CMS for product websites written in .NET 8
