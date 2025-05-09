@@ -71,6 +71,6 @@ jobs:
       uses: docker/build-push-action@v3
       with:
         context: ./
-        file: src/OnlineSales/Dockerfile
+        file: src/LeadCMS/Dockerfile
         push: true
-        tags: wavepoint/onlinesales:develop
+        tags: wavepoint/LeadCMS:develop

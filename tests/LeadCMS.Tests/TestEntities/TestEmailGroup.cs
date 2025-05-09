@@ -1,0 +1,13 @@
+﻿// <copyright file="TestEmailGroup.cs" company="WavePoint Co. Ltd.">
+// Licensed under the MIT license. See LICENSE file in the samples root for full license information.
+// </copyright>
+
+namespace LeadCMS.Tests.TestEntities;
+
+public class TestEmailGroup : EmailGroupCreateDto
+{
+    public TestEmailGroup(string uid = "")
+    {
+        Name = $"TestEmailGroup{uid}";
+    }
+}

@@ -1,0 +1,105 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <ReleaseVersion>1.2.38-pre</ReleaseVersion>
+    <Configurations>Debug;Release;Migration</Configurations>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <OutputPath>bin\Debug</OutputPath>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' " />
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
+    <PackageReference Include="xunit" Version="2.7.1" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.8">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector" Version="6.0.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.11" />
+    <PackageReference Include="FluentAssertions" Version="6.12.0" />
+    <PackageReference Include="CsvHelper" Version="31.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="appsettings.tests.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Environment\" />
+    <Folder Include="Resources\Comments\" />
+    <Folder Include="Resources\Contacts\" />
+    <Folder Include="Resources\Orders\" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="xunit.runner.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\plugins\LeadCMS.Plugin.TestPlugin\LeadCMS.Plugin.TestPlugin.csproj" />
+    <ProjectReference Include="..\..\src\LeadCMS\LeadCMS.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\wavepoint.png" />
+    <EmbeddedResource Include="Resources\wavepointModified.png" />
+    <EmbeddedResource Include="Resources\Comments\commentsBasic.csv">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\Comments\commentsBasic.json" />
+    <EmbeddedResource Include="Resources\Comments\commentsFull.csv">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\Comments\commentsFull.json" />
+    <EmbeddedResource Include="Resources\Comments\commentsNoFKHasUKey.csv">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\Comments\commentsNoFKHasUKeyUpdate.csv">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\Comments\commentsWithKey.csv" />
+    <EmbeddedResource Include="Resources\Comments\commentsWithKeyUpdate.csv" />
+    <EmbeddedResource Include="Resources\Comments\commentsWithKeyUpdateWithErrors.csv" />
+    <EmbeddedResource Include="Resources\Comments\commentsWithOldParentKey.csv">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\Comments\commentsWithParentKey.csv">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\Contacts\contactBase.csv">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\Contacts\contacts.json" />
+    <EmbeddedResource Include="Resources\Contacts\contactsToUpdate.csv">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\Contacts\contactsWithDuplicates.csv">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\Contacts\contactsWithDuplicatesUpdate.csv">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\Orders\orderItems.csv">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\Orders\orderItems.json" />
+    <EmbeddedResource Include="Resources\Orders\orderItemsNoRef.csv">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\Orders\orderItemsNoRef.json" />
+    <EmbeddedResource Include="Resources\Orders\ordersNoFK.csv">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>

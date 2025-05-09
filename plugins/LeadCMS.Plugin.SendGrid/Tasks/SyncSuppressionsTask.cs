@@ -1,0 +1,108 @@
+﻿// <copyright file="SyncSuppressionsTask.cs" company="WavePoint Co. Ltd.">
+// Licensed under the MIT license. See LICENSE file in the samples root for full license information.
+// </copyright>
+
+using LeadCMS.Data;
+using LeadCMS.Entities;
+using LeadCMS.Helpers;
+using LeadCMS.Interfaces;
+using LeadCMS.Plugin.SendGrid.DTOs;
+using LeadCMS.Plugin.SendGrid.Exceptions;
+using LeadCMS.Services;
+using LeadCMS.Tasks;
+using Microsoft.Extensions.Configuration;
+using SendGrid;
+
+namespace LeadCMS.Plugin.SendGrid.Tasks;
+
+public class SyncSuppressionsTask : BaseTask
+{
+    protected readonly PgDbContext dbContext;
+    protected readonly IContactService contactService;
+
+    private readonly string primaryApiKeyName = "PrimaryApiKey";
+
+    public SyncSuppressionsTask(TaskStatusService taskStatusService, PgDbContext dbContext, IContactService contactService, IConfiguration configuration)
+        : base("Tasks:SyncSuppressionsTask", configuration, taskStatusService)
+    {
+        this.dbContext = dbContext;
+        this.contactService = contactService;
+    }
+
+    public override async Task<bool> Execute(TaskExecutionLog currentJob)
+    {
+        await Unsubscribe<BlockOrBounceDto>("bounces");
+        await Unsubscribe<BlockOrBounceDto>("blocks");
+        await Unsubscribe<SpamReportDto>("spam_reports");
+        await Unsubscribe<SuppressionDto>("unsubscribes");
+        return true;
+    }
+
+    private string CreateSourceString(string keyName, string suppressionType)
+    {
+        return $"SendGrid_{suppressionType}_{keyName}";
+    }
+
+    private async Task Unsubscribe<T>(string suppressionType)
+        where T : SuppressionDto
+    {
+        var sourceAndKeyDictionary = new Dictionary<string, string>
+        {
+            {
+                CreateSourceString(primaryApiKeyName, suppressionType), SendGridPlugin.Configuration.SendGridApi.PrimaryApiKey
+            },
+        };
+
+        for (var i = 0; i < SendGridPlugin.Configuration.SendGridApi.SecondaryApiKeys.Count; ++i)
+        {
+            sourceAndKeyDictionary.Add(CreateSourceString($"SecondaryApiKey{i}", suppressionType), SendGridPlugin.Configuration.SendGridApi.SecondaryApiKeys[i]);
+        }
+
+        foreach (var (source, key) in sourceAndKeyDictionary)
+        {
+            var supressions = await GetLatestSuppressionsByType<T>(source, key, suppressionType);
+
+            foreach (var supression in supressions)
+            {
+                await contactService.Unsubscribe(supression.Email, supression.GetReason(), source, supression.CreatedAt, null);
+            }
+        }
+
+        await dbContext.SaveChangesAsync();
+    }
+
+    private async Task<List<T>> GetLatestSuppressionsByType<T>(string source, string apiKeyValue, string suppressionType)
+    {
+        var query = from u in dbContext.Unsubscribes
+                    where u.Source == source
+                    orderby u.CreatedAt descending
+                    select u.CreatedAt;
+
+        var lastCreateAt = query.FirstOrDefault();
+
+        var lastSuppression = new SuppressionDto { CreatedAt = lastCreateAt };
+
+        if (lastSuppression.Created < 0)
+        {
+            lastSuppression.Created = 0;
+        }
+
+        var sendGridClient = new SendGridClient(apiKeyValue);
+
+        var response = await sendGridClient.RequestAsync(
+            method: SendGridClient.Method.GET,
+            // It is OK to only get 500 records even if there are more. We will recieve the rest next time task is being executed.
+            // We may consider to implement more advanced version when it recieve all the data in scope of one task execution later.
+            urlPath: $"suppression/{suppressionType}?limit=500&offset=0&start_time={lastSuppression.Created + 1}"); // +1 is required to avoid syncing the same last record multiple times
+
+        var statusCode = response.StatusCode;
+        var result = await response.Body.ReadAsStringAsync();
+
+        if (statusCode != System.Net.HttpStatusCode.OK)
+        {
+            throw new SendGridApiException("Invalid result returned from SendGrid API: " + result);
+        }
+
+        return JsonHelper.Deserialize<List<T>>(result)!;
+    }
+}

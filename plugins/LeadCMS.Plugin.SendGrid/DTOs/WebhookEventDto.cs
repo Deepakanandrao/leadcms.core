@@ -1,0 +1,24 @@
+﻿// <copyright file="WebhookEventDto.cs" company="WavePoint Co. Ltd.">
+// Licensed under the MIT license. See LICENSE file in the samples root for full license information.
+// </copyright>
+
+using Newtonsoft.Json;
+
+namespace LeadCMS.Plugin.SendGrid.DTOs;
+
+public class WebhookEventDto : EmailDto
+{
+    public double Timestamp { get; set; } = 0;
+
+    public string Event { get; set; } = string.Empty;
+
+    [JsonProperty("sg_message_id")]
+    public string MessageId { get; set; } = string.Empty;
+
+    [JsonProperty("sg_event_id")]
+    public string EventId { get; set; } = string.Empty;
+
+    public string Reason { get; set; } = string.Empty;
+
+    public string Type { get; set; } = string.Empty;
+}
