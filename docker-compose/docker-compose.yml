@@ -1,0 +1,76 @@
+version: '3.4'
+
+services:
+  elastic:
+    container_name: elastic
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.6
+    ports:
+      - 9200:9200
+    volumes:
+      - elastic-data:/usr/share/elasticsearch/data
+    environment:
+      - xpack.security.enabled=false
+      - "discovery.type=single-node"
+      - "ES_JAVA_OPTS=-Xms1024m -Xmx1024m"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  kibana:
+    container_name: kibana
+    image: docker.elastic.co/kibana/kibana:7.17.6
+    ports:
+      - 5601:5601
+    depends_on:
+      - elastic
+    environment:
+      SERVER_REWRITEBASEPATH: true
+      SERVER_BASEPATH: /kibana
+      ELASTICSEARCH_HOSTS: '["http://elastic:9200"]'
+    restart: unless-stopped
+
+  postgres:
+    container_name: postgres
+    image: postgres:14.5
+    environment:
+      TZ: 'UTC'
+      PGTZ: 'UTC'
+      POSTGRES_DB: LeadCMS
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  mailhog:
+    container_name: mailhog
+    image: mailhog/mailhog
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web
+
+  leadcms:
+    build:
+      context: ..
+      dockerfile: src/LeadCMS/Dockerfile
+    container_name: leadcms
+    ports:
+      - "5000:80"
+    env_file:
+      - .env
+    depends_on:
+     postgres:
+      condition: service_started
+     elastic:
+        condition: service_healthy
+    command: ["dotnet", "LeadCMS.dll"]
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  elastic-data:  
