@@ -73,8 +73,10 @@ jobs:
         context: ./
         file: src/LeadCMS/Dockerfile
         push: true
-        tags: leadcms/core:develop
+        tags: |
+          leadcms/core:develop
+          leadcms/core:${{ github.event.inputs.version }}
 
     - name: Publish to NuGet
       if: success()
-      run: dotnet nuget push **/*.nupkg --source 'https://api.nuget.org/v3/index.json' --api-key ${{secrets.NUGET_API_KEY}}        
+      run: dotnet nuget push **/*.nupkg --source 'https://api.nuget.org/v3/index.json' --api-key ${{secrets.NUGET_API_KEY}}
