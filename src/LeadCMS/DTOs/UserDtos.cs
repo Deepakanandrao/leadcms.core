@@ -43,3 +43,33 @@ public class UserDetailsDto : UserCreateDto
 
     public string AvatarUrl { get; set; } = string.Empty;
 }
+
+public class ChangePasswordDto
+{
+    [Required]
+    public string CurrentPassword { get; set; } = string.Empty;
+
+    [Required]
+    public string NewPassword { get; set; } = string.Empty;
+}
+
+public class ForgotPasswordDto
+{
+    [Required]
+    [EmailAddress]
+    public string Email { get; set; } = string.Empty;
+
+    public string Language { get; set; } = string.Empty;
+}
+
+public class ResetPasswordDto
+{
+    [Required]
+    public string UserId { get; set; } = string.Empty;
+
+    [Required]
+    public string Token { get; set; } = string.Empty;
+
+    [Required]
+    public string NewPassword { get; set; } = string.Empty;
+}

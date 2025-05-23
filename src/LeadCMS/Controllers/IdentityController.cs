@@ -8,6 +8,7 @@ using System.Text;
 using LeadCMS.Configuration;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
+using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -24,15 +25,22 @@ public class IdentityController : ControllerBase
     private readonly SignInManager<User> signInManager;
     private readonly IOptions<JwtConfig> jwtConfig;
     private readonly IOptions<AzureADConfig> azureAdConfig;
+    private readonly UserManager<User> userManager;
+    private readonly IEmailFromTemplateService emailFromTemplateService;
 
     public IdentityController(
         SignInManager<User> signInManager,
         IOptions<JwtConfig> jwtConfig,
-        IOptions<AzureADConfig> azureAdConfig)
+        IOptions<AzureADConfig> azureAdConfig,
+        UserManager<User> userManager,
+        IEmailService emailService,
+        IEmailFromTemplateService emailFromTemplateService)
     {
         this.signInManager = signInManager;
         this.jwtConfig = jwtConfig;
         this.azureAdConfig = azureAdConfig;
+        this.userManager = userManager;
+        this.emailFromTemplateService = emailFromTemplateService;
     }
 
     [HttpGet("azure-login")]
@@ -84,8 +92,6 @@ public class IdentityController : ControllerBase
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult> Login([FromBody] LoginDto input)
     {
-        var userManager = signInManager.UserManager;
-
         var user = await userManager.FindByEmailAsync(input.Email);
 
         if (user == null)
@@ -123,10 +129,10 @@ public class IdentityController : ControllerBase
 
         var authClaims = new List<Claim>
         {
-            new Claim(ClaimTypes.Email, user.Email!),
-            new Claim(ClaimTypes.Name, user.UserName!),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Email, user.Email!),
+            new(ClaimTypes.Name, user.UserName!),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
         };
 
         var roles = await userManager.GetRolesAsync(user);
@@ -144,6 +150,87 @@ public class IdentityController : ControllerBase
         });
     }
 
+    [HttpPost("forgot-password")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> ForgotPassword([FromBody] ForgotPasswordDto dto)
+    {
+        var user = await userManager.FindByEmailAsync(dto.Email);
+        if (user == null || !user.EmailConfirmed)
+        {
+            // Do not reveal user existence
+            return Ok();
+        }
+
+        var token = await userManager.GeneratePasswordResetTokenAsync(user);
+        var resetUrl = $"{Request.Scheme}://{Request.Host}/reset-password?userId={user.Id}&token={Uri.EscapeDataString(token)}";
+
+        var templateArgs = new Dictionary<string, string>
+        {
+            ["ResetUrl"] = resetUrl,
+            ["UserName"] = user.UserName ?? string.Empty,
+        };
+
+        await emailFromTemplateService.SendAsync(
+            "Password_Reset",
+            dto.Language,
+            new[] { user.Email! },
+            templateArgs,
+            null);
+
+        return Ok();
+    }
+
+    [HttpPost("reset-password")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult> ResetPassword([FromBody] ResetPasswordDto dto)
+    {
+        var user = await userManager.FindByIdAsync(dto.UserId);
+        if (user == null)
+        {
+            return BadRequest("Invalid user.");
+        }
+
+        var result = await userManager.ResetPasswordAsync(user, dto.Token, dto.NewPassword);
+        if (!result.Succeeded)
+        {
+            throw new IdentityException(result.Errors);
+        }
+
+        return Ok();
+    }
+
+    [Authorize]
+    [HttpPost("change-password")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult> ChangePassword([FromBody] ChangePasswordDto value)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user == null)
+        {
+            throw new EntityNotFoundException(typeof(User).Name, User.Identity?.Name ?? string.Empty);
+        }
+
+        var passwordValid = await userManager.CheckPasswordAsync(user, value.CurrentPassword);
+        if (!passwordValid)
+        {
+            throw new IdentityException("Current password is incorrect.");
+        }
+
+        var result = await userManager.ChangePasswordAsync(user, value.CurrentPassword, value.NewPassword);
+        if (!result.Succeeded)
+        {
+            throw new IdentityException(result.Errors);
+        }
+
+        return Ok();
+    }
+
     private JwtSecurityToken GetToken(List<Claim> authClaims)
     {
         var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtConfig.Value.Secret));
@@ -156,5 +243,5 @@ public class IdentityController : ControllerBase
             signingCredentials: new SigningCredentials(authSigningKey, SecurityAlgorithms.HmacSha256));
 
         return token;
-    }
+    }    
 }

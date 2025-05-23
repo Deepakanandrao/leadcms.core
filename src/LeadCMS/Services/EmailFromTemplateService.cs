@@ -16,6 +16,18 @@ namespace LeadCMS.Services
 {
     public class EmailFromTemplateService : IEmailFromTemplateService
     {
+        private static readonly Dictionary<string, EmailTemplate> HardcodedTemplates = new()
+        {
+            ["PasswordReset"] = new EmailTemplate
+            {
+                Name = "Password_Reset",
+                Subject = "Password Reset",
+                BodyTemplate = "Click <a href=\"${ResetUrl}\">here</a> to reset your password.",
+                FromEmail = "no-reply@yourdomain.com",
+                FromName = "Support",
+            },
+        };   
+                
         private readonly IEmailWithLogService emailWithLogService;
         private readonly PgDbContext pgDbContext;
         private readonly IOptions<ApiSettingsConfig> apiSettingsConfig;
@@ -29,7 +41,7 @@ namespace LeadCMS.Services
 
         public async Task SendAsync(string templateName, string language, string[] recipients, Dictionary<string, string>? templateArguments, List<AttachmentDto>? attachments)
         {
-            var template = await GetEmailTemplate(templateName, language);
+            var template = await GetEmailTemplateByLanguageOrHardcoded(templateName, language);
 
             var body = EvaluateTemplate(template.BodyTemplate, templateArguments);
             var subject = EvaluateTemplate(template.Subject, templateArguments);
@@ -58,13 +70,6 @@ namespace LeadCMS.Services
             result = TokenHelper.ReplaceTokensFromVariables(templateArguments!.ConvertKeys("&lt;%", "%&gt;"), result); // the case when template is html encoded
             result = TokenHelper.ReplaceTokensFromVariables(templateArguments!.ConvertKeys("${", "}"), result);
             return result;
-        }
-
-        private async Task<EmailTemplate> GetEmailTemplate(string name, string language)
-        {
-            var template = await GetEmailTemplateByLanguage(name, language);
-
-            return template!;
         }
 
         private async Task<EmailTemplate> GetEmailTemplate(string name, int contactId)
@@ -105,6 +110,23 @@ namespace LeadCMS.Services
             template ??= await pgDbContext.EmailTemplates!.FirstOrDefaultAsync(x => x.Name == name && x.Language == defaultLang);
 
             return template;
+        }
+
+        private async Task<EmailTemplate> GetEmailTemplateByLanguageOrHardcoded(string name, string? language)
+        {
+            var template = await GetEmailTemplateByLanguage(name, language);
+            if (template != null)
+            {
+                return template;
+            }
+
+            // Try hardcoded
+            if (HardcodedTemplates.TryGetValue(name, out var hardcoded))
+            {
+                return hardcoded;
+            }
+
+            throw new InvalidOperationException($"No email template found for '{name}' and language '{language}'.");
         }
     }
 }
