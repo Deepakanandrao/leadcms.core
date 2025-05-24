@@ -6,18 +6,15 @@ using System.ComponentModel.DataAnnotations;
 
 namespace LeadCMS.DTOs;
 
-public class UserCreateDto
+public class UserCreateDto : UserBaseDto
 {
-    [Required]
-    public string Email { get; set; } = string.Empty;
+    public string? Password { get; set; }
 
-    [Required]
-    public string UserName { get; set; } = string.Empty;
+    public bool GeneratePassword { get; set; } = false;
 
-    [Required]
-    public string DisplayName { get; set; } = string.Empty;
+    public bool SendPasswordEmail { get; set; } = false;
 
-    public Dictionary<string, object>? Data { get; set; }
+    public string Language { get; set; } = string.Empty;
 }
 
 public class UserUpdateDto
@@ -31,9 +28,17 @@ public class UserUpdateDto
     public string? AvatarUrl { get; set; }
 
     public Dictionary<string, object>? Data { get; set; }
+
+    public string? Password { get; set; }
+
+    public bool GeneratePassword { get; set; } = false;
+
+    public bool SendPasswordEmail { get; set; } = false;
+
+    public string Language { get; set; } = string.Empty;
 }
 
-public class UserDetailsDto : UserCreateDto
+public class UserDetailsDto : UserBaseDto
 {
     public string Id { get; set; } = string.Empty;
 
@@ -42,6 +47,20 @@ public class UserDetailsDto : UserCreateDto
     public DateTime LastTimeLoggedIn { get; set; }
 
     public string AvatarUrl { get; set; } = string.Empty;
+}
+
+public class UserBaseDto
+{ 
+    [Required]
+    public string Email { get; set; } = string.Empty;
+
+    [Required]
+    public string UserName { get; set; } = string.Empty;
+
+    [Required]
+    public string DisplayName { get; set; } = string.Empty;
+
+    public Dictionary<string, object>? Data { get; set; }
 }
 
 public class ChangePasswordDto

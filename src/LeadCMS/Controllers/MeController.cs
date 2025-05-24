@@ -6,6 +6,7 @@ using AutoMapper;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;
+using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -19,11 +20,13 @@ public class MeController : ControllerBase
 {
     private readonly IMapper mapper;
     private readonly UserManager<User> userManager;
+    private readonly IEmailFromTemplateService emailFromTemplateService;
 
-    public MeController(IMapper mapper, UserManager<User> userManager)
+    public MeController(IMapper mapper, UserManager<User> userManager, IEmailFromTemplateService emailFromTemplateService)
     {
         this.mapper = mapper;
         this.userManager = userManager;
+        this.emailFromTemplateService = emailFromTemplateService;
     }
 
     [HttpGet("me")]
@@ -50,6 +53,33 @@ public class MeController : ControllerBase
         var user = await UserHelper.GetCurrentUserOrThrowAsync(userManager, User);
 
         mapper.Map(value, user);
+
+        string? password = value.Password;
+        if (value.GeneratePassword)
+        {
+            password = PasswordHelper.GenerateStrongPassword();
+        }
+
+        if (!string.IsNullOrEmpty(password))
+        {
+            var token = await userManager.GeneratePasswordResetTokenAsync(user);
+            var result = await userManager.ResetPasswordAsync(user, token, password);
+
+            if (!result.Succeeded)
+            {
+                throw new IdentityException(result.Errors);
+            }
+
+            if (value.SendPasswordEmail)
+            {
+                var args = new Dictionary<string, string>
+                {
+                    ["UserName"] = user.UserName ?? user.Email ?? string.Empty,
+                    ["Password"] = password,
+                };
+                await emailFromTemplateService.SendAsync("Password_Updated", value.Language, new[] { user.Email! }, args, null);
+            }
+        }
 
         await userManager.UpdateAsync(user);
 

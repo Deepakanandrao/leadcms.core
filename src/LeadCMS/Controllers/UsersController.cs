@@ -6,7 +6,9 @@ using AutoMapper;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
+using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
+using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -20,13 +22,19 @@ public class UsersController : ControllerBase
 {
     protected readonly PgDbContext dbContext;
     protected readonly IMapper mapper;
-    protected readonly UserManager<User> userManager;
+    private readonly UserManager<User> userManager;
+    private readonly IEmailFromTemplateService emailFromTemplateService;
 
-    public UsersController(PgDbContext dbContext, IMapper mapper, UserManager<User> userManager)
+    public UsersController(
+        PgDbContext dbContext,
+        IMapper mapper,
+        UserManager<User> userManager,
+        IEmailFromTemplateService emailFromTemplateService)
     {
         this.dbContext = dbContext;
         this.mapper = mapper;
         this.userManager = userManager;
+        this.emailFromTemplateService = emailFromTemplateService;
     }
 
     [HttpGet]
@@ -59,12 +67,48 @@ public class UsersController : ControllerBase
         return Ok(mapper.Map<UserDetailsDto>(existingEntity));
     }
 
+    [HttpPost]
+    [ProducesResponseType(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public virtual async Task<ActionResult<UserDetailsDto>> Post([FromBody] UserCreateDto userDto)
+    {
+        var newUser = mapper.Map<User>(userDto);
+
+        string password = userDto.Password ?? string.Empty;
+        if (userDto.GeneratePassword || string.IsNullOrEmpty(password))
+        {
+            password = PasswordHelper.GenerateStrongPassword();
+        }
+
+        var result = await userManager.CreateAsync(newUser, password);
+        if (!result.Succeeded)
+        {
+            throw new IdentityException(result.Errors);
+        }
+
+        if (userDto.SendPasswordEmail)
+        {
+            var args = new Dictionary<string, string>
+            {
+                ["UserName"] = newUser.UserName ?? newUser.Email ?? string.Empty,
+                ["Password"] = password,
+            };
+            await emailFromTemplateService.SendAsync("Account_Created", userDto.Language, new[] { newUser.Email! }, args, null);
+        }
+
+        var createdUser = await userManager.FindByNameAsync(userDto.UserName);
+
+        return CreatedAtAction(nameof(GetSpecific), new { id = createdUser!.Id }, createdUser);
+    }    
+
     [HttpPatch("{id}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public virtual async Task<ActionResult<UserDetailsDto>> Patch(string id, [FromBody] UserUpdateDto value)
+    public virtual async Task<ActionResult<UserDetailsDto>> Patch(string id, [FromBody] UserUpdateDto userDto)
     {
         var existingEntity = await userManager.FindByIdAsync(id);
         if (existingEntity == null)
@@ -72,12 +116,36 @@ public class UsersController : ControllerBase
             throw new EntityNotFoundException(typeof(User).Name, id);
         }
 
-        mapper.Map(value, existingEntity);
-        var result = await userManager.UpdateAsync(existingEntity);
-        if (result.Errors.Any())
+        mapper.Map(userDto, existingEntity);
+
+        string? password = userDto.Password;
+        if (userDto.GeneratePassword)
         {
-            throw new IdentityException(result.Errors);
+            password = PasswordHelper.GenerateStrongPassword();
         }
+
+        if (!string.IsNullOrEmpty(password))
+        {
+            var token = await userManager.GeneratePasswordResetTokenAsync(existingEntity);
+            var result = await userManager.ResetPasswordAsync(existingEntity, token, password);
+
+            if (!result.Succeeded)
+            {
+                throw new IdentityException(result.Errors);
+            }
+
+            if (userDto.SendPasswordEmail)
+            {
+                var args = new Dictionary<string, string>
+                {
+                    ["UserName"] = existingEntity.UserName ?? existingEntity.Email ?? string.Empty,
+                    ["Password"] = password,
+                };
+                await emailFromTemplateService.SendAsync("Password_Updated", userDto.Language, new[] { existingEntity.Email! }, args, null);
+            }
+        }
+
+        await dbContext.SaveChangesAsync();
 
         var resultsToClient = mapper.Map<UserDetailsDto>(existingEntity);
 
@@ -103,24 +171,5 @@ public class UsersController : ControllerBase
         }
 
         return NoContent();
-    }
-
-    [HttpPost]
-    [ProducesResponseType(StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public virtual async Task<ActionResult<UserDetailsDto>> Post([FromBody] UserCreateDto value)
-    {
-        var newValue = mapper.Map<User>(value);
-        var result = await userManager.CreateAsync(newValue);
-        if (result.Errors.Any())
-        {
-            throw new IdentityException(result.Errors);
-        }
-
-        var createdUser = await userManager.FindByNameAsync(value.UserName);
-
-        return CreatedAtAction(nameof(GetSpecific), new { id = createdUser!.Id }, createdUser);
     }
 }

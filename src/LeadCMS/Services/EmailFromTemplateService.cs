@@ -18,11 +18,29 @@ namespace LeadCMS.Services
     {
         private static readonly Dictionary<string, EmailTemplate> HardcodedTemplates = new()
         {
-            ["PasswordReset"] = new EmailTemplate
+            ["Password_Reset"] = new EmailTemplate
             {
                 Name = "Password_Reset",
                 Subject = "Password Reset",
                 BodyTemplate = "Click <a href=\"${ResetUrl}\">here</a> to reset your password.",
+                FromEmail = "no-reply@yourdomain.com",
+                FromName = "Support",
+            },
+
+            ["Account_Created"] = new EmailTemplate
+            {
+                Name = "Account_Created",
+                Subject = "Your account has been created",
+                BodyTemplate = "Hello ${UserName},<br/>Your account has been created. Your password is: <b>${Password}</b>",
+                FromEmail = "no-reply@yourdomain.com",
+                FromName = "Support",
+            },
+
+            ["Password_Updated"] = new EmailTemplate
+            {
+                Name = "Password_Updated",
+                Subject = "Your password has been updated",
+                BodyTemplate = "Hello ${UserName},<br/>Your password has been updated. Your new password is: <b>${Password}</b>",
                 FromEmail = "no-reply@yourdomain.com",
                 FromName = "Support",
             },
