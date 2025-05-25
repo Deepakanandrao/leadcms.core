@@ -46,6 +46,8 @@ public class Program
     {
         var builder = WebApplication.CreateBuilder(args);
 
+        ConfigureCORS(builder);
+
         AppSettingsFiles.ForEach(path =>
         {
             builder.Configuration.AddJsonFile(path, false, true);
@@ -131,11 +133,10 @@ public class Program
         builder.Services.Configure<ForwardedHeadersOptions>(options =>
         {
             options.ForwardedHeaders = ForwardedHeaders.All;
-        });
-
-        ConfigureCORS(builder);
+        });        
 
         app = builder.Build();
+        app.UseCors();
 
         app.UseHttpsRedirection();
         app.UseExceptionHandler("/error");
@@ -145,8 +146,7 @@ public class Program
 
         app.UseSwagger();
         app.UseSwaggerUI();
-        app.UseDefaultFiles();
-        app.UseCors();
+        app.UseDefaultFiles();        
         app.UseStaticFiles();
 
         app.UseAuthentication();
