@@ -47,17 +47,8 @@ services:
       - postgres-data:/var/lib/postgresql/data
     restart: unless-stopped
 
-  mailhog:
-    container_name: mailhog
-    image: mailhog/mailhog
-    ports:
-      - "1025:1025"  # SMTP
-      - "8025:8025"  # Web
-
   leadcms:
-    build:
-      context: ..
-      dockerfile: src/LeadCMS/Dockerfile
+    image: leadcms/core:develop
     container_name: leadcms
     ports:
       - "5000:80"
