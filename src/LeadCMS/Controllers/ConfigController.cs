@@ -45,12 +45,14 @@ public class ConfigController : ControllerBase
         }
 
         // MSAL config
-        var msalConfig = new
-        {
-            clientId = azureAdConfig.ClientId,
-            authority = azureAdConfig.Authority,
-            redirectUri = "/auth/callback", // relative path only
-        };
+        var msalConfig = azureAdConfig.IsInitialized()
+            ? new
+            {
+                clientId = azureAdConfig.ClientId,
+                authority = azureAdConfig.Authority,
+                redirectUri = "/auth/callback", // relative path only
+            }
+            : null;
 
         // Entities
         var allEntities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -97,16 +99,30 @@ public class ConfigController : ControllerBase
             })
             .ToList();
 
-        var result = new
+        object result;
+        if (msalConfig != null)
         {
-            auth = new
+            result = new
             {
-                methods = authMethods,
-                msal = msalConfig,
-            },
-            entities = availableEntities,
-            supportedLanguages = languages,
-        };
+                auth = new
+                {
+                    methods = authMethods,
+                    msal = msalConfig,
+                },
+                entities = availableEntities,
+                supportedLanguages = languages,
+            };
+        }
+        else
+        {
+            result = new
+            {
+                auth = new { methods = authMethods },
+                entities = availableEntities,
+                supportedLanguages = languages,
+            };
+        }
+
         return Ok(result);
     }
 }
