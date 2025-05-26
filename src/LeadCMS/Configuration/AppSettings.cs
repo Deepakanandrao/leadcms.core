@@ -145,6 +145,13 @@ public class JwtConfig
     public string Audience { get; set; } = string.Empty;
 
     public string Secret { get; set; } = string.Empty;
+
+    public bool IsInitialized()
+    {
+        return !string.IsNullOrEmpty(Secret) && Secret != "$JWT__SECRET" &&
+               !string.IsNullOrEmpty(Issuer) && Issuer != "$JWT__ISSUER" &&
+               !string.IsNullOrEmpty(Audience) && Audience != "$JWT__AUDIENCE";
+    }
 }
 
 public class AzureADConfig
@@ -158,6 +165,14 @@ public class AzureADConfig
     public string ClientId { get; set; } = string.Empty;
 
     public string ClientSecret { get; set; } = string.Empty;
+
+    public string Authority { get; set; } = string.Empty;
+
+    public bool IsInitialized()
+    {
+        return !string.IsNullOrEmpty(ClientId) && ClientId != "$AZUREAD__CLIENTID" &&
+               !string.IsNullOrEmpty(TenantId) && TenantId != "$AZUREAD__TENANTID";
+    }
 }
 
 public class DefaultRolesConfig : List<string>
@@ -176,6 +191,10 @@ public class DefaultUserConfig
 }
 
 public class DefaultUsersConfig : List<DefaultUserConfig>
+{
+}
+
+public class SupportedLanguagesConfig : List<string>
 {
 }
 
