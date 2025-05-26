@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Globalization;
 using LeadCMS.Configuration;
 using LeadCMS.Data;
 using Microsoft.AspNetCore.Authorization;
@@ -24,41 +25,38 @@ public class ConfigController : ControllerBase
 
     [HttpGet]
     [AllowAnonymous]
-    public IActionResult GetConfig()
+    public ActionResult<ConfigDto> GetConfig()
     {
-        // Use AppSettings helpers for config parsing
         var jwtConfig = configuration.GetSection("Jwt").Get<JwtConfig>() ?? new JwtConfig();
         var azureAdConfig = configuration.GetSection("AzureAd").Get<AzureADConfig>() ?? new AzureADConfig();
         var entitiesConfig = configuration.GetSection("Entities").Get<EntitiesConfig>() ?? new EntitiesConfig();
         var supportedLanguagesConfig = configuration.GetSection("SupportedLanguages").Get<string[]>() ?? Array.Empty<string>();
 
-        // Auth methods
         var authMethods = new List<string>();
         if (jwtConfig.IsInitialized())
         {
             authMethods.Add("Local");
         }
-
+        
         if (azureAdConfig.IsInitialized())
         {
             authMethods.Add("AzureAD");
         }
 
-        // MSAL config
-        var msalConfig = azureAdConfig.IsInitialized()
-            ? new
+        MsalConfigDto? msalConfig = null;
+        if (azureAdConfig.IsInitialized())
+        {
+            msalConfig = new MsalConfigDto
             {
-                clientId = azureAdConfig.ClientId,
-                authority = azureAdConfig.Authority,
-                redirectUri = "/auth/callback", // relative path only
-            }
-            : null;
+                ClientId = azureAdConfig.ClientId,
+                Authority = azureAdConfig.Authority,
+                RedirectUri = "/auth/callback",
+            };
+        }
 
-        // Entities
         var allEntities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         using (var scope = serviceProvider.CreateScope())
         {
-            // Main context
             var mainDbContext = scope.ServiceProvider.GetRequiredService<PgDbContext>();
             foreach (var entityType in mainDbContext.Model.GetEntityTypes().Select(e => e.ClrType))
             {
@@ -67,8 +65,7 @@ public class ConfigController : ControllerBase
                     allEntities.Add(entityType.Name);
                 }
             }
-
-            // Plugin contexts
+            
             var pluginDbContexts = scope.ServiceProvider.GetServices<PluginDbContextBase>();
             foreach (var pluginContext in pluginDbContexts)
             {
@@ -86,43 +83,61 @@ public class ConfigController : ControllerBase
         }
         else
         {
-            availableEntities = allEntities.Except(entitiesConfig.Exclude, System.StringComparer.OrdinalIgnoreCase);
+            availableEntities = allEntities.Except(entitiesConfig.Exclude, StringComparer.OrdinalIgnoreCase);
         }
 
-        // SupportedLanguages
         var languages = supportedLanguagesConfig
-            .Select(code => new
+            .Select(code => new LanguageDto
             {
-                code,
-                name = System.Globalization.CultureInfo.GetCultures(System.Globalization.CultureTypes.AllCultures)
+                Code = code,
+                Name = CultureInfo.GetCultures(CultureTypes.AllCultures)
                     .FirstOrDefault(c => c.Name == code)?.DisplayName ?? code,
             })
             .ToList();
 
-        object result;
-        if (msalConfig != null)
+        var configDto = new ConfigDto
         {
-            result = new
+            Auth = new AuthConfigDto
             {
-                auth = new
-                {
-                    methods = authMethods,
-                    msal = msalConfig,
-                },
-                entities = availableEntities,
-                supportedLanguages = languages,
-            };
-        }
-        else
-        {
-            result = new
-            {
-                auth = new { methods = authMethods },
-                entities = availableEntities,
-                supportedLanguages = languages,
-            };
-        }
+                Methods = authMethods,
+                Msal = msalConfig,
+            },
+            Entities = availableEntities,
+            Languages = languages,
+        };
 
-        return Ok(result);
+        return Ok(configDto);
     }
+}
+
+public class ConfigDto
+{
+    public AuthConfigDto Auth { get; set; } = new AuthConfigDto();
+
+    public IEnumerable<string> Entities { get; set; } = Array.Empty<string>();
+
+    public List<LanguageDto> Languages { get; set; } = new List<LanguageDto>();
+}
+
+public class AuthConfigDto
+{
+    public List<string> Methods { get; set; } = new List<string>();
+
+    public MsalConfigDto? Msal { get; set; }
+}
+
+public class MsalConfigDto
+{
+    public string ClientId { get; set; } = string.Empty;
+
+    public string Authority { get; set; } = string.Empty;
+
+    public string RedirectUri { get; set; } = string.Empty;
+}
+
+public class LanguageDto
+{
+    public string Code { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
 }
