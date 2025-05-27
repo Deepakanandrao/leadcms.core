@@ -121,13 +121,35 @@ public static class IdentityHelper
 
     public static void ConfigureAuthorization(WebApplicationBuilder builder)
     {
+        var jwtConfig = builder.Configuration.GetSection("Jwt").Get<JwtConfig>();
+        var azureAdConfig = builder.Configuration.GetSection("AzureAd").Get<AzureADConfig>();
+
+        bool jwtEnabled = jwtConfig != null && jwtConfig.Secret != "$JWT__SECRET";
+        bool azureAdEnabled = azureAdConfig != null && azureAdConfig.TenantId != "$AZUREAD__TENANTID";
+
         builder.Services.AddAuthorization(options =>
         {
-            // Default policy that requires authenticated user from either JwtBearer or AzureAd scheme
-            options.DefaultPolicy = new AuthorizationPolicyBuilder()
-                .AddAuthenticationSchemes(JwtBearerScheme, AzureAdScheme)
-                .RequireAuthenticatedUser()
-                .Build();
+                var policyBuilder = new AuthorizationPolicyBuilder();
+
+                if (jwtEnabled)
+                {
+                policyBuilder.AddAuthenticationSchemes(JwtBearerScheme);
+                }
+
+                if (azureAdEnabled)
+                {
+                    policyBuilder.AddAuthenticationSchemes(AzureAdScheme);
+                }
+
+                // Fallback to JwtBearer if neither is configured
+                if (!jwtEnabled && !azureAdEnabled)
+                {
+                    policyBuilder.AddAuthenticationSchemes(JwtBearerScheme);
+                }
+
+                policyBuilder.RequireAuthenticatedUser();
+
+                options.DefaultPolicy = policyBuilder.Build();
         });
     }
 
