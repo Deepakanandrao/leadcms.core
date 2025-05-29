@@ -20,7 +20,7 @@ namespace LeadCMS.Infrastructure
 
         public void Apply(OpenApiSchema schema, SchemaFilterContext context)
         {
-            if (context.Type.Namespace!.Contains("LeadCMS") && schema.Properties.Any())
+            if (context.Type.Namespace != null && context.Type.Namespace.Contains("LeadCMS") && schema.Properties.Any())
             {
                 var properties = context.Type.GetProperties();
                 foreach (var propertySchema in schema.Properties)

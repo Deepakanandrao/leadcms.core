@@ -57,6 +57,8 @@ public class Order : BaseEntity, ICommentable
     [Required]
     public string Currency { get; set; } = string.Empty;
 
+    public OrderStatus Status { get; set; } = OrderStatus.Pending;
+
     /// <summary>
     /// Gets total amount in the payment currency without TAXes, discounts and comissions.
     /// </summary>
@@ -106,4 +108,13 @@ public class Order : BaseEntity, ICommentable
     {
         return "Order";
     }
+}
+
+public enum OrderStatus
+{
+    Pending = 0,
+    Paid = 1,
+    Cancelled = 2,
+    Refunded = 3,
+    Failed = 4,
 }

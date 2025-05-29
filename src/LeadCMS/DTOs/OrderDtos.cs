@@ -33,6 +33,8 @@ public class OrderCreateDto
 
     [Optional]
     public string? Source { get; set; }
+
+    public OrderStatus Status { get; set; } = OrderStatus.Pending;
 }
 
 public class OrderUpdateDto
@@ -43,6 +45,8 @@ public class OrderUpdateDto
     public string? AffiliateName { get; set; }
 
     public string? Data { get; set; }
+
+    public OrderStatus? Status { get; set; }
 }
 
 public class OrderDetailsDto : OrderCreateDto
@@ -56,6 +60,14 @@ public class OrderDetailsDto : OrderCreateDto
     public int Quantity { get; set; }
 
     public decimal Total { get; set; }
+
+    public decimal CurrencyTotal { get; set; }
+
+    public decimal Commission { get; set; }
+
+    public decimal Refund { get; set; }
+
+    public new OrderStatus Status { get; set; }
 
     [Ignore]
     public List<OrderItemDetailsDto>? OrderItems { get; set; }

@@ -14,6 +14,7 @@ public class TestOrder : OrderCreateDto
         Currency = "USD";
         ExchangeRate = 1.234M;
         ContactId = contactId;
+        Status = OrderStatus.Pending;
     }
 }
 
