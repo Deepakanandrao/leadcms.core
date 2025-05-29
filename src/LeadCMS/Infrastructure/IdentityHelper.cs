@@ -133,7 +133,7 @@ public static class IdentityHelper
 
                 if (jwtEnabled)
                 {
-                policyBuilder.AddAuthenticationSchemes(JwtBearerScheme);
+                    policyBuilder.AddAuthenticationSchemes(JwtBearerScheme);
                 }
 
                 if (azureAdEnabled)
