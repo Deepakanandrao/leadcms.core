@@ -110,6 +110,8 @@ public class PgDbContext : IdentityDbContext<User>
 
     public virtual DbSet<MailServer>? MailServers { get; set; }
 
+    public virtual DbSet<ContentType>? ContentTypes { get; set; }
+
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         var result = 0;
@@ -236,6 +238,13 @@ public class PgDbContext : IdentityDbContext<User>
         builder.Entity<IdentityRoleClaim<string>>(entity => { entity.ToTable("role_claims"); });
 
         builder.Entity<User>().Property(u => u.Data).HasColumnType("jsonb");
+
+        // Fix ContentType foreign key for Content
+        builder.Entity<Content>()
+            .HasOne(c => c.ContentType)
+            .WithMany()
+            .HasForeignKey(c => c.Type)
+            .HasPrincipalKey(ct => ct.Uid);
     }
 
     private DateTime GetDateWithKind(DateTime date)

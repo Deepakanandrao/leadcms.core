@@ -4,6 +4,7 @@
 
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 using LeadCMS.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 
@@ -35,7 +36,11 @@ public class Content : BaseEntity, ICommentable
     public string Slug { get; set; } = string.Empty;
 
     [Required]
+    [ForeignKey(nameof(ContentType))]
     public string Type { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public virtual ContentType? ContentType { get; set; }
 
     [Searchable]
     [Required]
