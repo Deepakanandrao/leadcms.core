@@ -31,21 +31,11 @@ namespace LeadCMS.Controllers
         [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult> Post([FromForm] FileCreateDto fileCreateDto)
         {
-            var provider = new FileExtensionContentTypeProvider();
-
             fileCreateDto.ScopeUid = fileCreateDto.ScopeUid.TrimStart('/');
-
             var incomingFileName = fileCreateDto.File!.FileName.ToTranslit().Slugify()!;
             var incomingFileExtension = Path.GetExtension(fileCreateDto.File!.FileName);
             var incomingFileSize = fileCreateDto.File!.Length; // bytes
-            var incomingFileMimeType = string.Empty;
-
-            if (!provider.TryGetContentType(incomingFileName, out incomingFileMimeType))
-            {
-                ModelState.AddModelError("FileName", "Unsupported MIME type");
-
-                throw new InvalidModelStateException(ModelState);
-            }
+            var incomingFileMimeType = ContentTypeHelper.GetMimeTypeOrThrow(incomingFileName, ModelState);
 
             using var fileStream = fileCreateDto.File.OpenReadStream();
             var fileInBytes = new byte[incomingFileSize];

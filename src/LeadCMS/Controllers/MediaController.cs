@@ -32,19 +32,10 @@ public class MediaController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult> Post([FromForm] ImageCreateDto imageCreateDto)
     {
-        var provider = new FileExtensionContentTypeProvider();
-
         var incomingFileName = imageCreateDto.Image!.FileName.ToTranslit().Slugify();
         var incomingFileExtension = Path.GetExtension(imageCreateDto.Image!.FileName);
         var incomingFileSize = imageCreateDto.Image!.Length; // bytes
-        var incomingFileMimeType = string.Empty;
-
-        if (!provider.TryGetContentType(incomingFileName, out incomingFileMimeType))
-        {
-            ModelState.AddModelError("FileName", "Unsupported MIME type");
-
-            throw new InvalidModelStateException(ModelState);
-        }
+        var incomingFileMimeType = ContentTypeHelper.GetMimeTypeOrThrow(incomingFileName, ModelState);
 
         using var fileStream = imageCreateDto.Image.OpenReadStream();
         var imageInBytes = new byte[incomingFileSize];
