@@ -35,7 +35,11 @@ namespace LeadCMS.Infrastructure
                     match = Regex.Match(cmd, "filter(\\[(?'property'.*?)\\])+?=(?'value'.*)");
                     if (!match.Success)
                     {
-                        errorList.Add(new QueryException(cmd, "Failed to parse command"));
+                        if (!cmd.Contains("syncToken"))
+                        {
+                            errorList.Add(new QueryException(cmd, "Failed to parse command"));
+                        }
+                        
                         continue;
                     }
 

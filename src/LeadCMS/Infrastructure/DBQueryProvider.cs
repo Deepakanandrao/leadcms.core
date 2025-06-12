@@ -19,20 +19,21 @@ namespace LeadCMS.Infrastructure
         where T : BaseEntityWithId
     {
         private readonly QueryModelBuilder<T> queryBuilder;
-        private IQueryable<T> query;
-
+        
         public DBQueryProvider(IQueryable<T> query, QueryModelBuilder<T> queryBuilder)
         {
-            this.query = query;
+            BuiltQuery = query;
             this.queryBuilder = queryBuilder;
-        }
+        }        
+
+        public IQueryable<T> BuiltQuery { get; private set; }        
 
         public async Task<QueryResult<T>> GetResult()
         {
             AddWhereCommands();
             AddSearchCommands();
 
-            var totalCount = query.Count();
+            var totalCount = BuiltQuery.Count();
             IList<T>? records;
 
             AddIncludeCommands();
@@ -45,7 +46,7 @@ namespace LeadCMS.Infrastructure
             }
             else
             {
-                records = await query.ToListAsync();
+                records = await BuiltQuery.ToListAsync();
             }
 
             return new QueryResult<T>(records, totalCount);
@@ -55,7 +56,7 @@ namespace LeadCMS.Infrastructure
         {
             foreach (var data in queryBuilder.IncludeData)
             {
-                query = query.Include(data.Name);
+                BuiltQuery = BuiltQuery.Include(data.Name);
             }
         }
 
@@ -63,7 +64,7 @@ namespace LeadCMS.Infrastructure
         {
             if (queryBuilder.OrderData.Count == 0)
             {
-                query = query.OrderBy(t => t.Id);
+                BuiltQuery = BuiltQuery.OrderBy(t => t.Id);
             }
             else
             {
@@ -92,7 +93,7 @@ namespace LeadCMS.Infrastructure
                                                                         m => m.Name == methodName &&
                                                                         m.GetGenericArguments().Length == 2 &&
                                                                         m.GetParameters().Length == 2).MakeGenericMethod(typeof(T), orderPropertyType);
-                    query = (IOrderedQueryable<T>)orderMethod.Invoke(null, new object?[] { query, orderLambda })!;
+                    BuiltQuery = (IOrderedQueryable<T>)orderMethod.Invoke(null, new object?[] { BuiltQuery, orderLambda })!;
                 }
             }
         }
@@ -101,7 +102,7 @@ namespace LeadCMS.Infrastructure
         {
             if (queryBuilder.Skip > 0)
             {
-                query = query.Skip(queryBuilder.Skip);
+                BuiltQuery = BuiltQuery.Skip(queryBuilder.Skip);
             }
         }
 
@@ -109,7 +110,7 @@ namespace LeadCMS.Infrastructure
         {
             if (queryBuilder.Limit > 0)
             {
-                query = query.Take(queryBuilder.Limit);
+                BuiltQuery = BuiltQuery.Take(queryBuilder.Limit);
             }
         }
 
@@ -150,7 +151,7 @@ namespace LeadCMS.Infrastructure
                 if (!ExpressionEqualityComparer.Instance.Equals(orExpression, Expression.Constant(false)))
                 {
                     var predicate = Expression.Lambda<Func<T, bool>>(orExpression, paramExpr);
-                    query = query.Where(predicate);
+                    BuiltQuery = BuiltQuery.Where(predicate);
                 }
             }
         }
@@ -205,7 +206,7 @@ namespace LeadCMS.Infrastructure
                 }
 
                 var resExpression = Expression.Or(andExpression, orExpression);
-                query = query.Where(Expression.Lambda<Func<T, bool>>(resExpression, expressionParameter));
+                BuiltQuery = BuiltQuery.Where(Expression.Lambda<Func<T, bool>>(resExpression, expressionParameter));
             }
         }
 
@@ -402,7 +403,7 @@ namespace LeadCMS.Infrastructure
 
                 var toArrayAsyncMethod = typeof(EntityFrameworkQueryableExtensions).GetMethod("ToArrayAsync")!.MakeGenericMethod(outputType);
 
-                var selectQueryable = queryMethod!.Invoke(query, new object[] { query, lambda });
+                var selectQueryable = queryMethod!.Invoke(BuiltQuery, new object[] { BuiltQuery, lambda });
 
                 var outputTypeTaskResultProp = typeof(Task<>).MakeGenericType(outputType.MakeArrayType()).GetProperty("Result");
 
@@ -415,6 +416,6 @@ namespace LeadCMS.Infrastructure
             {
                 return null;
             }
-        }
+        }        
     }
 }
