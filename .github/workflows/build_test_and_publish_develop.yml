@@ -42,6 +42,11 @@ jobs:
         cache: 'npm'
         cache-dependency-path: leadcms.admin/package-lock.json
 
+    - name: Set frontend environment variables
+      run: |
+        echo "TINYMCE_API_KEY=${{ secrets.TINYMCE_API_KEY }}" > ./leadcms.admin/.env
+        echo "VERSION=${{ github.event.inputs.version }}" >> ./leadcms.admin/.env
+
     - name: Install frontend dependencies
       working-directory: ./leadcms.admin
       run: npm ci
@@ -52,6 +57,7 @@ jobs:
 
     - name: Copy frontend build to backend wwwroot
       run: |
+        mkdir -p ./src/LeadCMS/wwwroot
         rm -rf ./src/LeadCMS/wwwroot/*
         cp -r ./leadcms.admin/dist/* ./src/LeadCMS/wwwroot/
 
