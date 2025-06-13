@@ -27,6 +27,34 @@ jobs:
       with:
         ref: 'develop'
 
+    # Checkout and build frontend from leadcms.admin (develop branch)
+    - name: Checkout frontend (leadcms.admin)
+      uses: actions/checkout@v3
+      with:
+        repository: LeadCMS/leadcms.admin
+        ref: develop
+        path: leadcms.admin
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.19.0'
+        cache: 'npm'
+        cache-dependency-path: leadcms.admin/package-lock.json
+
+    - name: Install frontend dependencies
+      working-directory: ./leadcms.admin
+      run: npm ci
+
+    - name: Build frontend
+      working-directory: ./leadcms.admin
+      run: npm run build
+
+    - name: Copy frontend build to backend wwwroot
+      run: |
+        rm -rf ./src/LeadCMS/wwwroot/*
+        cp -r ./leadcms.admin/dist/* ./src/LeadCMS/wwwroot/
+
     - name: Setup .NET
       uses: actions/setup-dotnet@v3
       with:
