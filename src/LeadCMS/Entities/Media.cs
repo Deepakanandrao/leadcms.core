@@ -20,8 +20,10 @@ namespace LeadCMS.Entities
 
         public long Size { get; set; } = 0;
 
+        [Searchable]
         public string Extension { get; set; } = string.Empty;
 
+        [Searchable]
         public string MimeType { get; set; } = string.Empty;
 
         public byte[] Data { get; set; } = Array.Empty<byte>();

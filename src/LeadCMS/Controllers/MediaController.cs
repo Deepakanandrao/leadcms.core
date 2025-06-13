@@ -7,9 +7,9 @@ using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;
+using LeadCMS.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Controllers;
@@ -19,10 +19,12 @@ namespace LeadCMS.Controllers;
 public class MediaController : ControllerBase
 {
     private readonly PgDbContext pgDbContext;
+    private readonly QueryProviderFactory<Media> queryProviderFactory;
 
-    public MediaController(PgDbContext pgDbContext)
+    public MediaController(PgDbContext pgDbContext, QueryProviderFactory<Media> queryProviderFactory)
     {
         this.pgDbContext = pgDbContext;
+        this.queryProviderFactory = queryProviderFactory;
     }
 
     [HttpPost]
@@ -45,17 +47,18 @@ public class MediaController : ControllerBase
                                  where i.ScopeUid == imageCreateDto.ScopeUid.Trim() && i.Name == incomingFileName
                                  select i;
 
+        Media uploadedMedia;
+
         if (scopeAndFileExists.Any())
         {
-            var uploadedImage = scopeAndFileExists!.FirstOrDefault();
-            uploadedImage!.Data = imageInBytes;
-            uploadedImage!.Size = incomingFileSize;
-
-            pgDbContext.Media!.Update(uploadedImage);
+            uploadedMedia = scopeAndFileExists!.FirstOrDefault()!;
+            uploadedMedia!.Data = imageInBytes;
+            uploadedMedia!.Size = incomingFileSize;
+            pgDbContext.Media!.Update(uploadedMedia);
         }
         else
         {
-            Media uploadedMedia = new()
+            uploadedMedia = new Media()
             {
                 Name = incomingFileName,
                 Size = incomingFileSize,
@@ -64,7 +67,6 @@ public class MediaController : ControllerBase
                 ScopeUid = imageCreateDto.ScopeUid.Trim(),
                 Extension = incomingFileExtension,
             };
-
             await pgDbContext.Media!.AddAsync(uploadedMedia);
         }
 
@@ -75,9 +77,18 @@ public class MediaController : ControllerBase
 
         var fileData = new MediaDetailsDto()
         {
-            Location = Path.Combine(HttpContext.Request.Path, imageCreateDto.ScopeUid, incomingFileName).Replace("\\", "/"),
+            Id = uploadedMedia.Id,
+            ScopeUid = uploadedMedia.ScopeUid,
+            Name = uploadedMedia.Name,
+            Size = uploadedMedia.Size,
+            Extension = uploadedMedia.Extension,
+            MimeType = uploadedMedia.MimeType,
+            CreatedAt = uploadedMedia.CreatedAt,
+            UpdatedAt = uploadedMedia.UpdatedAt,
+            Location = Path.Combine(HttpContext.Request.Path, uploadedMedia.ScopeUid, uploadedMedia.Name).Replace("\\", "/"),
         };
-        return CreatedAtAction(nameof(Get), new { scopeUid = imageCreateDto.ScopeUid, fileName = incomingFileName }, fileData);
+
+        return CreatedAtAction(nameof(Get), new { scopeUid = uploadedMedia.ScopeUid, fileName = uploadedMedia.Name }, fileData);
     }
 
     [HttpGet]
@@ -125,5 +136,34 @@ public class MediaController : ControllerBase
         await pgDbContext.SaveChangesAsync();
 
         return NoContent();
+    }
+
+    [HttpGet]
+    [ProducesResponseType(typeof(List<MediaDetailsDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<List<MediaDetailsDto>>> GetList([FromQuery] string? query = null)
+    {
+        var qp = queryProviderFactory.BuildQueryProvider();
+        var result = await qp.GetResult();
+
+        Response.Headers.Append(ResponseHeaderNames.TotalCount, result.TotalCount.ToString());
+        Response.Headers.Append(ResponseHeaderNames.AccessControlExposeHeader, ResponseHeaderNames.TotalCount);
+
+        var mediaList = result.Records ?? new List<Media>();
+
+        var mapped = mediaList.Select(m => new MediaDetailsDto
+        {
+            Id = m.Id,
+            ScopeUid = m.ScopeUid,
+            Name = m.Name,
+            Size = m.Size,
+            Extension = m.Extension,
+            MimeType = m.MimeType,
+            CreatedAt = m.CreatedAt,
+            UpdatedAt = m.UpdatedAt,
+            Location = Path.Combine(HttpContext.Request.Path, m.ScopeUid, m.Name).Replace("\\", "/"),
+        }).ToList();
+
+        return Ok(mapped);
     }
 }
