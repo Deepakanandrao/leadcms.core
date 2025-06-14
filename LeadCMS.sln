@@ -130,6 +130,6 @@ Global
 		$0.DotNetNamingPolicy = $1
 		$1.DirectoryNamespaceAssociation = PrefixedHierarchical
 		$0.TextStylePolicy = $3
-		version = 1.2.45-pre
+		version = 1.2.46-pre
 	EndGlobalSection
 EndGlobal
