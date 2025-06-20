@@ -6,7 +6,9 @@ using AutoMapper;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
+using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
+using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -18,11 +20,13 @@ namespace LeadCMS.Controllers;
 public class ContentController : BaseControllerWithImport<Content, ContentCreateDto, ContentUpdateDto, ContentDetailsDto, ContentImportDto>
 {
     private readonly CommentableControllerExtension commentableControllerExtension;
+    private readonly IMediaResolver mediaResolver;
 
-    public ContentController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Content> queryProviderFactory, CommentableControllerExtension commentableControllerExtension)
+    public ContentController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Content> queryProviderFactory, CommentableControllerExtension commentableControllerExtension, IMediaResolver mediaResolver)
         : base(dbContext, mapper, esDbContext, queryProviderFactory)
     {
         this.commentableControllerExtension = commentableControllerExtension;
+        this.mediaResolver = mediaResolver;
     }
 
     [HttpGet]
@@ -31,9 +35,28 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public override Task<ActionResult<List<ContentDetailsDto>>> Get([FromQuery] string? query)
+    public override async Task<ActionResult<List<ContentDetailsDto>>> Get([FromQuery] string? query)
     {
-        return base.Get(query);
+        var result = await base.Get(query);
+        var mode = MediaResolutionHelper.GetResolutionMode(HttpContext);
+
+        // If result is OkObjectResult, extract the value
+        if (result.Result is OkObjectResult okResult && okResult.Value is List<ContentDetailsDto> list)
+        {
+            if (mode == "absolute")
+            {
+                foreach (var item in list)
+                {
+                    item.CoverImageUrl = mediaResolver.Resolve(item.CoverImageUrl, HttpContext, mode);
+                    item.Body = MediaUriTransformer.Transform(item.Body, mediaResolver, HttpContext, mode);
+                }
+            }
+
+            return Ok(list);
+        }
+
+        // fallback for other result types
+        return result;
     }
 
     // GET api/{entity}s/5
@@ -43,9 +66,23 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public override Task<ActionResult<ContentDetailsDto>> GetOne(int id)
+    public override async Task<ActionResult<ContentDetailsDto>> GetOne(int id)
     {
-        return base.GetOne(id);
+        var result = await base.GetOne(id);
+        var mode = MediaResolutionHelper.GetResolutionMode(HttpContext);
+
+        if (result.Result is OkObjectResult okResult && okResult.Value is ContentDetailsDto dto)
+        {
+            if (mode == "absolute")
+            {
+                dto.Body = MediaUriTransformer.Transform(dto.Body, mediaResolver, HttpContext, mode);
+                dto.CoverImageUrl = mediaResolver.Resolve(dto.CoverImageUrl, HttpContext, mode);
+            }
+            
+            return Ok(dto);
+        }
+
+        return result;
     }
 
     [HttpGet("tags")]

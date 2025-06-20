@@ -13,7 +13,7 @@ namespace LeadCMS.Entities;
 [Table("content")]
 [SupportsElastic]
 [SupportsChangeLog]
-[Index(nameof(Slug), IsUnique = true)]
+[Index(nameof(Slug), nameof(Language), IsUnique = true)]
 public class Content : BaseEntity, ICommentable
 {
     [Searchable]

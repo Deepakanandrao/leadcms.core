@@ -83,6 +83,7 @@ public class Program
         builder.Services.AddTransient<IOrderService, OrderService>();
         builder.Services.AddTransient<IDiscountService, DiscountService>();
         builder.Services.AddTransient<IEmailSchedulingService, EmailSchedulingService>();
+        builder.Services.AddSingleton<IMediaResolver, MediaResolver>();
 
         ConfigureCacheProfiles(builder);
 
@@ -420,6 +421,8 @@ public class Program
 
         builder.Services.AddSwaggerGen(config =>
         {
+            config.OperationFilter<MediaResolutionHeaderOperationFilter>();
+
             foreach (var swaggerConfigurator in swaggerConfigurators)
             {
                 swaggerConfigurator.ConfigureSwagger(config, openApiInfo);
