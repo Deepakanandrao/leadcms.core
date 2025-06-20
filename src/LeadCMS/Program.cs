@@ -85,6 +85,10 @@ public class Program
         builder.Services.AddTransient<IEmailSchedulingService, EmailSchedulingService>();
         builder.Services.AddSingleton<IMediaResolver, MediaResolver>();
 
+        // Add SSE services for real-time change notifications
+        builder.Services.AddSingleton<SseClientManager>();
+        builder.Services.AddHostedService<PostgresNotificationService>();
+
         ConfigureCacheProfiles(builder);
 
         ConfigureConventions(builder);

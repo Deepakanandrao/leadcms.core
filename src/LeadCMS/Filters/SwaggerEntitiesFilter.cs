@@ -14,6 +14,7 @@ namespace LeadCMS.Filters
         private readonly List<string> includedEntities;
         private readonly List<string> excludedEntities;
         private readonly List<Type> currentTypes;
+        private readonly HashSet<string> excludedSchemaKeys = new();
 
         public SwaggerEntitiesFilter(EntitiesConfig config)
         {
@@ -29,13 +30,23 @@ namespace LeadCMS.Filters
         public void Apply(OpenApiDocument swaggerDoc, DocumentFilterContext context)
         {
             var schemas = context.SchemaRepository.Schemas;
-            var excludeSchemas = schemas.Where(s => SchemaNeedsToBeExcluded(s.Key.ToString().ToLower()));
-            foreach (var schema in excludeSchemas)
+            
+            // First pass: identify and remove excluded schemas
+            var excludeSchemas = schemas.Where(s => SchemaNeedsToBeExcluded(s.Key.ToString().ToLower())).Select(s => s.Key).ToList();
+            foreach (var schemaKey in excludeSchemas)
             {
-                schemas.Remove(schema.Key);
+                excludedSchemaKeys.Add(schemaKey);
+                schemas.Remove(schemaKey);
             }
 
-            var excludePaths = swaggerDoc.Paths.Where(p => OperationNeedsToBeExcluded(context, p.Key));
+            // Second pass: clean up references to excluded schemas in remaining schemas
+            CleanupSchemaReferences(schemas);
+
+            // Third pass: clean up operation request/response schemas and remove problematic paths
+            CleanupOperations(swaggerDoc);
+
+            // Remove excluded paths
+            var excludePaths = swaggerDoc.Paths.Where(p => OperationNeedsToBeExcluded(context, p.Key)).ToList();
             foreach (var path in excludePaths)
             {
                 swaggerDoc.Paths.Remove(path.Key);
@@ -52,11 +63,267 @@ namespace LeadCMS.Filters
 
         private bool OperationNeedsToBeExcluded(DocumentFilterContext context, string path)
         {
-            var included = includedEntities.Count == 0 || includedEntities.Exists(op => path.Contains('/' + op));
-            var excluded = includedEntities.Count == 0 && excludedEntities.Exists(op => path.Contains('/' + op));
-            var api = context.ApiDescriptions.FirstOrDefault(d => { return d != null && d.RelativePath != null && path == '/' + d.RelativePath; }, null);
+            // Create a precise mapping of excluded entities to their exact controller paths
+            var entityToControllerMap = new Dictionary<string, string>
+            {
+                { "deal", "/api/deals" },
+                { "comment", "/api/comments" }, // Comments have their own controller
+                { "link", "/api/links" }, // Both linki and link map to links
+                { "account", "/api/accounts" },
+                { "unsubscribe", "/api/unsubscribes" },
+                { "domain", "/api/domains" },
+                { "activity-log", "/api/activity-logs" },
+                { "changelog", "/api/changelogs" },
+                { "changelogtask", "/api/changelog-tasks" },
+                { "contactemailschedule", "/api/contact-email-schedules" },
+                { "dealpipeline", "/api/deal-pipelines" },
+                { "dealpipelinestage", "/api/deal-pipeline-stages" },
+                { "discount", "/api/discounts" },
+                { "email-group", "/api/email-groups" },
+                { "file", "/api/files" },
+                { "order", "/api/orders" },
+                { "changelogtasklog", "/api/changelog-task-logs" },
+                { "emaillog", "/api/email-logs" },
+                { "emailschedule", "/api/email-schedules" },
+                { "ipdetails", "/api/ip-details" },
+                { "linklog", "/api/link-logs" },
+                { "mailserver", "/api/mail-servers" },
+                { "orderitem", "/api/order-items" },
+                { "promotion", "/api/promotions" },
+                { "taskexecutionlog", "/api/task-execution-logs" },
+                { "sendgridevent", "/api/sendgrid-events" },
+                { "task", "/api/tasks" },
+            };
+
+            // Check if any excluded entity maps exactly to this path
+            foreach (var excludedEntity in excludedEntities)
+            {
+                if (entityToControllerMap.TryGetValue(excludedEntity, out var controllerPath) && path.StartsWith(controllerPath))
+                {
+                    return true;
+                }
+            }
+
+            // Original logic for plugin exclusion
+            var api = context.ApiDescriptions.FirstOrDefault(d => d != null && d.RelativePath != null && path == '/' + d.RelativePath);
             var ignored = api != null && api.ActionDescriptor.DisplayName != null && api.ActionDescriptor.DisplayName.Contains("Plugin");
-            return !ignored && (!included || excluded);
+            
+            return ignored; // Don't exclude plugins
+        }
+
+        private void CleanupSchemaReferences(IDictionary<string, OpenApiSchema> schemas)
+        {
+            foreach (var schema in schemas.Values)
+            {
+                CleanupSchemaProperties(schema);
+            }
+        }
+
+        private void CleanupSchemaProperties(OpenApiSchema schema)
+        {
+            if (schema.Properties == null)
+            {
+                return;
+            }
+
+            var propertiesToRemove = new List<string>();
+
+            foreach (var property in schema.Properties)
+            {
+                if (ShouldRemoveProperty(property.Value))
+                {
+                    propertiesToRemove.Add(property.Key);
+                }
+                else
+                {
+                    // Recursively clean nested schemas
+                    CleanupSchemaProperties(property.Value);
+                }
+            }
+
+            // Remove properties that reference excluded schemas
+            foreach (var propertyKey in propertiesToRemove)
+            {
+                schema.Properties.Remove(propertyKey);
+            }
+
+            // Clean up AllOf, AnyOf, OneOf references
+            CleanupSchemaComposition(schema);
+        }
+
+        private bool ShouldRemoveProperty(OpenApiSchema propertySchema)
+        {
+            // Check direct reference
+            if (propertySchema.Reference != null)
+            {
+                var refId = ExtractSchemaIdFromReference(propertySchema.Reference.Id);
+                if (excludedSchemaKeys.Contains(refId))
+                {
+                    return true;
+                }
+            }
+
+            // Check array items reference
+            if (propertySchema.Type == "array" && propertySchema.Items?.Reference != null)
+            {
+                var refId = ExtractSchemaIdFromReference(propertySchema.Items.Reference.Id);
+                if (excludedSchemaKeys.Contains(refId))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void CleanupSchemaComposition(OpenApiSchema schema)
+        {
+            // Clean AllOf
+            if (schema.AllOf != null)
+            {
+                var itemsToRemove = schema.AllOf.Where(s => s.Reference != null && 
+                    excludedSchemaKeys.Contains(ExtractSchemaIdFromReference(s.Reference.Id))).ToList();
+                foreach (var item in itemsToRemove)
+                {
+                    schema.AllOf.Remove(item);
+                }
+            }
+
+            // Clean AnyOf
+            if (schema.AnyOf != null)
+            {
+                var itemsToRemove = schema.AnyOf.Where(s => s.Reference != null && 
+                    excludedSchemaKeys.Contains(ExtractSchemaIdFromReference(s.Reference.Id))).ToList();
+                foreach (var item in itemsToRemove)
+                {
+                    schema.AnyOf.Remove(item);
+                }
+            }
+
+            // Clean OneOf
+            if (schema.OneOf != null)
+            {
+                var itemsToRemove = schema.OneOf.Where(s => s.Reference != null && 
+                    excludedSchemaKeys.Contains(ExtractSchemaIdFromReference(s.Reference.Id))).ToList();
+                foreach (var item in itemsToRemove)
+                {
+                    schema.OneOf.Remove(item);
+                }
+            }
+        }
+
+        private void CleanupOperations(OpenApiDocument swaggerDoc)
+        {
+            var pathsToRemove = new List<string>();
+
+            foreach (var path in swaggerDoc.Paths)
+            {
+                var hasInvalidRefs = false;
+
+                foreach (var operation in path.Value.Operations.Values)
+                {
+                    // Check request body schemas
+                    if (operation.RequestBody?.Content != null)
+                    {
+                        hasInvalidRefs = operation.RequestBody.Content.Values.Any(content => HasInvalidSchemaReference(content.Schema));
+                        if (hasInvalidRefs)
+                        {
+                            break;
+                        }
+                    }
+
+                    // Check response schemas
+                    if (operation.Responses != null)
+                    {
+                        hasInvalidRefs = operation.Responses.Values
+                            .Where(response => response.Content != null)
+                            .SelectMany(response => response.Content.Values)
+                            .Any(content => HasInvalidSchemaReference(content.Schema));
+                    }
+
+                    if (hasInvalidRefs)
+                    {
+                        break;
+                    }
+                }
+
+                if (hasInvalidRefs)
+                {
+                    pathsToRemove.Add(path.Key);
+                }
+            }
+
+            // Remove paths with invalid references
+            foreach (var pathKey in pathsToRemove)
+            {
+                swaggerDoc.Paths.Remove(pathKey);
+            }
+        }
+
+        private bool HasInvalidSchemaReference(OpenApiSchema schema)
+        {
+            if (schema == null)
+            {
+                return false;
+            }
+
+            // Check direct reference
+            if (schema.Reference != null)
+            {
+                var refId = ExtractSchemaIdFromReference(schema.Reference.Id);
+                if (excludedSchemaKeys.Contains(refId))
+                {
+                    return true;
+                }
+            }
+
+            // Check array items
+            if (schema.Type == "array" && schema.Items != null)
+            {
+                return HasInvalidSchemaReference(schema.Items);
+            }
+
+            // Check additional properties
+            if (schema.AdditionalProperties != null)
+            {
+                return HasInvalidSchemaReference(schema.AdditionalProperties);
+            }
+
+            // Check properties
+            if (schema.Properties != null && schema.Properties.Values.Any(property => HasInvalidSchemaReference(property)))
+            {
+                return true;
+            }
+
+            // Check composition schemas
+            if (schema.AllOf != null && schema.AllOf.Any(subSchema => HasInvalidSchemaReference(subSchema)))
+            {
+                return true;
+            }
+
+            if (schema.AnyOf != null && schema.AnyOf.Any(subSchema => HasInvalidSchemaReference(subSchema)))
+            {
+                return true;
+            }
+
+            if (schema.OneOf != null && schema.OneOf.Any(subSchema => HasInvalidSchemaReference(subSchema)))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private string ExtractSchemaIdFromReference(string referenceId)
+        {
+            // Reference ID typically comes in format like "#/components/schemas/ContactDetailsDto"
+            // We want to extract just "ContactDetailsDto"
+            if (referenceId.Contains("/"))
+            {
+                return referenceId.Split('/').Last();
+            }
+
+            return referenceId;
         }
     }
 }

@@ -1,4 +1,4 @@
-// <copyright file="PromotionController.cs" company="WavePoint Co. Ltd.">
+// <copyright file="PromotionsController.cs" company="WavePoint Co. Ltd.">
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
@@ -14,9 +14,9 @@ namespace LeadCMS.Controllers;
 
 [Authorize(Roles = "Admin")]
 [Route("api/[controller]")]
-public class PromotionController : BaseController<Promotion, PromotionCreateDto, PromotionUpdateDto, PromotionDetailsDto>
+public class PromotionsController : BaseController<Promotion, PromotionCreateDto, PromotionUpdateDto, PromotionDetailsDto>
 {
-    public PromotionController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Promotion> queryProviderFactory)
+    public PromotionsController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Promotion> queryProviderFactory)
         : base(dbContext, mapper, esDbContext, queryProviderFactory)
     {
     }

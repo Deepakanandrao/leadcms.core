@@ -198,9 +198,32 @@ public class PgDbContext : IdentityDbContext<User>
             }
 
             ChangeLogs!.AddRange(changes.Values);
+
+            // Save the change log entries
+            result += await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+
+            // Send PostgreSQL NOTIFY for entity changes (only if there were actual changes)
+            if (changes.Any())
+            {
+                try
+                {
+                    Console.WriteLine($"Sending NOTIFY entity_changes for {changes.Count} changes");
+                    await Database.ExecuteSqlRawAsync("NOTIFY entity_changes;", cancellationToken);
+                    Console.WriteLine("NOTIFY entity_changes sent successfully");
+                }
+                catch (Exception ex)
+                {
+                    // Log the error but don't fail the transaction
+                    Console.WriteLine($"Failed to send NOTIFY: {ex.Message}");
+                }
+            }
+        }
+        else
+        {
+            result = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
         }
 
-        return result + await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        return result;
     }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)

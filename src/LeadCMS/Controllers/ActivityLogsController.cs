@@ -1,4 +1,4 @@
-﻿// <copyright file="ActivityLogController.cs" company="WavePoint Co. Ltd.">
+﻿// <copyright file="ActivityLogsController.cs" company="WavePoint Co. Ltd.">
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
@@ -13,12 +13,12 @@ namespace LeadCMS.Controllers;
 
 [Authorize(Roles = "Admin")]
 [Route("api/[controller]")]
-public class ActivityLogController : ControllerBase
+public class ActivityLogsController : ControllerBase
 {
     private readonly IMapper mapper;
     private readonly ESOnlyQueryProviderFactory<ActivityLog> queryProviderFactory;
 
-    public ActivityLogController(IMapper mapper, ESOnlyQueryProviderFactory<ActivityLog> queryProviderFactory)
+    public ActivityLogsController(IMapper mapper, ESOnlyQueryProviderFactory<ActivityLog> queryProviderFactory)
     {
         this.mapper = mapper;
         this.queryProviderFactory = queryProviderFactory;
