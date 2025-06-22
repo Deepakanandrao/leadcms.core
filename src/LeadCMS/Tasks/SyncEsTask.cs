@@ -4,9 +4,11 @@
 
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
 using Elasticsearch.Net;
 using LeadCMS.Data;
 using LeadCMS.DataAnnotations;
+using LeadCMS.Elastic;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;
 using LeadCMS.Services;
@@ -83,9 +85,20 @@ namespace LeadCMS.Tasks
 
             var bulkResponse = esDbContext.ElasticClient.LowLevel.Bulk<StringResponse>(bulkPayload.ToString(), bulkRequestParameters);
 
+            // Check HTTP-level success
             if (!bulkResponse.Success)
             {
                 throw bulkResponse.OriginalException;
+            }
+
+            // Parse and check Elasticsearch-level errors
+            var responseBody = bulkResponse.Body;
+            var bulkResult = JsonSerializer.Deserialize<BulkResponseBodyDto>(responseBody);
+            if (bulkResult != null && bulkResult.Errors)
+            {
+                var failedItems = bulkResult.Items?.Where(i => i.Index?.Status >= 400).ToList();
+                var sampleError = failedItems?.FirstOrDefault()?.Index?.Error?.Reason;
+                throw new ESSyncTaskException($"Bulk request failed for {failedItems?.Count ?? 0} items. Sample error: {sampleError}");
             }
 
             Log.Information("ES Sync Bulk Saved : {0}", bulkResponse.ToString());

@@ -28,6 +28,7 @@ namespace LeadCMS.Infrastructure
         NLike = 9,
         Contains = 10,
         NContains = 11,
+        InList = 12, // Added for WHERE ... IN (...)
     }
 
     public class QueryCommand
@@ -54,6 +55,7 @@ namespace LeadCMS.Infrastructure
             { "nlike", WOperand.NLike },
             { "contains", WOperand.Contains },
             { "ncontains", WOperand.NContains },
+            { "in", WOperand.InList }, // Added for WHERE ... IN (...)
         };
 
         public static string AvailableCommandString => FilterMappings.Keys.Aggregate(string.Empty, (acc, key) => $"{acc}{key}, ");

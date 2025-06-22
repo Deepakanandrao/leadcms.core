@@ -62,10 +62,10 @@ namespace LeadCMS.Infrastructure
             {
                 var existedIds = ids.Where(id => dbResult.Records.Any(r => r.Id == id));
                 var sortedRes = existedIds.Select(id => dbResult.Records.First(r => r.Id == id));
-                dbResult = new QueryResult<T>(sortedRes.ToList(), dbResult.TotalCount);
+                dbResult = new QueryResult<T>(sortedRes.ToList(), dbResult.TotalCount, "ES,DB");
             }
 
-            return new QueryResult<T>(dbResult.Records, esResult.TotalCount);
+            return new QueryResult<T>(dbResult.Records, esResult.TotalCount, "ES,DB");
         }
     }
 }

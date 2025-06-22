@@ -49,7 +49,7 @@ namespace LeadCMS.Infrastructure
                 records = await BuiltQuery.ToListAsync();
             }
 
-            return new QueryResult<T>(records, totalCount);
+            return new QueryResult<T>(records, totalCount, "DB");
         }
 
         private void AddIncludeCommands()
@@ -355,6 +355,9 @@ namespace LeadCMS.Infrastructure
                     case WOperand.NotEqual:
                         outputExpression = CreateNEqualExpression(cmd, parameterPropertyExpression);
                         break;
+                    case WOperand.InList:
+                        outputExpression = CreateInListExpression(cmd, parameterPropertyExpression);
+                        break;
                     case WOperand.GreaterThan:
                     case WOperand.GreaterThanOrEqualTo:
                     case WOperand.LessThan:
@@ -379,6 +382,24 @@ namespace LeadCMS.Infrastructure
             }
 
             return outputExpression;
+        }
+
+        private Expression CreateInListExpression(QueryModelBuilder<T>.WhereUnitData cmd, Expression parameter)
+        {
+            // Parse comma-separated values, trim whitespace, and convert to property type
+            var stringValues = cmd.StringValue.Split(',').Select(s => s.Trim()).ToArray();
+            var parsedValues = cmd.ParseValues(stringValues);
+            var valuesArray = Array.CreateInstance(cmd.Property.PropertyType, parsedValues.Count);
+            for (int i = 0; i < parsedValues.Count; i++)
+            {
+                valuesArray.SetValue(parsedValues[i], i);
+            }
+
+            var containsMethod = typeof(Enumerable).GetMethods()
+                .First(m => m.Name == "Contains" && m.GetParameters().Length == 2)
+                .MakeGenericMethod(cmd.Property.PropertyType);
+            var arrayExpr = Expression.Constant(valuesArray);
+            return Expression.Call(containsMethod, arrayExpr, parameter);
         }
 
         private async Task<IList<T>?> GetSelectResult()

@@ -107,6 +107,11 @@ namespace LeadCMS.Controllers
             var result = await qp.GetResult();
             Response.Headers.Append(ResponseHeaderNames.TotalCount, result.TotalCount.ToString());
             Response.Headers.Append(ResponseHeaderNames.AccessControlExposeHeader, ResponseHeaderNames.TotalCount);
+            if (!string.IsNullOrEmpty(result.ServedFrom))
+            {
+                Response.Headers.Append(ResponseHeaderNames.ServedFrom, result.ServedFrom);
+            }
+
             var res = mapper.Map<List<TD>>(result.Records);
             RemoveSecondLevelObjects(res);
             return Ok(res);
@@ -123,6 +128,11 @@ namespace LeadCMS.Controllers
             var result = await qp.GetResult();
             Response.Headers.Append(ResponseHeaderNames.TotalCount, result.TotalCount.ToString());
             Response.Headers.Append(ResponseHeaderNames.AccessControlExposeHeader, ResponseHeaderNames.TotalCount);
+            if (!string.IsNullOrEmpty(result.ServedFrom))
+            {
+                Response.Headers.Append(ResponseHeaderNames.ServedFrom, result.ServedFrom);
+            }
+
             var res = mapper.Map<List<TD>>(result.Records);
             RemoveSecondLevelObjects(res);
             return Ok(res);
@@ -189,7 +199,7 @@ namespace LeadCMS.Controllers
                     {
                         t = created.CreatedAt;
                     }
-                    
+
                     allTimes.Add(t);
                 }
 
@@ -216,7 +226,7 @@ namespace LeadCMS.Controllers
 
             Response.Headers.Append(ResponseHeaderNames.TotalCount, (dbQueryProvider?.BuiltQuery.Count() ?? items.Count).ToString());
             Response.Headers.Append(ResponseHeaderNames.AccessControlExposeHeader, ResponseHeaderNames.TotalCount);
-            
+
             if (items.Count == 0 && deletedIds.Count == 0)
             {
                 return NoContent();

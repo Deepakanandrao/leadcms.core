@@ -17,4 +17,6 @@ public static class ResponseHeaderNames
     public static string NextSyncToken => "x-next-sync-token";
 
     public static string AccessControlExposeHeader => "Access-Control-Expose-Headers";    
+
+    public static string ServedFrom => "X-Served-From";
 }

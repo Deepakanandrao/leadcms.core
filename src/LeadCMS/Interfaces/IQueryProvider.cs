@@ -15,14 +15,17 @@ namespace LeadCMS.Interfaces
     public class QueryResult<T>
         where T : BaseEntityWithId
     {
-        public QueryResult(IList<T>? records, long totalCount)
+        public QueryResult(IList<T>? records, long totalCount, string? servedFrom = null)
         {
             Records = records;
             TotalCount = totalCount;
+            ServedFrom = servedFrom;
         }
 
         public IList<T>? Records { get; init; }
 
         public long TotalCount { get; init; }
+
+        public string? ServedFrom { get; set; } // "DB", "ES", or "ES,DB"
     }
 }

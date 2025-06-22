@@ -39,7 +39,7 @@ namespace LeadCMS.Infrastructure
         {
             if (!elasticClient.Indices.Exists(indexName).Exists)
             {
-                return new QueryResult<T>(new List<T>(), 0);
+                return new QueryResult<T>(new List<T>(), 0, "ES");
             }
 
             AddWhereCommands();
@@ -85,7 +85,9 @@ namespace LeadCMS.Infrastructure
                     sr.Source = new SourceFilter { Includes = fields.ToArray(), };
                 }
 
-                return await Query(sr, count, pit.Id);
+                var result = await Query(sr, count, pit.Id);
+                result.ServedFrom = "ES";
+                return result;
             }
             finally
             {
@@ -336,6 +338,26 @@ namespace LeadCMS.Infrastructure
                         case WOperand.NotEqual:
                             var tq = CreateTermQuery(cmd);
                             return new BoolQuery { MustNot = new QueryContainer[] { tq } };
+                        case WOperand.InList:
+                            // Support for 'in' operand
+                            var parsedValues = cmd.ParseValues(cmd.StringValue.Split(',').Select(s => s.Trim()));
+                            if (cmd.Property.PropertyType == typeof(string))
+                            {
+                                return new TermsQuery
+                                {
+                                    Field = new Field(GetElasticKeywordName(cmd.Property)),
+                                    Terms = parsedValues.Select(v => v?.ToString()).ToArray(),
+                                };
+                            }
+                            else
+                            {
+                                return new TermsQuery
+                                {
+                                    Field = new Field(cmd.Property),
+                                    Terms = parsedValues.ToArray(),
+                                };
+                            }
+                            
                         case WOperand.GreaterThan:
                         case WOperand.GreaterThanOrEqualTo:
                         case WOperand.LessThan:
