@@ -34,8 +34,18 @@ public class SseClientManager
     /// <param name="subscribedEntities">Array of entity types to subscribe to.</param>
     /// <param name="includeContent">Whether to include full entity content.</param>
     /// <param name="lastChangeLogId">Starting ChangeLog ID for this client.</param>
+    /// <param name="includeLiveDrafts">Whether to subscribe to draft updates.</param>
+    /// <param name="userId">User ID associated with this client.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    public void AddClient(string clientId, HttpResponse response, string[] subscribedEntities, bool includeContent, int lastChangeLogId, CancellationToken cancellationToken)
+    public void AddClient(
+        string clientId,
+        HttpResponse response,
+        string[] subscribedEntities,
+        bool includeContent,
+        int lastChangeLogId,
+        bool includeLiveDrafts,
+        string userId,
+        CancellationToken cancellationToken)
     {
         var client = new SseClient
         {
@@ -44,17 +54,22 @@ public class SseClientManager
             SubscribedEntities = subscribedEntities.ToHashSet(StringComparer.OrdinalIgnoreCase),
             IncludeContent = includeContent,
             LastChangeLogId = lastChangeLogId,
+            LastDraftUpdateAt = includeLiveDrafts ? DateTime.UtcNow : null,
             CancellationToken = cancellationToken,
             ConnectedAt = DateTime.UtcNow,
+            IncludeLiveDrafts = includeLiveDrafts,
+            UserId = userId,
         };
 
         clients.TryAdd(clientId, client);
+
         logger.LogInformation(
-            "SSE client {ClientId} connected. Subscribed to: {Entities}, IncludeContent: {IncludeContent}, StartingId: {StartingId}",
+            "SSE client {ClientId} connected. Subscribed to: {Entities}, IncludeContent: {IncludeContent}, StartingId: {StartingId}, SubscribeDrafts: {SubscribeDrafts}",
             clientId,
             string.Join(", ", subscribedEntities),
             includeContent,
-            lastChangeLogId);
+            lastChangeLogId,
+            includeLiveDrafts);
     }
 
     /// <summary>
@@ -112,7 +127,7 @@ public class SseClientManager
                     data = client.IncludeContent ? entityData : null,
                 };
 
-                var task = SendToClientAsync(client, notification, changeLogId);
+                var task = SendToClientAsync(client, notification);
                 tasks.Add(task);
             }
             catch (Exception ex)
@@ -124,6 +139,46 @@ public class SseClientManager
         if (tasks.Any())
         {
             await Task.WhenAll(tasks);
+        }
+    }
+
+    /// <summary>
+    /// Send draft change notification to a specific client.
+    /// </summary>
+    public async Task SendDraftNotificationAsync(
+        SseClient client,
+        string objectType,
+        int objectId,
+        DateTime timestamp,
+        object draftData)
+    {
+        try
+        {
+            // Only send if client is interested in this object type
+            if (!client.IncludeLiveDrafts)
+            {
+                return;
+            }
+
+            if (!client.SubscribedEntities.Contains(objectType) && !client.SubscribedEntities.Contains("*"))
+            {
+                return;
+            }                
+
+            var notification = new
+            {
+                entityType = objectType,
+                entityId = objectId,
+                operation = "draft",
+                timestamp = timestamp.ToString("O"),
+                data = draftData,
+            };
+
+            await SendToClientAsync(client, notification); // 0 for ChangeLogId, not used for drafts
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error sending draft notification to client {ClientId}", client.ClientId);
         }
     }
 
@@ -151,9 +206,17 @@ public class SseClientManager
     }
 
     /// <summary>
+    /// Returns all connected SSE clients.
+    /// </summary>
+    public IEnumerable<SseClient> GetClients()
+    {
+        return clients.Values;
+    }
+
+    /// <summary>
     /// Send notification to a specific client.
     /// </summary>
-    private async Task SendToClientAsync(SseClient client, object notification, int changeLogId)
+    private async Task SendToClientAsync(SseClient client, object notification)
     {
         try
         {
@@ -169,9 +232,6 @@ public class SseClientManager
 
             await client.Response.Body.WriteAsync(bytes, client.CancellationToken);
             await client.Response.Body.FlushAsync(client.CancellationToken);
-
-            // Update client's last seen change log ID
-            client.LastChangeLogId = changeLogId;
         }
         catch (OperationCanceledException)
         {

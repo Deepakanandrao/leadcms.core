@@ -15,13 +15,18 @@ public class SseClient
 
     public string ClientId { get; set; } = string.Empty;
 
+    public string UserId { get; set; } = string.Empty;
+
     public HttpResponse Response { get; set; } = null!;
 
     public CancellationToken CancellationToken { get; set; }
 
     public int LastChangeLogId { get; set; }
 
-    public string[]? SubscribedEntityTypes { get; set; }
+    // Add this property to track the last draft update timestamp
+    public DateTime? LastDraftUpdateAt { get; set; }
+
+    public bool IncludeLiveDrafts { get; set; } // true if client wants draft updates
 
     public HashSet<string> SubscribedEntities { get; set; } = new();
 

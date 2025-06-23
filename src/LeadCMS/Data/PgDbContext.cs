@@ -58,6 +58,8 @@ public class PgDbContext : IdentityDbContext<User>
 
     public virtual DbSet<Content>? Content { get; set; }
 
+    public virtual DbSet<ContentDraft>? ContentDrafts { get; set; }
+
     public virtual DbSet<Comment>? Comments { get; set; }
 
     public virtual DbSet<Contact>? Contacts { get; set; }

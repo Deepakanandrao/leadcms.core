@@ -147,13 +147,20 @@ public class PostgresNotificationService : IHostedService, IDisposable
             
             notificationConnection = new NpgsqlConnection(connectionString);
             await notificationConnection.OpenAsync(cancellationTokenSource!.Token);
-            
+
             notificationConnection.Notification += OnNotificationReceived;
-            
-            using var cmd = new NpgsqlCommand("LISTEN entity_changes", notificationConnection);
-            await cmd.ExecuteNonQueryAsync(cancellationTokenSource.Token);
-            
-            logger.LogInformation("Successfully executed LISTEN entity_changes command");
+
+            using (var cmd = new NpgsqlCommand("LISTEN entity_changes", notificationConnection))
+            {
+                await cmd.ExecuteNonQueryAsync(cancellationTokenSource.Token);
+            }
+
+            using (var cmd = new NpgsqlCommand("LISTEN draft_changes", notificationConnection)) // Listen for drafts
+            {
+                await cmd.ExecuteNonQueryAsync(cancellationTokenSource.Token);
+            }
+
+            logger.LogInformation("Successfully executed LISTEN entity_changes and draft_changes commands");
 
             // Start background listening task
             listeningTask = Task.Run(ListenForNotifications, cancellationTokenSource.Token);
@@ -253,13 +260,90 @@ public class PostgresNotificationService : IHostedService, IDisposable
     private void OnNotificationReceived(object sender, NpgsqlNotificationEventArgs e)
     {
         logger.LogInformation("Received PostgreSQL notification on channel '{Channel}' with payload '{Payload}'", e.Channel, e.Payload);
-        
+
         if (e.Channel == "entity_changes")
         {
             logger.LogInformation("Received PostgreSQL NOTIFY for entity_changes, triggering poll");
-            
-            // Process changes immediately
             _ = Task.Run(async () => await PollForChanges());
+        }
+        else if (e.Channel == "draft_changes")
+        {
+            logger.LogInformation("Received PostgreSQL NOTIFY for draft_changes, triggering draft poll");
+            _ = Task.Run(async () => await PollForDraftChanges());
+        }
+    }
+
+    /// <summary>
+    /// Poll for new draft changes and notify subscribed clients.
+    /// </summary>
+    private async Task PollForDraftChanges()
+    {
+        if (!isListening || clientManager.ConnectedClientCount == 0)
+        {
+            logger.LogDebug("Skipping draft polling: isListening={IsListening}, clientCount={ClientCount}", isListening, clientManager.ConnectedClientCount);
+            return;
+        }
+
+        try
+        {
+            using var scope = serviceProvider.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PgDbContext>();
+
+            // Get all clients subscribed to draft updates
+            var draftClients = clientManager.GetClients()
+                .Where(c => c.IncludeLiveDrafts)
+                .ToList();
+
+            if (!draftClients.Any())
+            {
+                return;
+            }
+
+            // Find the minimum LastDraftUpdateAt among all clients (default to DateTime.MinValue)
+            var minLastDraftUpdateAt = draftClients.Min(c => c.LastDraftUpdateAt ?? DateTime.UtcNow);
+
+            // Pull all drafts changed since minLastDraftUpdateAt
+            var allDrafts = await dbContext.ContentDrafts!
+                .Where(d => (d.UpdatedAt ?? d.CreatedAt) > minLastDraftUpdateAt)
+                .OrderBy(d => d.UpdatedAt ?? d.CreatedAt)
+                .ToListAsync();
+
+            foreach (var client in draftClients)
+            {
+                var clientLastDraftUpdateAt = client.LastDraftUpdateAt ?? DateTime.UtcNow;
+
+                var draftsForClient = allDrafts
+                    .Where(d => (d.UpdatedAt ?? d.CreatedAt) > clientLastDraftUpdateAt)
+                    .ToList();
+
+                DateTime? maxSent = null;
+
+                foreach (var draft in draftsForClient)
+                {
+                    await clientManager.SendDraftNotificationAsync(
+                        client,
+                        draft.ObjectType,
+                        draft.ObjectId,
+                        draft.UpdatedAt ?? draft.CreatedAt,
+                        draft.Data);
+
+                    var thisDraftAt = draft.UpdatedAt ?? draft.CreatedAt;
+                    
+                    if (maxSent == null || thisDraftAt > maxSent)
+                    {
+                        maxSent = thisDraftAt;
+                    }                        
+                }
+
+                if (maxSent != null)
+                {
+                    client.LastDraftUpdateAt = maxSent;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error polling for draft changes");
         }
     }
 
@@ -279,97 +363,84 @@ public class PostgresNotificationService : IHostedService, IDisposable
             using var scope = serviceProvider.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<PgDbContext>();
 
-            // Get the minimum lastChangeLogId from all clients to determine what to fetch
-            var minClientLastId = clientManager.GetMinimumLastChangeLogId();
-            if (!minClientLastId.HasValue)
+            // Get all clients
+            var clients = clientManager.GetClients().ToList();
+
+            if (!clients.Any())
             {
-                logger.LogDebug("No minimum client last ID found, skipping polling");
-                return; // No clients connected
+                logger.LogDebug("No clients connected, skipping polling");
+                return;
             }
 
-            logger.LogDebug("Polling for changes since ID {MinClientLastId}", minClientLastId.Value);
+            // Find the minimum LastChangeLogId among all clients
+            var minLastChangeLogId = clients.Min(c => c.LastChangeLogId);
+
+            logger.LogDebug("Polling for changes since ID {MinClientLastId}", minLastChangeLogId);
 
             // Get supported type names for database query
             var supportedTypeNames = supportedTypes.Select(t => t.Name).ToList();
 
-            // Get new ChangeLog entries since the minimum client ID
-            var newChanges = await dbContext.ChangeLogs!
-                .Where(cl => cl.Id > minClientLastId.Value && 
-                           supportedTypeNames.Contains(cl.ObjectType))
+            // Pull all ChangeLog entries since minLastChangeLogId
+            var allChanges = await dbContext.ChangeLogs!
+                .Where(cl => cl.Id > minLastChangeLogId && supportedTypeNames.Contains(cl.ObjectType))
                 .OrderBy(cl => cl.Id)
                 .Take(500) // Process in batches
                 .ToListAsync();
 
-            if (newChanges.Any())
+            foreach (var client in clients)
             {
-                logger.LogInformation("Found {Count} new ChangeLog entries for notification", newChanges.Count);
+                var clientLastChangeLogId = client.LastChangeLogId;
+
+                var changesForClient = allChanges
+                    .Where(cl => cl.Id > clientLastChangeLogId)
+                    .ToList();
+
+                int? maxSent = null;
 
                 // Group by entity type for efficient data fetching
-                var grouped = newChanges.GroupBy(cl => cl.ObjectType).ToList();
+                var grouped = changesForClient.GroupBy(cl => cl.ObjectType).ToList();
 
                 foreach (var group in grouped)
                 {
-                    logger.LogDebug("Processing {Count} changes for entity type {EntityType}", group.Count(), group.Key);
-                    await ProcessEntityChanges(dbContext, group.Key, group.ToList());
+                    // Get entity data for content subscribers (skip deleted entities)
+                    var entityDataMap = new Dictionary<int, object>();
+
+                    var nonDeletedChanges = group.Where(cl => cl.EntityState != EntityState.Deleted).ToList();
+
+                    if (nonDeletedChanges.Any())
+                    {
+                        var entityIds = nonDeletedChanges.Select(cl => cl.ObjectId).Distinct().ToList();
+                        entityDataMap = await GetEntityData(dbContext, group.Key, entityIds);
+                    }
+
+                    foreach (var change in group)
+                    {
+                        entityDataMap.TryGetValue(change.ObjectId, out var entityData);
+
+                        await clientManager.SendNotificationAsync(
+                            group.Key,
+                            change.Id,
+                            change.ObjectId,
+                            change.EntityState.ToString(),
+                            change.CreatedAt,
+                            entityData);
+
+                        if (maxSent == null || change.Id > maxSent)
+                        {
+                            maxSent = change.Id;
+                        }                            
+                    }
                 }
 
-                // Update last polled ID to highest processed
-                lastPolledChangeLogId = newChanges.Max(cl => cl.Id);
-            }
-            else
-            {
-                logger.LogDebug("No new ChangeLog entries found");
+                if (maxSent != null)
+                {
+                    client.LastChangeLogId = maxSent.Value;
+                }
             }
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error polling for ChangeLog changes");
-        }
-    }
-
-    /// <summary>
-    /// Process changes for a specific entity type.
-    /// </summary>
-    private async Task ProcessEntityChanges(PgDbContext dbContext, string entityType, List<ChangeLog> changes)
-    {
-        try
-        {
-            logger.LogDebug("Processing {Count} changes for entity type {EntityType}", changes.Count, entityType);
-            
-            // Get entity data for content subscribers (skip deleted entities)
-            var entityDataMap = new Dictionary<int, object>();
-            var nonDeletedChanges = changes.Where(cl => cl.EntityState != EntityState.Deleted).ToList();
-            
-            if (nonDeletedChanges.Any())
-            {
-                var entityIds = nonDeletedChanges.Select(cl => cl.ObjectId).Distinct().ToList();
-                entityDataMap = await GetEntityData(dbContext, entityType, entityIds);
-                logger.LogDebug("Retrieved entity data for {Count} {EntityType} entities", entityDataMap.Count, entityType);
-            }
-
-            // Send notifications for each change
-            foreach (var change in changes)
-            {
-                entityDataMap.TryGetValue(change.ObjectId, out var entityData);
-
-                logger.LogDebug(
-                    "Sending notification for {EntityType} ID {EntityId} (ChangeLog ID {ChangeLogId})", 
-                    entityType,
-                    change.ObjectId,
-                    change.Id);
-
-                await clientManager.SendNotificationAsync(
-                    entityType,
-                    change.Id,
-                    change.ObjectId,
-                    change.EntityState.ToString(),
-                    change.CreatedAt,
-                    entityData);
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error processing changes for entity type {EntityType}", entityType);
         }
     }
 

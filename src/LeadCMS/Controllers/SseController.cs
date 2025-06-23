@@ -5,6 +5,7 @@
 using System.Reflection;
 using LeadCMS.Data;
 using LeadCMS.DataAnnotations;
+using LeadCMS.Interfaces;
 using LeadCMS.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -22,15 +23,18 @@ public class SseController : ControllerBase
     private readonly SseClientManager clientManager;
     private readonly PgDbContext dbContext;
     private readonly ILogger<SseController> logger;
+    private readonly IHttpContextHelper httpContextHelper;
 
     public SseController(
         SseClientManager clientManager,
         PgDbContext dbContext,
-        ILogger<SseController> logger)
+        ILogger<SseController> logger,
+        IHttpContextHelper httpContextHelper)
     {
         this.clientManager = clientManager;
         this.dbContext = dbContext;
         this.logger = logger;
+        this.httpContextHelper = httpContextHelper;
     }
 
     /// <summary>
@@ -71,8 +75,9 @@ public class SseController : ControllerBase
             {
                 entities = "Array of entity types to subscribe to (e.g., 'Contact,Deal') or '*' for all",
                 includeContent = "Boolean: true for full content, false for notifications only (default: false)",
+                includeLiveDrafts = "Boolean: true to include live draft updates, false to exclude (default: false)",
             },
-            Example = $"{baseUrl}/api/sse/stream?entities=Contact,Deal&includeContent=true",
+            Example = $"{baseUrl}/api/sse/stream?entities=Contact,Deal&includeContent=true,includeLiveDrafts=true",
             Documentation = new
             {
                 Description = "Server-Sent Events endpoint for real-time change notifications",
@@ -92,6 +97,7 @@ public class SseController : ControllerBase
     /// </summary>
     /// <param name="entities">Comma-separated list of entity types to subscribe to, or '*' for all.</param>
     /// <param name="includeContent">Whether to include full entity content in notifications.</param>
+    /// <param name="includeLiveDrafts">Whether to include live draft updates in notifications.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Server-Sent Events stream.</returns>
     [HttpGet("stream")]
@@ -101,12 +107,14 @@ public class SseController : ControllerBase
     public async Task<IActionResult> StreamChanges(
         [FromQuery] string entities = "*",
         [FromQuery] bool includeContent = false,
+        [FromQuery] bool includeLiveDrafts = false,
         CancellationToken cancellationToken = default)
     {
         try
         {
             // Validate and parse entities parameter
             var subscribedEntities = ParseEntitiesParameter(entities);
+
             if (subscribedEntities == null)
             {
                 return BadRequest(new { error = "Invalid entities parameter. Use comma-separated entity names or '*' for all." });
@@ -134,14 +142,23 @@ public class SseController : ControllerBase
                 serverTime = DateTime.UtcNow.ToString("O"),
             });
 
+            // Get the current user ID (assuming claims-based identity)
+            var currentUserId = await httpContextHelper.GetCurrentUserIdAsync();
+
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized();
+            }
+
             // Register client with manager
-            clientManager.AddClient(clientId, Response, subscribedEntities, includeContent, maxChangeLogId, cancellationToken);
+            clientManager.AddClient(clientId, Response, subscribedEntities, includeContent, maxChangeLogId, includeLiveDrafts, currentUserId, cancellationToken);
 
             logger.LogInformation(
-                "SSE client {ClientId} connected for entities: {Entities}, content: {IncludeContent}",
+                "SSE client {ClientId} connected for entities: {Entities}, content: {IncludeContent}, drafts: {IncludeLiveDrafts}",
                 clientId,
                 string.Join(",", subscribedEntities),
-                includeContent);
+                includeContent,
+                includeLiveDrafts);
 
             try
             {
@@ -150,6 +167,7 @@ public class SseController : ControllerBase
                 {
                     // Send periodic heartbeat (every 30 seconds)
                     await Task.Delay(30000, cancellationToken);
+                    
                     await WriteSSEEvent("heartbeat", new { timestamp = DateTime.UtcNow.ToString("O") });
                 }
             }

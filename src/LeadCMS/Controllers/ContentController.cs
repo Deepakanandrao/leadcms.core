@@ -21,12 +21,14 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
 {
     private readonly CommentableControllerExtension commentableControllerExtension;
     private readonly IMediaResolver mediaResolver;
+    private readonly IHttpContextHelper httpContextHelper;
 
-    public ContentController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Content> queryProviderFactory, CommentableControllerExtension commentableControllerExtension, IMediaResolver mediaResolver)
+    public ContentController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Content> queryProviderFactory, CommentableControllerExtension commentableControllerExtension, IMediaResolver mediaResolver, IHttpContextHelper httpContextHelper)
         : base(dbContext, mapper, esDbContext, queryProviderFactory)
     {
         this.commentableControllerExtension = commentableControllerExtension;
         this.mediaResolver = mediaResolver;
+        this.httpContextHelper = httpContextHelper;
     }
 
     [HttpGet]
@@ -140,5 +142,67 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
     public override Task<IActionResult> Sync([FromQuery] string? syncToken = null, [FromQuery] string? query = null)
     {
         return base.Sync(syncToken, query);
+    }
+
+    [HttpPatch("{id}/draft")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult> PatchDraft(int id, [FromBody] ContentUpdateDto value)
+    {
+        var existingEntity = await FindOrThrowNotFound(id);
+
+        // Create a copy of the entity to avoid mutating the tracked entity
+        var draftEntity = mapper.Map<Content>(mapper.Map<ContentUpdateDto>(existingEntity));
+        mapper.Map(value, draftEntity); // apply patch to the copy
+
+        // Map the draft entity to ContentDetailsDto
+        var draftDto = mapper.Map<ContentDetailsDto>(draftEntity);
+
+        // Serialize the mapped DTO as JSON
+        var draftJson = System.Text.Json.JsonSerializer.Serialize(draftDto);
+
+        // Get the current user ID (assuming claims-based identity)
+        var currentUserId = await httpContextHelper.GetCurrentUserIdAsync();
+        if (string.IsNullOrEmpty(currentUserId))
+        {
+            return Unauthorized();
+        }
+
+        // Upsert into ContentDraft table, now unique per user, entity type, and entity id
+        var existingDraft = await dbContext.ContentDrafts!
+            .FirstOrDefaultAsync(d => d.ObjectType == "Content" && d.ObjectId == existingEntity.Id && d.CreatedById == currentUserId);
+
+        if (existingDraft != null)
+        {
+            existingDraft.Data = draftJson;
+        }
+        else
+        {
+            var draft = new ContentDraft
+            {
+                ObjectType = "Content",
+                ObjectId = existingEntity.Id,
+                Data = draftJson,
+            };
+
+            await dbContext.ContentDrafts!.AddAsync(draft);
+        }
+
+        // Send PostgreSQL NOTIFY for draft changes
+        try
+        {
+            await dbContext.Database.ExecuteSqlRawAsync("NOTIFY draft_changes;");
+        }
+        catch (Exception ex)
+        {
+            // Log but do not fail the request
+            Console.WriteLine($"Failed to send NOTIFY draft_changes: {ex.Message}");
+        }
+
+        await dbContext.SaveChangesAsync();
+
+        return Ok();
     }
 }
