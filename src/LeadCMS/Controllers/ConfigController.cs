@@ -5,6 +5,7 @@
 using System.Globalization;
 using LeadCMS.Configuration;
 using LeadCMS.Data;
+using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -16,16 +17,21 @@ public class ConfigController : ControllerBase
 {
     private readonly IConfiguration configuration;
     private readonly IServiceProvider serviceProvider;
+    private readonly ISettingService settingService;
 
-    public ConfigController(IConfiguration configuration, IServiceProvider serviceProvider)
+    public ConfigController(
+        IConfiguration configuration, 
+        IServiceProvider serviceProvider,
+        ISettingService settingService)
     {
         this.configuration = configuration;
         this.serviceProvider = serviceProvider;
+        this.settingService = settingService;
     }
 
     [HttpGet]
     [AllowAnonymous]
-    public ActionResult<ConfigDto> GetConfig()
+    public async Task<ActionResult<ConfigDto>> GetConfig()
     {
         var jwtConfig = configuration.GetSection("Jwt").Get<JwtConfig>() ?? new JwtConfig();
         var azureAdConfig = configuration.GetSection("AzureAd").Get<AzureADConfig>() ?? new AzureADConfig();
@@ -95,6 +101,19 @@ public class ConfigController : ControllerBase
             })
             .ToList();
 
+        // Retrieve hardcoded settings from the database
+        var hardcodedSettingKeys = new[] { "PreviewUrlTemplate", "LivePreviewUrlTemplate" };
+        var settings = new Dictionary<string, string>();
+        
+        foreach (var key in hardcodedSettingKeys)
+        {
+            var settingValue = await settingService.GetSystemSettingAsync(key);
+            if (!string.IsNullOrEmpty(settingValue))
+            {
+                settings[key] = settingValue;
+            }
+        }
+
         var configDto = new ConfigDto
         {
             Auth = new AuthConfigDto
@@ -104,6 +123,7 @@ public class ConfigController : ControllerBase
             },
             Entities = availableEntities,
             Languages = languages,
+            Settings = settings,
         };
 
         return Ok(configDto);
@@ -117,6 +137,8 @@ public class ConfigDto
     public IEnumerable<string> Entities { get; set; } = Array.Empty<string>();
 
     public List<LanguageDto> Languages { get; set; } = new List<LanguageDto>();
+
+    public Dictionary<string, string> Settings { get; set; } = new Dictionary<string, string>();
 }
 
 public class AuthConfigDto
