@@ -22,13 +22,15 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
     private readonly CommentableControllerExtension commentableControllerExtension;
     private readonly IMediaResolver mediaResolver;
     private readonly IHttpContextHelper httpContextHelper;
+    private readonly ILogger<ContentController> logger;
 
-    public ContentController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Content> queryProviderFactory, CommentableControllerExtension commentableControllerExtension, IMediaResolver mediaResolver, IHttpContextHelper httpContextHelper)
+    public ContentController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Content> queryProviderFactory, CommentableControllerExtension commentableControllerExtension, IMediaResolver mediaResolver, IHttpContextHelper httpContextHelper, ILogger<ContentController> logger)
         : base(dbContext, mapper, esDbContext, queryProviderFactory)
     {
         this.commentableControllerExtension = commentableControllerExtension;
         this.mediaResolver = mediaResolver;
         this.httpContextHelper = httpContextHelper;
+        this.logger = logger;
     }
 
     [HttpGet]
@@ -198,11 +200,65 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         catch (Exception ex)
         {
             // Log but do not fail the request
-            Console.WriteLine($"Failed to send NOTIFY draft_changes: {ex.Message}");
+            logger.LogError(ex, "Failed to send NOTIFY draft_changes");
         }
 
         await dbContext.SaveChangesAsync();
 
+        return Ok();
+    }
+
+    [HttpPost("draft")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult> SaveNewDraft([FromBody] ContentUpdateDto value)
+    {
+        // Get the current user ID (assuming claims-based identity)
+        var currentUserId = await httpContextHelper.GetCurrentUserIdAsync();
+        if (string.IsNullOrEmpty(currentUserId))
+        {
+            return Unauthorized();
+        }
+
+        // Serialize the draft DTO as JSON
+        var draftJson = JsonHelper.Serialize(value);
+
+        // Use ObjectId = 0 for new (unsaved) content drafts
+        var existingDraft = await dbContext.ContentDrafts!
+            .FirstOrDefaultAsync(d => d.ObjectType == "Content" && d.ObjectId == 0 && d.CreatedById == currentUserId);
+
+        if (existingDraft != null)
+        {
+            existingDraft.Data = draftJson;
+            existingDraft.UpdatedAt = DateTime.UtcNow;
+            existingDraft.UpdatedById = currentUserId;
+        }
+        else
+        {
+            var draft = new ContentDraft
+            {
+                ObjectType = "Content",
+                ObjectId = 0, // 0 means new/unsaved
+                Data = draftJson,
+            };
+            
+            await dbContext.ContentDrafts!.AddAsync(draft);
+        }
+
+        // Send PostgreSQL NOTIFY for draft changes
+        try
+        {
+            await dbContext.Database.ExecuteSqlRawAsync("NOTIFY draft_changes;");
+        }
+        catch (Exception ex)
+        {
+            // Log but do not fail the request
+            logger.LogError(ex, "Failed to send NOTIFY draft_changes");
+        }
+
+        await dbContext.SaveChangesAsync();
         return Ok();
     }
 }
