@@ -149,4 +149,35 @@ public class SettingService : ISettingService
             .Where(s => s.UserId == null)
             .ToDictionaryAsync(s => s.Key, s => s.Value);
     }
+
+    public async Task<Dictionary<string, string>> GetSettingsByKeysAsync(IEnumerable<string> keys, string? userId = null)
+    {
+        var keyList = keys.ToList();
+        var result = new Dictionary<string, string>();
+
+        // Get system-level settings for the keys
+        var systemSettings = await dbContext.Settings!
+            .Where(s => keyList.Contains(s.Key) && s.UserId == null)
+            .ToDictionaryAsync(s => s.Key, s => s.Value);
+
+        foreach (var kvp in systemSettings)
+        {
+            result[kvp.Key] = kvp.Value;
+        }
+
+        // If userId is provided, override with user-level settings for the keys
+        if (!string.IsNullOrEmpty(userId))
+        {
+            var userSettings = await dbContext.Settings!
+                .Where(s => keyList.Contains(s.Key) && s.UserId == userId)
+                .ToDictionaryAsync(s => s.Key, s => s.Value);
+
+            foreach (var kvp in userSettings)
+            {
+                result[kvp.Key] = kvp.Value;
+            }
+        }
+
+        return result;
+    }
 }

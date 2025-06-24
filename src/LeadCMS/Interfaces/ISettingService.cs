@@ -21,4 +21,6 @@ public interface ISettingService
     Task<Dictionary<string, string>> GetEffectiveUserSettingsAsync(string userId);
 
     Task<Dictionary<string, string>> GetSystemSettingsAsync();
+
+    Task<Dictionary<string, string>> GetSettingsByKeysAsync(IEnumerable<string> keys, string? userId = null);
 }

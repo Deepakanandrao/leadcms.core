@@ -18,15 +18,18 @@ public class ConfigController : ControllerBase
     private readonly IConfiguration configuration;
     private readonly IServiceProvider serviceProvider;
     private readonly ISettingService settingService;
+    private readonly IHttpContextHelper httpContextHelper;
 
     public ConfigController(
         IConfiguration configuration, 
         IServiceProvider serviceProvider,
-        ISettingService settingService)
+        ISettingService settingService,
+        IHttpContextHelper httpContextHelper)
     {
         this.configuration = configuration;
         this.serviceProvider = serviceProvider;
         this.settingService = settingService;
+        this.httpContextHelper = httpContextHelper;
     }
 
     [HttpGet]
@@ -43,7 +46,7 @@ public class ConfigController : ControllerBase
         {
             authMethods.Add("Local");
         }
-        
+
         if (azureAdConfig.IsInitialized())
         {
             authMethods.Add("AzureAD");
@@ -101,18 +104,15 @@ public class ConfigController : ControllerBase
             })
             .ToList();
 
-        // Retrieve hardcoded settings from the database
+        // Only return these two settings, with user override if user is known
         var hardcodedSettingKeys = new[] { "PreviewUrlTemplate", "LivePreviewUrlTemplate" };
-        var settings = new Dictionary<string, string>();
-        
-        foreach (var key in hardcodedSettingKeys)
+        string? userId = null;
+        if (User?.Identity?.IsAuthenticated == true)
         {
-            var settingValue = await settingService.GetSystemSettingAsync(key);
-            if (!string.IsNullOrEmpty(settingValue))
-            {
-                settings[key] = settingValue;
-            }
+            userId = await httpContextHelper.GetCurrentUserIdAsync();
         }
+        
+        var settings = await settingService.GetSettingsByKeysAsync(hardcodedSettingKeys, userId);
 
         var configDto = new ConfigDto
         {
