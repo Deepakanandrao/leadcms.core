@@ -5,6 +5,7 @@
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
+using LeadCMS.Helpers;
 
 namespace LeadCMS.Services;
 
@@ -147,6 +148,7 @@ public class SseClientManager
     /// </summary>
     public async Task SendDraftNotificationAsync(
         SseClient client,
+        string createdById,
         string objectType,
         int objectId,
         DateTime timestamp,
@@ -169,7 +171,8 @@ public class SseClientManager
             {
                 entityType = objectType,
                 entityId = objectId,
-                operation = "draft",
+                operation = "DraftModified",
+                createdById,
                 timestamp = timestamp.ToString("O"),
                 data = draftData,
             };
@@ -226,7 +229,7 @@ public class SseClientManager
                 return;
             }
 
-            var json = JsonSerializer.Serialize(notification, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            var json = JsonHelper.Serialize(notification);
             var data = $"data: {json}\n\n";
             var bytes = Encoding.UTF8.GetBytes(data);
 

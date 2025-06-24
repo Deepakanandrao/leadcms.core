@@ -322,6 +322,7 @@ public class PostgresNotificationService : IHostedService, IDisposable
                 {
                     await clientManager.SendDraftNotificationAsync(
                         client,
+                        draft.CreatedById!,
                         draft.ObjectType,
                         draft.ObjectId,
                         draft.UpdatedAt ?? draft.CreatedAt,

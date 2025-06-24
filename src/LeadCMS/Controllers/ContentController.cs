@@ -161,7 +161,7 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         var draftDto = mapper.Map<ContentDetailsDto>(draftEntity);
 
         // Serialize the mapped DTO as JSON
-        var draftJson = System.Text.Json.JsonSerializer.Serialize(draftDto);
+        var draftJson = JsonHelper.Serialize(draftDto);
 
         // Get the current user ID (assuming claims-based identity)
         var currentUserId = await httpContextHelper.GetCurrentUserIdAsync();
