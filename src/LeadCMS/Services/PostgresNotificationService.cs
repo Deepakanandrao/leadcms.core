@@ -259,16 +259,16 @@ public class PostgresNotificationService : IHostedService, IDisposable
     /// </summary>
     private void OnNotificationReceived(object sender, NpgsqlNotificationEventArgs e)
     {
-        logger.LogInformation("Received PostgreSQL notification on channel '{Channel}' with payload '{Payload}'", e.Channel, e.Payload);
+        logger.LogInformation("[SSE] PostgreSQL notification received: channel={Channel}, payload={Payload}", e.Channel, e.Payload);
 
         if (e.Channel == "entity_changes")
         {
-            logger.LogInformation("Received PostgreSQL NOTIFY for entity_changes, triggering poll");
+            logger.LogInformation("[SSE] NOTIFY entity_changes received, triggering PollForChanges()");
             _ = Task.Run(async () => await PollForChanges());
         }
         else if (e.Channel == "draft_changes")
         {
-            logger.LogInformation("Received PostgreSQL NOTIFY for draft_changes, triggering draft poll");
+            logger.LogInformation("[SSE] NOTIFY draft_changes received, triggering PollForDraftChanges()");
             _ = Task.Run(async () => await PollForDraftChanges());
         }
     }
@@ -278,9 +278,10 @@ public class PostgresNotificationService : IHostedService, IDisposable
     /// </summary>
     private async Task PollForDraftChanges()
     {
+        logger.LogInformation("[SSE] PollForDraftChanges called. isListening={IsListening}, clientCount={ClientCount}", isListening, clientManager.ConnectedClientCount);
         if (!isListening || clientManager.ConnectedClientCount == 0)
         {
-            logger.LogDebug("Skipping draft polling: isListening={IsListening}, clientCount={ClientCount}", isListening, clientManager.ConnectedClientCount);
+            logger.LogInformation("[SSE] Skipping draft polling: isListening={IsListening}, clientCount={ClientCount}", isListening, clientManager.ConnectedClientCount);
             return;
         }
 
@@ -308,8 +309,12 @@ public class PostgresNotificationService : IHostedService, IDisposable
                 .OrderBy(d => d.UpdatedAt ?? d.CreatedAt)
                 .ToListAsync();
 
+            logger.LogInformation("[SSE] Found {DraftCount} changed drafts since {MinLastDraftUpdateAt}", allDrafts.Count, minLastDraftUpdateAt);
+
             foreach (var client in draftClients)
             {
+                logger.LogInformation("[SSE] Processing draft notifications for client {ClientId}, LastDraftUpdateAt={LastDraftUpdateAt}", client.ClientId, client.LastDraftUpdateAt);
+
                 var clientLastDraftUpdateAt = client.LastDraftUpdateAt ?? DateTime.UtcNow;
 
                 var draftsForClient = allDrafts
@@ -320,6 +325,7 @@ public class PostgresNotificationService : IHostedService, IDisposable
 
                 foreach (var draft in draftsForClient)
                 {
+                    logger.LogInformation("[SSE] Sending draft notification to client {ClientId}: ObjectType={ObjectType}, ObjectId={ObjectId}, CreatedById={CreatedById}, UpdatedAt={UpdatedAt}", client.ClientId, draft.ObjectType, draft.ObjectId, draft.CreatedById, draft.UpdatedAt ?? draft.CreatedAt);
                     await clientManager.SendDraftNotificationAsync(
                         client,
                         draft.CreatedById!,
@@ -353,9 +359,10 @@ public class PostgresNotificationService : IHostedService, IDisposable
     /// </summary>
     private async Task PollForChanges()
     {
+        logger.LogInformation("[SSE] PollForChanges called. isListening={IsListening}, clientCount={ClientCount}", isListening, clientManager.ConnectedClientCount);
         if (!isListening || clientManager.ConnectedClientCount == 0)
         {
-            logger.LogDebug("Skipping polling: isListening={IsListening}, clientCount={ClientCount}", isListening, clientManager.ConnectedClientCount);
+            logger.LogInformation("[SSE] Skipping polling: isListening={IsListening}, clientCount={ClientCount}", isListening, clientManager.ConnectedClientCount);
             return;
         }
 
@@ -376,7 +383,7 @@ public class PostgresNotificationService : IHostedService, IDisposable
             // Find the minimum LastChangeLogId among all clients
             var minLastChangeLogId = clients.Min(c => c.LastChangeLogId);
 
-            logger.LogDebug("Polling for changes since ID {MinClientLastId}", minLastChangeLogId);
+            logger.LogInformation("[SSE] Polling for changes since ID {MinClientLastId}", minLastChangeLogId);
 
             // Get supported type names for database query
             var supportedTypeNames = supportedTypes.Select(t => t.Name).ToList();
@@ -390,6 +397,8 @@ public class PostgresNotificationService : IHostedService, IDisposable
 
             foreach (var client in clients)
             {
+                logger.LogInformation("[SSE] Processing change notifications for client {ClientId}, LastChangeLogId={LastChangeLogId}", client.ClientId, client.LastChangeLogId);
+
                 var clientLastChangeLogId = client.LastChangeLogId;
 
                 var changesForClient = allChanges
@@ -403,6 +412,8 @@ public class PostgresNotificationService : IHostedService, IDisposable
 
                 foreach (var group in grouped)
                 {
+                    logger.LogInformation("[SSE] Processing entity type {EntityType} for client {ClientId}", group.Key, client.ClientId);
+
                     // Get entity data for content subscribers (skip deleted entities)
                     var entityDataMap = new Dictionary<int, object>();
 
@@ -416,6 +427,7 @@ public class PostgresNotificationService : IHostedService, IDisposable
 
                     foreach (var change in group)
                     {
+                        logger.LogInformation("[SSE] Sending change notification to client {ClientId}: EntityType={EntityType}, EntityId={EntityId}, ChangeLogId={ChangeLogId}, Operation={Operation}, Timestamp={Timestamp}", client.ClientId, group.Key, change.ObjectId, change.Id, change.EntityState, change.CreatedAt);
                         entityDataMap.TryGetValue(change.ObjectId, out var entityData);
 
                         await clientManager.SendNotificationAsync(

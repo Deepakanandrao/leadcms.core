@@ -99,6 +99,7 @@ public class SseClientManager
     /// <param name="entityData">Full entity data (for content subscribers).</param>
     public async Task SendNotificationAsync(string entityType, int changeLogId, int entityId, string operation, DateTime timestamp, object? entityData = null)
     {
+        logger.LogInformation("[SSE] Preparing to send change notification: entityType={EntityType}, changeLogId={ChangeLogId}, entityId={EntityId}, operation={Operation}, timestamp={Timestamp}", entityType, changeLogId, entityId, operation, timestamp);
         var tasks = new List<Task>();
 
         foreach (var client in clients.Values.ToList())
@@ -108,15 +109,18 @@ public class SseClientManager
                 // Skip if client is not interested in this entity type
                 if (!client.SubscribedEntities.Contains(entityType) && !client.SubscribedEntities.Contains("*"))
                 {
+                    logger.LogInformation("[SSE] Skipping client {ClientId} (not subscribed to {EntityType})", client.ClientId, entityType);
                     continue;
                 }
 
                 // Skip if this change is older than client's last seen change
                 if (changeLogId <= client.LastChangeLogId)
                 {
+                    logger.LogInformation("[SSE] Skipping client {ClientId} (already seen changeLogId {ChangeLogId})", client.ClientId, changeLogId);
                     continue;
                 }
 
+                logger.LogInformation("[SSE] Sending change notification to client {ClientId}: entityType={EntityType}, entityId={EntityId}, changeLogId={ChangeLogId}", client.ClientId, entityType, entityId, changeLogId);
                 // Create notification object
                 var notification = new
                 {
@@ -159,14 +163,17 @@ public class SseClientManager
             // Only send if client is interested in this object type
             if (!client.IncludeLiveDrafts)
             {
+                logger.LogInformation("[SSE] Skipping draft notification for client {ClientId} (not subscribed to live drafts)", client.ClientId);
                 return;
             }
 
             if (!client.SubscribedEntities.Contains(objectType) && !client.SubscribedEntities.Contains("*"))
             {
+                logger.LogInformation("[SSE] Skipping draft notification for client {ClientId} (not subscribed to {ObjectType})", client.ClientId, objectType);
                 return;
-            }                
+            }
 
+            logger.LogInformation("[SSE] Sending draft notification to client {ClientId}: objectType={ObjectType}, objectId={ObjectId}, createdById={CreatedById}, timestamp={Timestamp}", client.ClientId, objectType, objectId, createdById, timestamp);
             var notification = new
             {
                 entityType = objectType,
@@ -178,6 +185,8 @@ public class SseClientManager
             };
 
             await SendToClientAsync(client, notification); // 0 for ChangeLogId, not used for drafts
+            
+            logger.LogInformation("[SSE] ========= Finished Sending Update ===========");
         }
         catch (Exception ex)
         {

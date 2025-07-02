@@ -165,6 +165,8 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         // Serialize the mapped DTO as JSON
         var draftJson = JsonHelper.Serialize(draftDto);
 
+        logger.LogInformation("[SSE] ========= Starting Draft Update ({Title}) ===========", draftDto.Title);
+
         // Get the current user ID (assuming claims-based identity)
         var currentUserId = await httpContextHelper.GetCurrentUserIdAsync();
         if (string.IsNullOrEmpty(currentUserId))
@@ -173,15 +175,18 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         }
 
         // Upsert into ContentDraft table, now unique per user, entity type, and entity id
+        logger.LogInformation("[SSE] Attempting to upsert draft for Content Id={ContentId}, User={UserId}", existingEntity.Id, currentUserId);
         var existingDraft = await dbContext.ContentDrafts!
             .FirstOrDefaultAsync(d => d.ObjectType == "Content" && d.ObjectId == existingEntity.Id && d.CreatedById == currentUserId);
 
         if (existingDraft != null)
         {
+            logger.LogInformation("[SSE] Updating existing draft for Content Id={ContentId}, User={UserId}", existingEntity.Id, currentUserId);
             existingDraft.Data = draftJson;
         }
         else
         {
+            logger.LogInformation("[SSE] Creating new draft for Content Id={ContentId}, User={UserId}", existingEntity.Id, currentUserId);
             var draft = new ContentDraft
             {
                 ObjectType = "Content",
@@ -192,18 +197,20 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
             await dbContext.ContentDrafts!.AddAsync(draft);
         }
 
+        await dbContext.SaveChangesAsync();
+        logger.LogInformation("[SSE] Draft saved and changes committed for Content Id={ContentId}, User={UserId}", existingEntity.Id, currentUserId);
+
         // Send PostgreSQL NOTIFY for draft changes
         try
         {
+            logger.LogInformation("[SSE] Sending PostgreSQL NOTIFY draft_changes for Content Id={ContentId}, User={UserId}", existingEntity.Id, currentUserId);
             await dbContext.Database.ExecuteSqlRawAsync("NOTIFY draft_changes;");
         }
         catch (Exception ex)
         {
             // Log but do not fail the request
-            logger.LogError(ex, "Failed to send NOTIFY draft_changes");
+            logger.LogError(ex, "[SSE] Failed to send NOTIFY draft_changes for Content Id={ContentId}, User={UserId}", existingEntity.Id, currentUserId);
         }
-
-        await dbContext.SaveChangesAsync();
 
         return Ok();
     }
@@ -225,18 +232,21 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         // Serialize the draft DTO as JSON
         var draftJson = JsonHelper.Serialize(value);
 
+        logger.LogInformation("[SSE] Attempting to upsert new draft (ObjectId=0) for User={UserId}", currentUserId);
         // Use ObjectId = 0 for new (unsaved) content drafts
         var existingDraft = await dbContext.ContentDrafts!
             .FirstOrDefaultAsync(d => d.ObjectType == "Content" && d.ObjectId == 0 && d.CreatedById == currentUserId);
 
         if (existingDraft != null)
         {
+            logger.LogInformation("[SSE] Updating existing new draft (ObjectId=0) for User={UserId}", currentUserId);
             existingDraft.Data = draftJson;
             existingDraft.UpdatedAt = DateTime.UtcNow;
             existingDraft.UpdatedById = currentUserId;
         }
         else
         {
+            logger.LogInformation("[SSE] Creating new draft (ObjectId=0) for User={UserId}", currentUserId);
             var draft = new ContentDraft
             {
                 ObjectType = "Content",
@@ -247,18 +257,21 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
             await dbContext.ContentDrafts!.AddAsync(draft);
         }
 
+        await dbContext.SaveChangesAsync();
+        logger.LogInformation("[SSE] New draft saved and changes committed (ObjectId=0) for User={UserId}", currentUserId);
+
         // Send PostgreSQL NOTIFY for draft changes
         try
         {
+            logger.LogInformation("[SSE] Sending PostgreSQL NOTIFY draft_changes for new draft (ObjectId=0), User={UserId}", currentUserId);
             await dbContext.Database.ExecuteSqlRawAsync("NOTIFY draft_changes;");
         }
         catch (Exception ex)
         {
             // Log but do not fail the request
-            logger.LogError(ex, "Failed to send NOTIFY draft_changes");
+            logger.LogError(ex, "[SSE] Failed to send NOTIFY draft_changes for new draft (ObjectId=0), User={UserId}", currentUserId);
         }
 
-        await dbContext.SaveChangesAsync();
         return Ok();
     }
 }

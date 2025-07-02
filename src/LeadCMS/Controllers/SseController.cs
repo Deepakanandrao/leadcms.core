@@ -117,6 +117,7 @@ public class SseController : ControllerBase
 
             if (subscribedEntities == null)
             {
+                logger.LogInformation("[SSE] Invalid entities parameter received: {Entities}", entities);
                 return BadRequest(new { error = "Invalid entities parameter. Use comma-separated entity names or '*' for all." });
             }
 
@@ -131,6 +132,8 @@ public class SseController : ControllerBase
             Response.Headers["Cache-Control"] = "no-cache";
             Response.Headers["Connection"] = "keep-alive";
             Response.Headers["Access-Control-Allow-Origin"] = "*";
+
+            logger.LogInformation("[SSE] New SSE client connection: clientId={ClientId}, entities={Entities}, includeContent={IncludeContent}, includeLiveDrafts={IncludeLiveDrafts}, startingChangeLogId={StartingChangeLogId}", clientId, string.Join(",", subscribedEntities), includeContent, includeLiveDrafts, maxChangeLogId);
 
             // Send initial connection event
             await WriteSSEEvent("connected", new
@@ -147,6 +150,7 @@ public class SseController : ControllerBase
 
             if (string.IsNullOrEmpty(currentUserId))
             {
+                logger.LogInformation("[SSE] Unauthorized SSE connection attempt: clientId={ClientId}", clientId);
                 return Unauthorized();
             }
 
@@ -167,13 +171,14 @@ public class SseController : ControllerBase
                 {
                     // Send periodic heartbeat (every 30 seconds)
                     await Task.Delay(30000, cancellationToken);
-                    
+                    logger.LogInformation("[SSE] Heartbeat sent to client {ClientId}", clientId);
                     await WriteSSEEvent("heartbeat", new { timestamp = DateTime.UtcNow.ToString("O") });
                 }
             }
             catch (OperationCanceledException)
             {
                 // Expected when client disconnects
+                logger.LogInformation("[SSE] SSE client {ClientId} connection cancelled", clientId);
             }
             finally
             {
