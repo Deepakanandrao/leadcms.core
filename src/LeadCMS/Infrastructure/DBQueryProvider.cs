@@ -26,10 +26,17 @@ namespace LeadCMS.Infrastructure
             this.queryBuilder = queryBuilder;
         }        
 
-        public IQueryable<T> BuiltQuery { get; private set; }        
+        public IQueryable<T> BuiltQuery { get; private set; }
+
+        public Array? DynamicResults { get; private set; }
 
         public async Task<QueryResult<T>> GetResult()
         {
+            if (queryBuilder.Ids != null && queryBuilder.Ids.Count > 0)
+            {
+                BuiltQuery = BuiltQuery.Where(e => queryBuilder.Ids.Contains(e.Id));
+            }
+            
             AddWhereCommands();
             AddSearchCommands();
 
@@ -43,6 +50,9 @@ namespace LeadCMS.Infrastructure
             if (queryBuilder.SelectData.IsSelect)
             {
                 records = await GetSelectResult();
+                var result = new QueryResult<T>(records, totalCount);
+                result.DynamicResults = DynamicResults;
+                return result;
             }
             else
             {
@@ -431,6 +441,11 @@ namespace LeadCMS.Infrastructure
                 var selectResult = (Task)toArrayAsyncMethod.Invoke(selectQueryable, new object?[] { selectQueryable!, null })!;
                 await selectResult;
                 var taskResult = outputTypeTaskResultProp!.GetValue(selectResult);
+                if (taskResult is Array arr)
+                {
+                    DynamicResults = arr;
+                }
+
                 return taskResult as IList<T>;
             }
             else

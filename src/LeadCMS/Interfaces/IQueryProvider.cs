@@ -27,5 +27,7 @@ namespace LeadCMS.Interfaces
         public long TotalCount { get; init; }
 
         public string? ServedFrom { get; set; } // "DB", "ES", or "ES,DB"
+        
+        public Array? DynamicResults { get; set; }
     }
 }
