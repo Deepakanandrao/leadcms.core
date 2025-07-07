@@ -38,13 +38,18 @@ services:
     environment:
       TZ: 'UTC'
       PGTZ: 'UTC'
-      POSTGRES_DB: LeadCMS
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES__DATABASE}
+      POSTGRES_USER: ${POSTGRES__USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES__PASSWORD}
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES__USERNAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   leadcms:
@@ -55,13 +60,13 @@ services:
     env_file:
       - .env
     depends_on:
-     postgres:
-      condition: service_started
-     elastic:
+      postgres:
+        condition: service_healthy
+      elastic:
         condition: service_healthy
     command: ["dotnet", "LeadCMS.dll"]
     restart: unless-stopped
 
 volumes:
   postgres-data:
-  elastic-data:  
+  elastic-data:
