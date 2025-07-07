@@ -206,10 +206,13 @@ public class Program
             {
                 var result = await userManager.CreateAsync(user, defaultUser.Password);
 
-                if (result.Succeeded)
+                if (!result.Succeeded)
                 {
-                    await userManager.AddToRolesAsync(user, defaultUser.Roles);
+                    var errors = string.Join("; ", result.Errors.Select(e => $"[{e.Code}] {e.Description}"));
+                    throw new InvalidOperationException($"Failed to create default user '{user.Email}'. Errors: {errors}");
                 }
+
+                await userManager.AddToRolesAsync(user, defaultUser.Roles);
             }
         }
     }

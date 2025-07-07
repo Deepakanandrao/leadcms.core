@@ -22,6 +22,33 @@ function Generate-JWTSecret {
     return Generate-SecurePassword -Length 64
 }
 
+function Generate-ComplexPassword {
+    param(
+        [int]$Length = 16
+    )
+    if ($Length -lt 6) { throw "Password length must be at least 6." }
+
+    $upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    $lower = 'abcdefghijklmnopqrstuvwxyz'
+    $digits = '0123456789'
+    $special = '!@#$%^&*()-_=+[]{}|;:,.<>?'
+    $all = $upper + $lower + $digits + $special
+
+    $password = ""
+    $password += $upper | Get-Random -Count 1
+    $password += $lower | Get-Random -Count 1
+    $password += $digits | Get-Random -Count 1
+    $password += $special | Get-Random -Count 1
+
+    for ($i = 4; $i -lt $Length; $i++) {
+        $password += $all[(Get-Random -Maximum $all.Length)]
+    }
+
+    # Shuffle the password to avoid predictable character positions
+    $password = ($password.ToCharArray() | Get-Random -Count $password.Length) -join ''
+    return $password
+}
+
 # Check if .env.sample exists
 if (-not (Test-Path ".env.sample")) {
     Write-Host "Error: .env.sample file not found!" -ForegroundColor Red
@@ -37,7 +64,7 @@ $envTemplate = Get-Content ".env.sample" -Raw
 
 # Generate secure passwords
 $jwtSecret = Generate-JWTSecret
-$adminPassword = Generate-SecurePassword -Length 16
+$adminPassword = Generate-ComplexPassword -Length 16
 $postgresPassword = Generate-SecurePassword -Length 16
 $elasticPassword = Generate-SecurePassword -Length 16
 

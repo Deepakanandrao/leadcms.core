@@ -68,6 +68,7 @@ jobs:
         context: ./
         file: src/LeadCMS/Dockerfile
         push: true
+        platforms: linux/amd64,linux/arm64
         tags: leadcms/core:latest, leadcms/core:${{ steps.branch_name.outputs.value }}
         
     - name: Build & Push Docker image without latest tag
@@ -77,6 +78,7 @@ jobs:
         context: ./
         file: src/LeadCMS/Dockerfile
         push: true
+        platforms: linux/amd64,linux/arm64
         tags: leadcms/core:develop, leadcms/core:${{ steps.branch_name.outputs.value }}
     
     - name: Publish to NuGet

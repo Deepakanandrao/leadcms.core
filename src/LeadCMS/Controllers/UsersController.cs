@@ -76,6 +76,9 @@ public class UsersController : ControllerBase
     {
         var newUser = mapper.Map<User>(userDto);
 
+        // Automatically set email as verified for admin-created users
+        newUser.EmailConfirmed = true;
+
         string password = userDto.Password ?? string.Empty;
         if (userDto.GeneratePassword || string.IsNullOrEmpty(password))
         {

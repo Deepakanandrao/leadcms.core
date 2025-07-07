@@ -107,6 +107,7 @@ jobs:
         context: ./
         file: src/LeadCMS/Dockerfile
         push: true
+        platforms: linux/amd64,linux/arm64
         tags: |
           leadcms/core:develop
           leadcms/core:${{ github.event.inputs.version }}
