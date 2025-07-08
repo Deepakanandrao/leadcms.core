@@ -110,7 +110,7 @@ docker-compose up -d
 
 ## 5. Access the Services
 
-- **LeadCMS API:** [http://localhost:5000](http://localhost:5000)
+- **LeadCMS API:** [http://localhost:8080](http://localhost:8080)
 
 ---
 
