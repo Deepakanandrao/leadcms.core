@@ -22,7 +22,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docker-compose", "docker-co
 		docker-compose\docker-compose.develop.yml = docker-compose\docker-compose.develop.yml
 		docker-compose\docker-compose.tests.yml = docker-compose\docker-compose.tests.yml
 		docker-compose\docker-compose.yml = docker-compose\docker-compose.yml
-		docker-compose\.env.example = docker-compose\.env.example
+		docker-compose\.env.sample = docker-compose\.env.sample
+		docker-compose\README.md = docker-compose\README.md
+		docker-compose\generate-env.sh = docker-compose\generate-env.sh
+		docker-compose\generate-env.ps1 = docker-compose\generate-env.ps1
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".azure", ".azure", "{AE9A37ED-8F02-4029-8E64-9C15CCF270F1}"

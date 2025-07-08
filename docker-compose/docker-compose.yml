@@ -56,7 +56,7 @@ services:
     image: leadcms/core:develop
     container_name: leadcms
     ports:
-      - "5000:80"
+      - "8080:80"
     env_file:
       - .env
     depends_on:
