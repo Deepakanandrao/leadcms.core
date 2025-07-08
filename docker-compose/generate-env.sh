@@ -28,7 +28,7 @@ generate_jwt_secret() {
 }
 
 generate_complex_password() {
-    local length="${1:-16}"
+    local length="${1:-12}"
     if [ "$length" -lt 6 ]; then
         echo "Password length must be at least 6." >&2
         exit 1
@@ -37,7 +37,7 @@ generate_complex_password() {
     local upper=ABCDEFGHIJKLMNOPQRSTUVWXYZ
     local lower=abcdefghijklmnopqrstuvwxyz
     local digits=0123456789
-    local special='!@#$%^&*()-_=+[]{}|;:,.<>?'
+    local special='@%!'
     local all="$upper$lower$digits$special"
 
     # Ensure at least one character from each set
@@ -69,7 +69,13 @@ echo "Reading template from .env.sample..."
 env_template=$(cat .env.sample)
 
 jwt_secret=$(generate_jwt_secret)
-admin_password=$(generate_complex_password 16)
+admin_password=$(generate_complex_password 12)
+admin_password=$(echo "$admin_password" | xargs) # trim whitespace
+if [ "${#admin_password}" -ne 12 ]; then
+    echo "Error: Generated admin password is not 12 characters!" >&2
+    exit 1
+fi
+echo "DEBUG: Admin password length: ${#admin_password}"
 postgres_password=$(generate_secure_password 16)
 elastic_password=$(generate_secure_password 16)
 

@@ -24,28 +24,29 @@ function Generate-JWTSecret {
 
 function Generate-ComplexPassword {
     param(
-        [int]$Length = 16
+        [int]$Length = 12
     )
     if ($Length -lt 6) { throw "Password length must be at least 6." }
 
     $upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
     $lower = 'abcdefghijklmnopqrstuvwxyz'
     $digits = '0123456789'
-    $special = '!@#$%^&*()-_=+[]{}|;:,.<>?'
-    $all = $upper + $lower + $digits + $special
+    $special = '@%!'
+    $safe = $upper + $lower + $digits + $special
 
-    $password = ""
-    $password += $upper | Get-Random -Count 1
-    $password += $lower | Get-Random -Count 1
-    $password += $digits | Get-Random -Count 1
-    $password += $special | Get-Random -Count 1
+    # Ensure at least one of each type, using single character selection
+    $passwordChars = @()
+    $passwordChars += $upper[(Get-Random -Minimum 0 -Maximum $upper.Length)]
+    $passwordChars += $lower[(Get-Random -Minimum 0 -Maximum $lower.Length)]
+    $passwordChars += $digits[(Get-Random -Minimum 0 -Maximum $digits.Length)]
+    $passwordChars += $special[(Get-Random -Minimum 0 -Maximum $special.Length)]
 
     for ($i = 4; $i -lt $Length; $i++) {
-        $password += $all[(Get-Random -Maximum $all.Length)]
+        $passwordChars += $safe[(Get-Random -Minimum 0 -Maximum $safe.Length)]
     }
-
-    # Shuffle the password to avoid predictable character positions
-    $password = ($password.ToCharArray() | Get-Random -Count $password.Length) -join ''
+    # Shuffle the password
+    $password = ($passwordChars | Get-Random -Count $passwordChars.Count) -join ''
+    Write-Host "DEBUG: Generated password: $password (Length: $($password.Length))" -ForegroundColor Magenta
     return $password
 }
 
@@ -64,7 +65,13 @@ $envTemplate = Get-Content ".env.sample" -Raw
 
 # Generate secure passwords
 $jwtSecret = Generate-JWTSecret
-$adminPassword = Generate-ComplexPassword -Length 16
+$adminPassword = Generate-ComplexPassword -Length 12
+$adminPassword = $adminPassword.Trim()
+if ($adminPassword.Length -ne 12) {
+    Write-Host "Error: Generated admin password is not 8 characters!" -ForegroundColor Red
+    exit 1
+}
+Write-Host "DEBUG: Admin password length: $($adminPassword.Length)" -ForegroundColor Magenta
 $postgresPassword = Generate-SecurePassword -Length 16
 $elasticPassword = Generate-SecurePassword -Length 16
 
