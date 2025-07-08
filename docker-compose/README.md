@@ -116,14 +116,36 @@ docker-compose up -d
 To stop the stack:
 
 ```bash
-docker-compose down
+docker compose down
 ```
 
 To remove all data (Postgres/Elastic):
 
 ```bash
-docker-compose down -v
+docker compose down -v
 ```
+
+---
+
+## Troubleshooting
+
+### PostgreSQL Authentication Issues
+
+If you encounter authentication errors when connecting to PostgreSQL, it may be due to an existing Docker volume containing an old database with a different password. In this case:
+
+1. Stop all running containers:
+    ```bash
+    docker compose down
+    ```
+2. Remove all persistent data volumes (this will delete all data in Postgres and Elastic):
+    ```bash
+    docker compose down -v
+    ```
+3. Start the stack again:
+    ```bash
+    docker compose up -d
+    ```
+This will re-create the databases with the current credentials from your `.env` file.
 
 ---
 
