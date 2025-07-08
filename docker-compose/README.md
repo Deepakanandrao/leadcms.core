@@ -79,6 +79,17 @@ cd docker-compose
   - `CORS__ALLOWEDORIGINS__*` (allowed origins for your frontend)
   - Any other settings specific to your environment
 
+### Supported Languages
+
+To configure a list of supported languages, add the following to your `.env` file:
+
+```
+SUPPORTEDLANGUAGES__0=en
+SUPPORTEDLANGUAGES__1=de
+```
+
+You can add more languages by incrementing the index.
+
 ---
 
 ## 4. Start the Sample Stack
@@ -146,6 +157,36 @@ If you encounter authentication errors when connecting to PostgreSQL, it may be 
     docker compose up -d
     ```
 This will re-create the databases with the current credentials from your `.env` file.
+
+---
+
+## Plugin Mounting
+
+To extend LeadCMS with plugins, you can mount external plugin directories into the container using Docker volumes. This allows you to:
+
+- Attach custom plugins by mounting their directories into the `/app/plugins/YourPluginName` path inside the container.
+
+**Plugin configuration:**  
+Each plugin must also be defined in the plugin list in your `.env` file using indexed keys, for example:
+```
+PLUGINS__0=LeadCMS.Plugin.ReverseProxy
+PLUGINS__1=LeadCMS.Plugin.EmailSync
+PLUGINS__2=LeadCMS.Plugin.Site
+```
+Only plugins listed here will be loaded by the core application.
+
+**How it works (theory):**
+
+- In your Docker Compose file, define a named volume for each plugin you want to attach.
+- Use the `volumes` section of your service to map the host directory (where your plugin code resides) to the appropriate path inside the container.
+
+**For example:**
+- To attach a plugin named `LeadCMS.Plugin.Site`, mount your host's plugin directory to `/app/plugins/LeadCMS.Plugin.Site`.
+
+**Note:**  
+Adjust the host paths to match your environment and ensure the plugin directory structure matches what LeadCMS expects.
+
+This approach allows you to keep plugins outside of the container image, making updates and development easier.
 
 ---
 
