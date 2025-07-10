@@ -91,6 +91,13 @@ public class UsersController : ControllerBase
             throw new IdentityException(result.Errors);
         }
 
+        // Assign Admin role to admin-created users
+        var roleResult = await userManager.AddToRoleAsync(newUser, "Admin");
+        if (!roleResult.Succeeded)
+        {
+            throw new IdentityException(roleResult.Errors);
+        }
+
         if (userDto.SendPasswordEmail)
         {
             var args = new Dictionary<string, string>
