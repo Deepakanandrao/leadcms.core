@@ -16,24 +16,37 @@ namespace LeadCMS.Services
 
         public ActivityLogService(IConfiguration configuration, EsDbContext esDbContext)
         {
-            indexName = configuration.GetSection("Elastic:IndexPrefix").Get<string>() + "-activitylog";
+            var indexPrefix = configuration.GetSection("Elastic:IndexPrefix").Get<string>() ?? "LeadCMS";
+            indexName = indexPrefix + "-activitylog";
             this.esDbContext = esDbContext;
         }
 
         public async Task<int> GetMaxId(string source)
         {
-            var sr = new SearchRequest<ActivityLog>(indexName);
-            sr.Query = new TermQuery() { Field = "source.keyword", Value = source };
-            sr.Sort = new List<ISort>() { new FieldSort { Field = "sourceId", Order = Nest.SortOrder.Descending } };
-            sr.Size = 1;
-            var res = await esDbContext.ElasticClient.SearchAsync<ActivityLog>(sr);
-            if (res != null)
+            if (!esDbContext.IsElasticsearchEnabled)
             {
-                var doc = res.Documents.FirstOrDefault();
-                if (doc != null)
+                return 0;
+            }
+
+            try
+            {
+                var sr = new SearchRequest<ActivityLog>(indexName);
+                sr.Query = new TermQuery() { Field = "source.keyword", Value = source };
+                sr.Sort = new List<ISort>() { new FieldSort { Field = "sourceId", Order = Nest.SortOrder.Descending } };
+                sr.Size = 1;
+                var res = await esDbContext.ElasticClient.SearchAsync<ActivityLog>(sr);
+                if (res != null)
                 {
-                    return doc.SourceId;
+                    var doc = res.Documents.FirstOrDefault();
+                    if (doc != null)
+                    {
+                        return doc.SourceId;
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                Log.Warning("Failed to get max ID from Elasticsearch: {Error}", ex.Message);
             }
 
             return 0;
@@ -41,16 +54,30 @@ namespace LeadCMS.Services
 
         public async Task<bool> AddActivityRecords(List<ActivityLog> records)
         {
+            if (!esDbContext.IsElasticsearchEnabled)
+            {
+                // When Elasticsearch is disabled, just return true to not break the flow
+                return true;
+            }
+
             if (records.Count > 0)
             {
-                var responce = await esDbContext.ElasticClient.IndexManyAsync<ActivityLog>(records, indexName);
-
-                if (!responce.IsValid)
+                try
                 {
-                    Log.Error("Cannot save logs in Elastic Search. Reason: " + responce.DebugInformation);
-                }
+                    var responce = await esDbContext.ElasticClient.IndexManyAsync<ActivityLog>(records, indexName);
 
-                return responce.IsValid;
+                    if (!responce.IsValid)
+                    {
+                        Log.Error("Cannot save logs in Elastic Search. Reason: " + responce.DebugInformation);
+                    }
+
+                    return responce.IsValid;
+                }
+                catch (Exception ex)
+                {
+                    Log.Error("Failed to add activity records to Elasticsearch: {Error}", ex.Message);
+                    return false;
+                }
             }
             else
             {

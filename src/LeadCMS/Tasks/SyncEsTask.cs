@@ -38,6 +38,12 @@ namespace LeadCMS.Tasks
 
         protected override void ExecuteLogTask(List<ChangeLog> nextBatch)
         {
+            // Skip processing if Elasticsearch is disabled
+            if (!esDbContext.IsElasticsearchEnabled)
+            {
+                return;
+            }
+
             var bulkPayload = new StringBuilder();
 
             var existedIndices = GetExistedIndices();
@@ -106,6 +112,12 @@ namespace LeadCMS.Tasks
 
         protected override int GetMinLogId(ChangeLogTaskLog lastProcessedTask, Type loggedType)
         {
+            // Return minimum ID if Elasticsearch is disabled
+            if (!esDbContext.IsElasticsearchEnabled)
+            {
+                return 1;
+            }
+
             var minLogId = 1;
 
             if (esDbContext.ElasticClient.Indices.Exists(GetIndexName(loggedType.Name)).Exists)
@@ -135,6 +147,12 @@ namespace LeadCMS.Tasks
 
         private HashSet<string> GetExistedIndices()
         {
+            // Return empty set if Elasticsearch is disabled
+            if (!esDbContext.IsElasticsearchEnabled)
+            {
+                return new HashSet<string>();
+            }
+
             var response = esDbContext.ElasticClient.Indices.GetAlias(Indices.All);
 
             if (!response.IsValid)

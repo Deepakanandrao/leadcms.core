@@ -1,6 +1,36 @@
 version: '3.4'
 
 services:
+  elastic:
+    container_name: elastic
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.6
+    ports:
+      - 9200:9200
+    volumes:
+      - elastic-data:/usr/share/elasticsearch/data
+    environment:
+      - xpack.security.enabled=false
+      - "discovery.type=single-node"
+      - "ES_JAVA_OPTS=-Xms1024m -Xmx1024m"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  kibana:
+    container_name: kibana
+    image: docker.elastic.co/kibana/kibana:7.17.6
+    ports:
+      - 5601:5601
+    depends_on:
+      - elastic
+    environment:
+      SERVER_REWRITEBASEPATH: true
+      SERVER_BASEPATH: /kibana
+      ELASTICSEARCH_HOSTS: '["http://elastic:9200"]'
+    restart: unless-stopped
 
   postgres:
     container_name: postgres

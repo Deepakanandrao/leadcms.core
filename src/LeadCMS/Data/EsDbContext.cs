@@ -22,9 +22,12 @@ public class EsDbContext : ElasticDbContext
     {
         elasticConfig = configuration.GetSection("Elastic").Get<ElasticConfig>();
 
-        if (elasticConfig == null)
+        if (elasticConfig == null || !elasticConfig.Enable)
         {
-            throw new MissingConfigurationException("Elastic configuration is mandatory.");
+            // When Elasticsearch is disabled or not configured, initialize with minimal setup
+            entityTypes = new List<Type>();
+            elasticClient = null!; // Will be null but not accessed when disabled
+            return;
         }
 
         var connectionSettings = new ConnectionSettings(new Uri(elasticConfig.Url));
@@ -59,6 +62,8 @@ public class EsDbContext : ElasticDbContext
     public override ElasticClient ElasticClient => elasticClient;
 
     public override string IndexPrefix => elasticConfig!.IndexPrefix;
+
+    public override bool IsElasticsearchEnabled => elasticConfig?.Enable == true;
 
     protected override List<Type> EntityTypes => entityTypes;
 }

@@ -131,17 +131,43 @@ namespace LeadCMS.Infrastructure
                         var n = prop.Name;
                         var me = Expression.Property(paramExpr, n);
                         Expression containsExpression;
+                        
                         if (prop.PropertyType == typeof(string))
                         {
                             containsExpression = Expression.Call(me, containsMethod!, Expression.Constant(cmdValue));
                         }
+                        else if (prop.PropertyType == typeof(string[]))
+                        {
+                            // For string arrays, use EF.Functions.JsonContains or similar array contains method
+                            // Skip array properties for now as they require special handling
+                            continue;
+                        }
+                        else if (prop.PropertyType.IsArray)
+                        {
+                            // Skip other array types that can't be easily converted to string
+                            continue;
+                        }
                         else
                         {
-                            var pt = prop.PropertyType;
-                            Console.WriteLine(pt);
-                            var toStringMethod = prop.PropertyType.GetMethod("ToString", new Type[0]);
-                            var ce = Expression.Call(me, toStringMethod!);
-                            containsExpression = Expression.Call(ce, containsMethod!, Expression.Constant(cmdValue));
+                            // For other types (numbers, dates, etc.), convert to string but only for supported types
+                            try
+                            {
+                                var toStringMethod = prop.PropertyType.GetMethod("ToString", new Type[0]);
+                                if (toStringMethod != null)
+                                {
+                                    var ce = Expression.Call(me, toStringMethod);
+                                    containsExpression = Expression.Call(ce, containsMethod!, Expression.Constant(cmdValue));
+                                }
+                                else
+                                {
+                                    continue;
+                                }
+                            }
+                            catch
+                            {
+                                // Skip properties that can't be converted to string
+                                continue;
+                            }
                         }
 
                         orExpression = Expression.Or(orExpression, containsExpression);

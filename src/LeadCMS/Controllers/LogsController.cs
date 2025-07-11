@@ -27,11 +27,24 @@ public class LogsController : Controller
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public virtual async Task<ActionResult<List<LogRecord>>> GetAll()
     {
-        var logRecords = (
-                await esDbContext.ElasticClient.SearchAsync<LogRecord>(
-                    s => s.Size(20).Skip(10)))
-            .Documents.ToList();
+        if (!esDbContext.IsElasticsearchEnabled)
+        {
+            return Ok(new List<LogRecord>());
+        }
 
-        return Ok(logRecords);
+        try
+        {
+            var logRecords = (
+                    await esDbContext.ElasticClient.SearchAsync<LogRecord>(
+                        s => s.Size(20).Skip(10)))
+                .Documents.ToList();
+
+            return Ok(logRecords);
+        }
+        catch (Exception)
+        {
+            // If Elasticsearch is unavailable, return empty list instead of crashing
+            return Ok(new List<LogRecord>());
+        }
     }
 }

@@ -18,16 +18,19 @@ namespace LeadCMS.Infrastructure
     {
         protected readonly IOptions<ApiSettingsConfig> apiSettingsConfig;
         protected readonly IHttpContextHelper httpContextHelper;
-        protected readonly ElasticClient elasticClient;
+        protected readonly ElasticClient? elasticClient;
+        protected readonly EsDbContext esDbContext;
 
         protected PgDbContext dbContext;
 
         public QueryProviderFactory(PgDbContext dbContext, EsDbContext esDbContext, IOptions<ApiSettingsConfig> apiSettingsConfig, IHttpContextHelper? httpContextHelper)
         {
             this.dbContext = dbContext;
+            this.esDbContext = esDbContext;
             this.apiSettingsConfig = apiSettingsConfig;
 
-            elasticClient = esDbContext.ElasticClient;
+            // Only assign ElasticClient if Elasticsearch is enabled
+            elasticClient = esDbContext.IsElasticsearchEnabled ? esDbContext.ElasticClient : null;
 
             ArgumentNullException.ThrowIfNull(httpContextHelper);
             this.httpContextHelper = httpContextHelper;
@@ -41,7 +44,11 @@ namespace LeadCMS.Infrastructure
 
             var dbSet = dbContext.Set<T>();
 
-            if (typeof(T).GetCustomAttributes(typeof(SupportsElasticAttribute), true).Any() && queryBuilder.SearchData.Count > 0)
+            // Only use Elasticsearch if it's enabled and available
+            if (esDbContext.IsElasticsearchEnabled && 
+                elasticClient != null && 
+                typeof(T).GetCustomAttributes(typeof(SupportsElasticAttribute), true).Any() && 
+                queryBuilder.SearchData.Count > 0)
             {
                 var indexPrefix = dbContext.Configuration.GetSection("Elastic:IndexPrefix").Get<string>();
                 return new MixedQueryProvider<T>(queryBuilder, dbSet!.AsQueryable<T>(), elasticClient, indexPrefix!);

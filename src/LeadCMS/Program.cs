@@ -244,18 +244,26 @@ public class Program
     {
         var elasticConfig = builder.Configuration.GetSection("Elastic").Get<ElasticConfig>();
 
-        if (elasticConfig == null)
-        {
-            throw new MissingConfigurationException("ElasticSearch configuration is mandatory.");
-        }
-
-        Log.Logger = new LoggerConfiguration()
+        var loggerConfiguration = new LoggerConfiguration()
             .Enrich.FromLogContext()
             .Enrich.WithExceptionDetails()
-            .WriteTo.Console()
-            .WriteTo.Elasticsearch(ConfigureELK(elasticConfig))
-            .CreateLogger();
+            .WriteTo.Console();
 
+        // Only configure Elasticsearch logging if it's enabled and properly configured
+        if (elasticConfig?.Enable == true)
+        {
+            try
+            {
+                loggerConfiguration.WriteTo.Elasticsearch(ConfigureELK(elasticConfig));
+            }
+            catch (Exception ex)
+            {
+                // Fallback to console-only logging if Elasticsearch configuration fails
+                Console.WriteLine($"Warning: Failed to configure Elasticsearch logging: {ex.Message}. Falling back to console-only logging.");
+            }
+        }
+
+        Log.Logger = loggerConfiguration.CreateLogger();
         builder.Host.UseSerilog();
     }
 
@@ -530,7 +538,13 @@ public class Program
 
     private static void ConfigureTasks(WebApplicationBuilder builder)
     {
-        builder.Services.AddScoped<ITask, SyncEsTask>();
+        // Only register SyncEsTask if Elasticsearch is enabled
+        var elasticConfig = builder.Configuration.GetSection("Elastic").Get<ElasticConfig>();
+        if (elasticConfig?.Enable == true)
+        {
+            builder.Services.AddScoped<ITask, SyncEsTask>();
+        }
+        
         builder.Services.AddScoped<ITask, SyncIpDetailsTask>();
         builder.Services.AddScoped<ITask, DomainVerificationTask>();
         builder.Services.AddScoped<ITask, ContactScheduledEmailTask>();

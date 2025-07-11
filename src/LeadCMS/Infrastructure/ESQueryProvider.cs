@@ -27,12 +27,24 @@ namespace LeadCMS.Infrastructure
 
         public ESQueryProvider(ElasticClient elasticClient, QueryModelBuilder<T> queryBuilder, string indexPrefix)
         {
+            ArgumentNullException.ThrowIfNull(elasticClient);
+            ArgumentNullException.ThrowIfNull(queryBuilder);
+            ArgumentException.ThrowIfNullOrEmpty(indexPrefix);
+
             indexName = indexPrefix + "-" + typeof(T).Name.ToLower();
             this.elasticClient = elasticClient;
             this.queryBuilder = queryBuilder;
             searchableTextProperties = typeof(T).GetProperties().Where(p => p.IsDefined(typeof(SearchableAttribute), false) && p.PropertyType == typeof(string)).ToArray();
             searchableNonTextProperties = typeof(T).GetProperties().Where(p => p.IsDefined(typeof(SearchableAttribute), false) && p.PropertyType != typeof(string)).ToArray();
-            elasticClient.Indices.UpdateSettings(indexName, s => s.IndexSettings(i => i.Setting(UpdatableIndexSettings.MaxResultWindow, maxResultWindow)));
+            
+            try
+            {
+                elasticClient.Indices.UpdateSettings(indexName, s => s.IndexSettings(i => i.Setting(UpdatableIndexSettings.MaxResultWindow, maxResultWindow)));
+            }
+            catch
+            {
+                // Ignore errors when updating settings if index doesn't exist or Elasticsearch is not available
+            }
         }
 
         public async Task<QueryResult<T>> GetResult()

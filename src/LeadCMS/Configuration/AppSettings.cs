@@ -31,6 +31,8 @@ public class PostgresConfig : BaseServiceConfig
 
 public class ElasticConfig : BaseServiceConfig
 {
+    public bool Enable { get; set; } = true;
+
     public bool UseHttps { get; set; } = false;
 
     public string IndexPrefix { get; set; } = string.Empty;

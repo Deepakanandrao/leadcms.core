@@ -21,12 +21,21 @@ namespace LeadCMS.Infrastructure
 
         public override IQueryProvider<T> BuildQueryProvider(int limit = -1)
         {
-            var queryCommands = QueryStringParser.Parse(httpContextHelper.Request.QueryString.HasValue ? HttpUtility.UrlDecode(httpContextHelper.Request.QueryString.ToString()) : string.Empty);
+            // If Elasticsearch is disabled, fall back to database query provider
+            if (!esDbContext.IsElasticsearchEnabled || elasticClient == null)
+            {
+                var dbSet = dbContext.Set<T>();
+                var queryCommands = QueryStringParser.Parse(httpContextHelper.Request.QueryString.HasValue ? HttpUtility.UrlDecode(httpContextHelper.Request.QueryString.ToString()) : string.Empty);
+                var queryBuilder = new QueryModelBuilder<T>(queryCommands, limit == -1 ? apiSettingsConfig.Value.MaxListSize : limit, dbContext);
+                return new DBQueryProvider<T>(dbSet!.AsQueryable<T>(), queryBuilder);
+            }
 
-            var queryBuilder = new QueryModelBuilder<T>(queryCommands, limit == -1 ? apiSettingsConfig.Value.MaxListSize : limit, dbContext);
+            var queryCommands2 = QueryStringParser.Parse(httpContextHelper.Request.QueryString.HasValue ? HttpUtility.UrlDecode(httpContextHelper.Request.QueryString.ToString()) : string.Empty);
+
+            var queryBuilder2 = new QueryModelBuilder<T>(queryCommands2, limit == -1 ? apiSettingsConfig.Value.MaxListSize : limit, dbContext);
 
             var indexPrefix = dbContext.Configuration.GetSection("Elastic:IndexPrefix").Get<string>();
-            return new ESQueryProvider<T>(elasticClient, queryBuilder, indexPrefix!);
+            return new ESQueryProvider<T>(elasticClient, queryBuilder2, indexPrefix!);
         }
     }
 }

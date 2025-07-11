@@ -13,10 +13,18 @@ public abstract class ElasticDbContext
 
     public abstract string IndexPrefix { get; }
 
+    public abstract bool IsElasticsearchEnabled { get; }
+
     protected abstract List<Type> EntityTypes { get; }
 
     public virtual void Migrate()
     {
+        if (!IsElasticsearchEnabled)
+        {
+            // Skip migration when Elasticsearch is disabled
+            return;
+        }
+
         ElasticHelper.CreateMissingIndeces(this);
 
         var allMigrationsTypes = Assembly.GetAssembly(typeof(ElasticMigration))!.GetTypes()
