@@ -85,6 +85,7 @@ public class Program
         builder.Services.AddTransient<IDiscountService, DiscountService>();
         builder.Services.AddTransient<IEmailSchedulingService, EmailSchedulingService>();
         builder.Services.AddSingleton<IMediaResolver, MediaResolver>();
+        builder.Services.AddScoped<IRedirectService, RedirectService>();
 
         // Add SSE services for real-time change notifications
         builder.Services.AddSingleton<SseClientManager>();
