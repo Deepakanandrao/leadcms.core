@@ -1,0 +1,7 @@
+﻿{
+  "SiteUrl": "https://leadcms.ai",
+  "ContactUs": {
+    "To": [ "$CONTACTUS__TO__0" ]
+  },
+  "SupportEmail": "support@leadcms.ai"
+}
