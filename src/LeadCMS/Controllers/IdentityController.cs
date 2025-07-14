@@ -211,6 +211,13 @@ public class IdentityController : ControllerBase
             throw new IdentityException(result.Errors);
         }
 
+        // Set email as confirmed since user successfully reset password using email token
+        if (!user.EmailConfirmed)
+        {
+            user.EmailConfirmed = true;
+            await userManager.UpdateAsync(user);
+        }
+
         return Ok();
     }
 
