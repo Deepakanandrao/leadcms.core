@@ -163,7 +163,20 @@ public class IdentityController : ControllerBase
         }
 
         var token = await userManager.GeneratePasswordResetTokenAsync(user);
-        var resetUrl = $"{Request.Scheme}://{Request.Host}/reset-password?userId={user.Id}&token={Uri.EscapeDataString(token)}";
+        
+        // Try to get scheme and host from Origin header first, fallback to Request.Scheme and Request.Host
+        string scheme = Request.Scheme;
+        string host = Request.Host.Value;
+        
+        if (Request.Headers.TryGetValue("Origin", out var originValue) && 
+            !string.IsNullOrEmpty(originValue) && 
+            Uri.TryCreate(originValue!, UriKind.Absolute, out var originUri))
+        {
+            scheme = originUri.Scheme;
+            host = originUri.Authority;
+        }
+        
+        var resetUrl = $"{scheme}://{host}/auth/reset-password?userId={user.Id}&token={Uri.EscapeDataString(token)}";
 
         var templateArgs = new Dictionary<string, string>
         {
