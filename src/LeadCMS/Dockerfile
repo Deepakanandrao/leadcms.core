@@ -19,6 +19,8 @@ RUN dotnet publish "./plugins/LeadCMS.Plugin.ReverseProxy/LeadCMS.Plugin.Reverse
 RUN dotnet publish "./plugins/LeadCMS.Plugin.SendGrid/LeadCMS.Plugin.SendGrid.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.SendGrid /p:UseAppHost=false
 RUN dotnet publish "./plugins/LeadCMS.Plugin.Sms/LeadCMS.Plugin.Sms.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.Sms /p:UseAppHost=false
 RUN dotnet publish "./plugins/LeadCMS.Plugin.Vsto/LeadCMS.Plugin.Vsto.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.Vsto /p:UseAppHost=false
+RUN dotnet publish "./plugins/LeadCMS.Plugin.Site/LeadCMS.Plugin.Site.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.Site /p:UseAppHost=false
+
 
 FROM base AS final
 RUN apk add --no-cache icu-libs

@@ -169,9 +169,7 @@ To extend LeadCMS with plugins, you can mount external plugin directories into t
 **Plugin configuration:**  
 Each plugin must also be defined in the plugin list in your `.env` file using indexed keys, for example:
 ```
-PLUGINS__0=LeadCMS.Plugin.ReverseProxy
-PLUGINS__1=LeadCMS.Plugin.EmailSync
-PLUGINS__2=LeadCMS.Plugin.Site
+PLUGINS__0=LeadCMS.Plugin.Site
 ```
 Only plugins listed here will be loaded by the core application.
 
