@@ -4,6 +4,7 @@
 using LeadCMS.DTOs;
 using LeadCMS.Interfaces;
 using LeadCMS.Plugin.Site.Configuration;
+using LeadCMS.Plugin.Site.Data;
 using LeadCMS.Plugin.Site.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -18,10 +19,19 @@ public class ContactUsController : Controller
 {
     private readonly IEmailFromTemplateService emailService;
     private readonly PluginSettings? pluginSettings;
+    private readonly LeadCmsSiteDbContext dbContext;
+    private readonly IContactService contactService;
 
-    public ContactUsController(IEmailFromTemplateService emailService, IConfiguration configuration)
+    public ContactUsController(
+        IEmailFromTemplateService emailService, 
+        IConfiguration configuration,
+        LeadCmsSiteDbContext dbContext,
+        IContactService contactService)
     {
         this.emailService = emailService;
+        this.dbContext = dbContext;
+        this.contactService = contactService;
+        this.contactService.SetDBContext(dbContext);
 
         var settings = configuration.Get<PluginSettings>();
 
@@ -38,6 +48,27 @@ public class ContactUsController : Controller
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult> Post([FromForm] ContactUsDto contactUsDto)
     {
+        // Create or find contact record
+        var contact = await contactService.FindOrCreate(contactUsDto.Email, contactUsDto.Language, contactUsDto.TimeZoneOffset);
+
+        // Populate contact attributes from the request
+        if (!string.IsNullOrWhiteSpace(contactUsDto.FirstName))
+        {
+            contact.FirstName = contactUsDto.FirstName;
+        }
+                
+        if (!string.IsNullOrWhiteSpace(contactUsDto.LastName))
+        {
+            contact.LastName = contactUsDto.LastName;
+        }
+        
+        if (!string.IsNullOrWhiteSpace(contactUsDto.Company))
+        {
+            contact.CompanyName = contactUsDto.Company;
+        }
+
+        contact.Source = "Contact Us";
+
         var attachmentFiles = new List<AttachmentDto>();
 
         if (contactUsDto.Attachment != null)
@@ -48,6 +79,9 @@ public class ContactUsController : Controller
                 File = await contactUsDto.Attachment.GetBytes(),
             });
         }
+
+        // Save contact changes
+        await dbContext.SaveChangesAsync();
 
         await emailService.SendAsync("Contact_Us", contactUsDto.Language, pluginSettings!.ContactUs.To, GetTemplateArguments(contactUsDto), attachmentFiles);
 

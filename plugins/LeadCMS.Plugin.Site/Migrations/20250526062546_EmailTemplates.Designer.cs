@@ -1465,21 +1465,7 @@ namespace LeadCMS.Plugin.Site.Migrations
                         new
                         {
                             Id = 2,
-                            BodyTemplate = "<!DOCTYPE html>\n<html>\n\n<head>\n    <meta charset=\"UTF-8\">\n    <style>\n        body {\n            font-family: Arial, sans-serif;\n            background: #f9f9f9;\n            color: #222;\n            margin: 0;\n            padding: 0;\n        }\n\n        .container {\n            background: #fff;\n            max-width: 500px;\n            margin: 40px auto;\n            padding: 32px 24px;\n            border-radius: 8px;\n            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);\n        }\n\n        h2 {\n            color: #2a7ae2;\n            margin-top: 0;\n        }\n\n        .info {\n            margin: 12px 0;\n        }\n\n        .label {\n            font-weight: bold;\n        }\n\n        .footer {\n            color: #888;\n            font-size: 13px;\n            margin-top: 32px;\n        }\n\n        .section-title {\n            color: #555;\n            font-size: 15px;\n            margin-top: 24px;\n        }\n\n        .tech-info {\n            font-size: 13px;\n            color: #666;\n        }\n    </style>\n</head>\n\n<body>\n    <div class=\"container\">\n        <h2>Feedback Received</h2>\n        <div class=\"info\"><span class=\"label\">From:</span> &lt;<%Email%>&gt;</div>\n        <div class=\"section-title\">Message</div>\n        <div style=\"margin-left:12px; color:#444;\">\"<%Message%>\"</div>\n        <div class=\"section-title\">Technical Information</div>\n        <div class=\"tech-info\">UUID: <b><%Uuid%></b></div>\n        <div class=\"tech-info\">Is X64: <b><%IsX64%></b></div>\n        <div class=\"tech-info\">System Version: <b><%AddinVersion%></b></div>\n        <div class=\"tech-info\">.NET Version: <b><%NetVersion%></b></div>\n        <div class=\"tech-info\">Language: <b><%Language%></b></div>\n        <div class=\"tech-info\">Time: <b><%Time%></b></div>\n        <div class=\"footer\">This message was sent via the Feedback form.</div>\n    </div>\n</body>\n\n</html>",
-                            CreatedAt = new DateTime(2025, 5, 26, 6, 25, 45, 803, DateTimeKind.Utc).AddTicks(1190),
-                            EmailGroupId = 1,
-                            FromEmail = "support@leadcms.ai",
-                            FromName = "Support Team",
-                            Language = "en",
-                            Name = "Feedback",
-                            RetryCount = 0,
-                            RetryInterval = 0,
-                            Subject = "Feedback Received"
-                        },
-                        new
-                        {
-                            Id = 3,
-                            BodyTemplate = "<!-- Basic, modern, and clean English template for Acknowledgment -->\n<!DOCTYPE html>\n<html>\n<head>\n    <meta charset=\"UTF-8\">\n    <style>\n        body { font-family: Arial, sans-serif; background: #f9f9f9; color: #222; margin: 0; padding: 0; }\n        .container { background: #fff; max-width: 500px; margin: 40px auto; padding: 32px 24px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); }\n        h2 { color: #2a7ae2; margin-top: 0; }\n        .info { margin: 12px 0; }\n        .footer { color: #888; font-size: 13px; margin-top: 32px; }\n    </style>\n</head>\n<body>\n    <div class=\"container\">\n        <h2>Thank You for Your Feedback</h2>\n        <div class=\"info\">Dear <%firstName%>,</div>\n        <div class=\"info\">We have received your message and appreciate you reaching out to us.</div>\n        <div class=\"info\">Our team will review your request and get back to you as soon as possible.</div>\n        <div class=\"info\" style=\"margin-top:24px;\">If you have any additional information or questions, feel free to reply to this email.</div>\n        <div class=\"footer\">Best regards,<br>The Support Team</div>\n    </div>\n</body>\n</html>\n",
+                            BodyTemplate = "<!-- Basic, modern, and clean English template for Acknowledgment -->\n<!DOCTYPE html>\n<html>\n<head>\n    <meta charset=\"UTF-8\">\n    <style>\n        body { font-family: Arial, sans-serif; background: #f9f9f9; color: #222; margin: 0; padding: 0; }\n        .container { background: #fff; max-width: 500px; margin: 40px auto; padding: 32px 24px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); }\n        h2 { color: #2a7ae2; margin-top: 0; }\n        .info { margin: 12px 0; }\n        .footer { color: #888; font-size: 13px; margin-top: 32px; }\n    </style>\n</head>\n<body>\n    <div class=\"container\">\n        <h2>Thank You for Contacting Us</h2>\n        <div class=\"info\">Dear <%firstName%>,</div>\n        <div class=\"info\">We have received your message and appreciate you reaching out to us.</div>\n        <div class=\"info\">Our team will review your request and get back to you as soon as possible.</div>\n        <div class=\"info\" style=\"margin-top:24px;\">If you have any additional information or questions, feel free to reply to this email.</div>\n        <div class=\"footer\">Best regards,<br>The Support Team</div>\n    </div>\n</body>\n</html>\n",
                             CreatedAt = new DateTime(2025, 5, 26, 6, 25, 45, 803, DateTimeKind.Utc).AddTicks(1220),
                             EmailGroupId = 1,
                             FromEmail = "support@leadcms.ai",
@@ -1488,11 +1474,11 @@ namespace LeadCMS.Plugin.Site.Migrations
                             Name = "Acknowledgment",
                             RetryCount = 0,
                             RetryInterval = 0,
-                            Subject = "Thank You for Your Feedback"
+                            Subject = "Thank You for Contacting Us"
                         },
                         new
                         {
-                            Id = 4,
+                            Id = 3,
                             BodyTemplate = "<!-- Basic, modern, and clean English template for Subscription Confirmation -->\n<!DOCTYPE html>\n<html>\n<head>\n    <meta charset=\"UTF-8\">\n    <style>\n        body { font-family: Arial, sans-serif; background: #f9f9f9; color: #222; margin: 0; padding: 0; }\n        .container { background: #fff; max-width: 500px; margin: 40px auto; padding: 32px 24px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); }\n        h2 { color: #2a7ae2; margin-top: 0; }\n        .info { margin: 12px 0; }\n        .footer { color: #888; font-size: 13px; margin-top: 32px; }\n    </style>\n</head>\n<body>\n    <div class=\"container\">\n        <h2>Subscription Confirmed</h2>\n        <div class=\"info\">Thank you for subscribing to our updates and guides.</div>\n        <div class=\"info\">You will now receive the latest news and onboarding guides directly to your email.</div>\n        <div class=\"info\" style=\"margin-top:24px;\">If you have any questions, feel free to reply to this email.</div>\n        <div class=\"footer\">Best regards,<br>The Support Team</div>\n    </div>\n</body>\n</html>\n",
                             CreatedAt = new DateTime(2025, 5, 26, 6, 25, 45, 803, DateTimeKind.Utc).AddTicks(1250),
                             EmailGroupId = 1,

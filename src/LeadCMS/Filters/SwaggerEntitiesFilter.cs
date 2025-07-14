@@ -106,9 +106,9 @@ namespace LeadCMS.Filters
 
             // Original logic for plugin exclusion
             var api = context.ApiDescriptions.FirstOrDefault(d => d != null && d.RelativePath != null && path == '/' + d.RelativePath);
-            var ignored = api != null && api.ActionDescriptor.DisplayName != null && api.ActionDescriptor.DisplayName.Contains("Plugin");
+            var keepFromPlugins = api != null && api.ActionDescriptor.DisplayName != null && api.ActionDescriptor.DisplayName.Contains("Plugin");
             
-            return ignored; // Don't exclude plugins
+            return !keepFromPlugins; // Don't exclude plugins
         }
 
         private void CleanupSchemaReferences(IDictionary<string, OpenApiSchema> schemas)

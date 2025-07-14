@@ -15,7 +15,7 @@ public class EmailTemplateData
     {
         modelBuilder.Entity<EmailTemplate>().HasData(
             new EmailTemplate { Id = 1, EmailGroupId = 1, Language = "en", Name = "Contact_Us", Subject = "New Contact Us Submission", FromEmail = SitePlugin.Settings.SupportEmail, FromName = "Support Team", BodyTemplate = ReadResource("En_Contact_Us.html") },
-            new EmailTemplate { Id = 2, EmailGroupId = 1, Language = "en", Name = "Acknowledgment", Subject = "Thank You for Your Feedback", FromEmail = SitePlugin.Settings.SupportEmail, FromName = "Support Team", BodyTemplate = ReadResource("En_Acknowledgment.html") },
+            new EmailTemplate { Id = 2, EmailGroupId = 1, Language = "en", Name = "Acknowledgment", Subject = "Thank You for Contacting Us", FromEmail = SitePlugin.Settings.SupportEmail, FromName = "Support Team", BodyTemplate = ReadResource("En_Acknowledgment.html") },
             new EmailTemplate { Id = 3, EmailGroupId = 1, Language = "en", Name = "Subscription_Confirmation", Subject = "Subscription Confirmed", FromEmail = SitePlugin.Settings.SupportEmail, FromName = "Support Team", BodyTemplate = ReadResource("En_Subscription_Confirmation.html") });
     }
 

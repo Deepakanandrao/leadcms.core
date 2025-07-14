@@ -91,7 +91,7 @@ namespace LeadCMS.Plugin.Site.Migrations
                         0,
                         0,
                         null,
-                        "Thank You for Your Feedback",
+                        "Thank You for Contacting Us",
                         null,
                         null,
                         null,
