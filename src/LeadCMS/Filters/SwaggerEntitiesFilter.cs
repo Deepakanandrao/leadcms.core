@@ -55,20 +55,26 @@ namespace LeadCMS.Filters
 
         private bool SchemaNeedsToBeExcluded(string key)
         {
-            var included = includedEntities.Count == 0 || includedEntities.Exists(s => key.Contains(s.ToLower()));
-            var excluded = includedEntities.Count == 0 && excludedEntities.Exists(s => key.Contains(s.ToLower()));
-            var current = currentTypes.Exists(t => t.Name.ToLower() == key);
+            var included = includedEntities.Count == 0 || includedEntities.Exists(s => key.Contains(s, StringComparison.OrdinalIgnoreCase));
+            var excluded = includedEntities.Count == 0 && excludedEntities.Exists(s => key.Contains(s, StringComparison.OrdinalIgnoreCase));
+            var current = currentTypes.Exists(t => string.Equals(t.Name, key, StringComparison.OrdinalIgnoreCase));
             return current && (!included || excluded);
         }
 
         private bool OperationNeedsToBeExcluded(DocumentFilterContext context, string path)
         {
-            // Create a precise mapping of excluded entities to their exact controller paths
-            var entityToControllerMap = new Dictionary<string, string>
+            // Create a precise mapping of entities to their exact controller paths (case-insensitive)
+            var entityToControllerMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
+                { "user", "/api/users" },
+                { "setting", "/api/settings" },
+                { "redirect", "/api/redirects" },
                 { "deal", "/api/deals" },
-                { "comment", "/api/comments" }, // Comments have their own controller
-                { "link", "/api/links" }, // Both linki and link map to links
+                { "comment", "/api/comments" },
+                { "contact", "/api/contacts" },
+                { "content", "/api/content" },
+                { "contenttype", "/api/content-types" },
+                { "link", "/api/links" },
                 { "account", "/api/accounts" },
                 { "unsubscribe", "/api/unsubscribes" },
                 { "domain", "/api/domains" },
@@ -79,8 +85,10 @@ namespace LeadCMS.Filters
                 { "dealpipeline", "/api/deal-pipelines" },
                 { "dealpipelinestage", "/api/deal-pipeline-stages" },
                 { "discount", "/api/discounts" },
-                { "email-group", "/api/email-groups" },
+                { "emailgroup", "/api/email-groups" },
+                { "emailtemplate", "/api/email-templates" },
                 { "file", "/api/files" },
+                { "media", "/api/media" },
                 { "order", "/api/orders" },
                 { "changelogtasklog", "/api/changelog-task-logs" },
                 { "emaillog", "/api/email-logs" },
@@ -95,16 +103,34 @@ namespace LeadCMS.Filters
                 { "task", "/api/tasks" },
             };
 
-            // Check if any excluded entity maps exactly to this path
-            foreach (var excludedEntity in excludedEntities)
+            // Find which entity this path corresponds to
+            var matchedEntity = entityToControllerMap
+                .Where(entityMapping => path.StartsWith(entityMapping.Value, StringComparison.OrdinalIgnoreCase))
+                .Select(entityMapping => entityMapping.Key)
+                .FirstOrDefault();
+
+            // If we found a matching entity, apply include/exclude logic
+            if (matchedEntity != null)
             {
-                if (entityToControllerMap.TryGetValue(excludedEntity, out var controllerPath) && path.StartsWith(controllerPath))
+                // If there are included entities, only include those specified
+                if (includedEntities.Count > 0)
                 {
-                    return true;
+                    var isIncluded = includedEntities.Exists(e => string.Equals(e, matchedEntity, StringComparison.OrdinalIgnoreCase));
+                    if (isIncluded)
+                    {
+                        return false; // Keep if in the include list
+                    }
+                }
+
+                // Check if explicitly excluded
+                var isExcluded = excludedEntities.Exists(e => string.Equals(e, matchedEntity, StringComparison.OrdinalIgnoreCase));
+                if (isExcluded)
+                {
+                    return true; // Exclude if in exclude list
                 }
             }
 
-            // Original logic for plugin exclusion
+            // Original logic for plugin exclusion - keep plugins regardless of include/exclude lists
             var api = context.ApiDescriptions.FirstOrDefault(d => d != null && d.RelativePath != null && path == '/' + d.RelativePath);
             var keepFromPlugins = api != null && api.ActionDescriptor.DisplayName != null && api.ActionDescriptor.DisplayName.Contains("Plugin");
             
