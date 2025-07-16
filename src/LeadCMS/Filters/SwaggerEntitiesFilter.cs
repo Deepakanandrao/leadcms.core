@@ -29,8 +29,13 @@ namespace LeadCMS.Filters
 
         public void Apply(OpenApiDocument swaggerDoc, DocumentFilterContext context)
         {
-            var schemas = context.SchemaRepository.Schemas;
-            
+            if (includedEntities.Count == 0 && excludedEntities.Count == 0)
+            {
+                return; // No entities to filter, skip processing
+            }
+
+            var schemas = context.SchemaRepository.Schemas;            
+
             // First pass: identify and remove excluded schemas
             var excludeSchemas = schemas.Where(s => SchemaNeedsToBeExcluded(s.Key.ToString().ToLower())).Select(s => s.Key).ToList();
             foreach (var schemaKey in excludeSchemas)

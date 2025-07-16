@@ -245,6 +245,7 @@ public class Program
         var elasticConfig = builder.Configuration.GetSection("Elastic").Get<ElasticConfig>();
 
         var loggerConfiguration = new LoggerConfiguration()
+            .ReadFrom.Configuration(builder.Configuration)
             .Enrich.FromLogContext()
             .Enrich.WithExceptionDetails()
             .WriteTo.Console();
