@@ -66,10 +66,20 @@ public class PostgresNotificationService : IHostedService, IDisposable
 
     public void Dispose()
     {
-        StopAsync(CancellationToken.None).Wait();
-        cancellationTokenSource?.Dispose();
-        notificationConnection?.Dispose();
-        pollingTimer?.Dispose();
+        try
+        {
+            StopAsync(CancellationToken.None).Wait();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error during disposal");
+        }
+        finally
+        {
+            cancellationTokenSource?.Dispose();
+            notificationConnection?.Dispose();
+            pollingTimer?.Dispose();
+        }
     }
 
     /// <summary>
@@ -141,6 +151,22 @@ public class PostgresNotificationService : IHostedService, IDisposable
                     .MaxAsync(cl => (int?)cl.Id, cancellationTokenSource!.Token) ?? 0;
             }
 
+            // Ensure any existing connection is properly closed
+            if (notificationConnection != null)
+            {
+                try
+                {
+                    await notificationConnection.CloseAsync();
+                    notificationConnection.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Error closing existing notification connection");
+                }
+
+                notificationConnection = null;
+            }
+
             // Setup PostgreSQL NOTIFY listener
             var connectionString = configuration.GetConnectionString("DefaultConnection") ?? 
                                    BuildConnectionString();
@@ -201,18 +227,34 @@ public class PostgresNotificationService : IHostedService, IDisposable
             {
                 try
                 {
-                    using var cmd = new NpgsqlCommand("UNLISTEN entity_changes", notificationConnection);
-                    await cmd.ExecuteNonQueryAsync();
+                    // Unlisten from both channels
+                    using var cmd1 = new NpgsqlCommand("UNLISTEN entity_changes", notificationConnection);
+                    await cmd1.ExecuteNonQueryAsync();
+                    
+                    using var cmd2 = new NpgsqlCommand("UNLISTEN draft_changes", notificationConnection);
+                    await cmd2.ExecuteNonQueryAsync();
+                    
+                    logger.LogInformation("Successfully executed UNLISTEN commands for both entity_changes and draft_changes");
                 }
                 catch (Exception ex)
                 {
-                    logger.LogWarning(ex, "Error sending UNLISTEN command");
+                    logger.LogWarning(ex, "Error sending UNLISTEN commands");
                 }
 
-                notificationConnection.Notification -= OnNotificationReceived;
-                await notificationConnection.CloseAsync();
-                notificationConnection.Dispose();
-                notificationConnection = null;
+                try
+                {
+                    notificationConnection.Notification -= OnNotificationReceived;
+                    await notificationConnection.CloseAsync();
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Error closing notification connection");
+                }
+                finally
+                {
+                    notificationConnection.Dispose();
+                    notificationConnection = null;
+                }
             }
 
             if (listeningTask != null)
@@ -238,9 +280,25 @@ public class PostgresNotificationService : IHostedService, IDisposable
         {
             while (isListening && !cancellationTokenSource!.Token.IsCancellationRequested)
             {
-                if (notificationConnection != null)
+                if (notificationConnection != null && notificationConnection.State == System.Data.ConnectionState.Open)
                 {
                     await notificationConnection.WaitAsync(cancellationTokenSource.Token);
+                }
+                else
+                {
+                    // Connection is closed or null, wait a bit before retrying
+                    logger.LogWarning("PostgreSQL notification connection is not available, waiting before retry");
+                    await Task.Delay(5000, cancellationTokenSource.Token);
+                    
+                    // Try to restart listening if connection is lost
+                    if (isListening)
+                    {
+                        logger.LogInformation("Attempting to restart PostgreSQL listening due to connection loss");
+                        await StopListening();
+                        await StartListening();
+                    }
+
+                    break; // Exit the loop to let the new listening task take over
                 }
             }
         }
@@ -250,7 +308,22 @@ public class PostgresNotificationService : IHostedService, IDisposable
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error in PostgreSQL notification listening");
+            logger.LogError(ex, "Error in PostgreSQL notification listening, will attempt restart");
+            
+            // Try to restart listening on error
+            if (isListening && cancellationTokenSource != null && !cancellationTokenSource.Token.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(5000, cancellationTokenSource.Token);
+                    await StopListening();
+                    await StartListening();
+                }
+                catch (Exception restartEx)
+                {
+                    logger.LogError(restartEx, "Failed to restart PostgreSQL listening after error");
+                }
+            }
         }
     }
 
