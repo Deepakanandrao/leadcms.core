@@ -62,6 +62,29 @@ namespace LeadCMS.Infrastructure
             return new QueryResult<T>(records, totalCount, "DB");
         }
 
+        private static bool CanTranslateToString(Type propertyType)
+        {
+            // Only allow types that Entity Framework can successfully translate ToString() calls for
+            var underlyingType = Nullable.GetUnderlyingType(propertyType);
+            var typeToCheck = underlyingType ?? propertyType;
+            
+            // Allowed types that EF can translate
+            return typeToCheck == typeof(int) ||
+                   typeToCheck == typeof(long) ||
+                   typeToCheck == typeof(short) ||
+                   typeToCheck == typeof(byte) ||
+                   typeToCheck == typeof(sbyte) ||
+                   typeToCheck == typeof(uint) ||
+                   typeToCheck == typeof(ulong) ||
+                   typeToCheck == typeof(ushort) ||
+                   typeToCheck == typeof(float) ||
+                   typeToCheck == typeof(double) ||
+                   typeToCheck == typeof(decimal) ||
+                   typeToCheck == typeof(bool) ||
+                   typeToCheck == typeof(char) ||
+                   typeToCheck == typeof(Guid);
+        }
+
         private void AddIncludeCommands()
         {
             foreach (var data in queryBuilder.IncludeData)
@@ -159,8 +182,24 @@ namespace LeadCMS.Infrastructure
                         }
                         else
                         {
-                            // For other types (numbers, dates, etc.), convert to string but only for supported types
-                            try
+                            // Skip types that Entity Framework cannot translate to SQL
+                            var underlyingType = Nullable.GetUnderlyingType(prop.PropertyType);
+                            var typeToCheck = underlyingType ?? prop.PropertyType;
+                            
+                            // Skip enums (including nullable enums) as EF cannot translate enum.ToString()
+                            if (typeToCheck.IsEnum)
+                            {
+                                continue;
+                            }
+                            
+                            // Skip complex types like Dictionary, custom classes, etc.
+                            if (!typeToCheck.IsPrimitive && typeToCheck != typeof(DateTime) && typeToCheck != typeof(decimal) && typeToCheck != typeof(Guid))
+                            {
+                                continue;
+                            }
+                            
+                            // For supported primitive types and DateTime, convert to string
+                            if (CanTranslateToString(prop.PropertyType))
                             {
                                 var toStringMethod = prop.PropertyType.GetMethod("ToString", new Type[0]);
                                 if (toStringMethod != null)
@@ -173,9 +212,8 @@ namespace LeadCMS.Infrastructure
                                     continue;
                                 }
                             }
-                            catch
+                            else
                             {
-                                // Skip properties that can't be converted to string
                                 continue;
                             }
                         }
