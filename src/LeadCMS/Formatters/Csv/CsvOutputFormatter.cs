@@ -4,6 +4,7 @@
 
 using System.Collections;
 using System.Globalization;
+using System.Reflection;
 using System.Text;
 using CsvHelper;
 using CsvHelper.Configuration;
@@ -29,10 +30,15 @@ public class CsvOutputFormatter : OutputFormatter
 
         var type = context.Object!.GetType();
         Type itemType;
+        bool isDynamicCollection = false;
 
         if (type.GetGenericArguments().Length > 0)
         {
             itemType = type.GetGenericArguments()[0];
+            if (itemType == typeof(object))
+            {
+                isDynamicCollection = true;
+            }
         }
         else
         {
@@ -40,13 +46,19 @@ public class CsvOutputFormatter : OutputFormatter
         }
 
         var streamWriter = new StreamWriter(response.Body, Encoding.Default);
-
-        await using (var csv = new CsvWriter(streamWriter, CultureInfo.InvariantCulture))
+        if (isDynamicCollection && context.Object is IEnumerable collection)
         {
-            csv.Context.TypeConverterCache.AddConverter<DateTime>(new JsonStyleDateTimeConverter());
-            csv.Context.RegisterCamelCaseClassMap(itemType!);
+            await WriteDynamicCollectionAsync(streamWriter, collection);
+        }
+        else
+        {
+            await using (var csv = new CsvWriter(streamWriter, CultureInfo.InvariantCulture))
+            {
+                csv.Context.TypeConverterCache.AddConverter<DateTime>(new JsonStyleDateTimeConverter());
+                csv.Context.RegisterCamelCaseClassMap(itemType!);
 
-            await csv.WriteRecordsAsync(context.Object as IEnumerable);
+                await csv.WriteRecordsAsync(context.Object as IEnumerable);
+            }
         }
     }
 
@@ -63,6 +75,61 @@ public class CsvOutputFormatter : OutputFormatter
     private bool IsTypeOfIEnumerable(Type type)
     {
         return typeof(IEnumerable).IsAssignableFrom(type);
+    }
+
+    private async Task WriteDynamicCollectionAsync(StreamWriter writer, IEnumerable collection)
+    {
+        await using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
+        csv.Context.TypeConverterCache.AddConverter<DateTime>(new JsonStyleDateTimeConverter());
+
+        var enumerator = collection.GetEnumerator();
+        if (!enumerator.MoveNext())
+        {
+            return;
+        }
+
+        var firstItem = enumerator.Current;
+        if (firstItem == null)
+        {
+            return;
+        }
+
+        var properties = firstItem.GetType().GetProperties();
+
+        foreach (var prop in properties)
+        {
+            csv.WriteField(prop.Name);
+        }
+
+        await csv.NextRecordAsync();
+        WriteObjectRow(csv, firstItem, properties);
+        await csv.NextRecordAsync();
+
+        while (enumerator.MoveNext())
+        {
+            var item = enumerator.Current;
+            if (item != null)
+            {
+                WriteObjectRow(csv, item, properties);
+                await csv.NextRecordAsync();
+            }
+        }
+    }
+
+    private void WriteObjectRow(CsvWriter csv, object item, PropertyInfo[] properties)
+    {
+        foreach (var prop in properties)
+        {
+            try
+            {
+                object? value = prop.GetValue(item);
+                csv.WriteField(value);
+            }
+            catch
+            {
+                csv.WriteField(null);
+            }
+        }
     }
 }
 

@@ -25,6 +25,7 @@ namespace LeadCMS.Infrastructure
             WhereData = ParseWhereCommands(commands);
             OrderData = ParseOrderCommands(commands);
             SelectData = ParseSelectCommands(commands);
+            Ids = ParseIdsCommands(commands);
         }
 
         public int Limit { get; set; } = 0;
@@ -40,6 +41,8 @@ namespace LeadCMS.Infrastructure
         public List<PropertyInfo> IncludeData { get; set; }
 
         public SelectCommandData SelectData { get; set; }
+
+        public List<int> Ids { get; private set; }
 
         private static PropertyInfo ParseProperty(string? propertyName, QueryCommand cmd)
         {
@@ -266,6 +269,21 @@ namespace LeadCMS.Infrastructure
             }
 
             return result;
+        }
+
+        private List<int> ParseIdsCommands(List<QueryCommand> commands)
+        {
+            var cmd = commands.FirstOrDefault(c => c.Type == FilterType.Ids);
+            if (cmd == null || string.IsNullOrWhiteSpace(cmd.Value))
+            {
+                return new List<int>();
+            }
+
+            return cmd.Value.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(id => int.TryParse(id, out var val) ? val : (int?)null)
+                .Where(id => id.HasValue)
+                .Select(id => id!.Value)
+                .ToList();
         }
 
         public sealed class SelectCommandData

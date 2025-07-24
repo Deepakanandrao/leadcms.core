@@ -128,6 +128,18 @@ namespace LeadCMS.Controllers
             var result = await qp.GetResult();
             Response.Headers.Append(ResponseHeaderNames.TotalCount, result.TotalCount.ToString());
             Response.Headers.Append(ResponseHeaderNames.AccessControlExposeHeader, ResponseHeaderNames.TotalCount);
+
+            if (result.DynamicResults != null)
+            {
+                var dynamicList = new List<object>();
+                foreach (var item in result.DynamicResults)
+                {
+                    dynamicList.Add(item);
+                }
+
+                return Ok(dynamicList);
+            }
+
             if (!string.IsNullOrEmpty(result.ServedFrom))
             {
                 Response.Headers.Append(ResponseHeaderNames.ServedFrom, result.ServedFrom);

@@ -14,6 +14,7 @@ namespace LeadCMS.Infrastructure
         Search = 5,
         Include = 6,
         None = 7,
+        Ids = 8,
     }
 
     public enum WOperand
@@ -41,6 +42,7 @@ namespace LeadCMS.Infrastructure
             { "skip", FilterType.Skip },
             { "where", FilterType.Where },
             { "include", FilterType.Include },
+            { "ids", FilterType.Ids },
         };
 
         public static Dictionary<string, WOperand> OperandMappings { get; } = new Dictionary<string, WOperand>()
