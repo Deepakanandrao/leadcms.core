@@ -106,7 +106,7 @@ public class MediaTests : BaseTestAutoLogin
 
         var testMedia = (TestMedia)payload!;
         var content = new MultipartFormDataContent();
-        content.Add(new StreamContent(testMedia.DataBuffer), "Image", testMedia.Image!.Name);
+        content.Add(new StreamContent(testMedia.DataBuffer), "File", testMedia.File!.Name);
         content.Add(new StringContent(testMedia.ScopeUid), "ScopeUid");
 
         request.Content = content;

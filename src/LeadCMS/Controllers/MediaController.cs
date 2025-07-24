@@ -34,16 +34,16 @@ public class MediaController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult> Post([FromForm] ImageCreateDto imageCreateDto)
+    public async Task<ActionResult> Post([FromForm] MediaCreateDto imageCreateDto)
     {
-        var incomingFileName = imageCreateDto.Image!.FileName.ToTranslit().Slugify();
-        var incomingFileExtension = Path.GetExtension(imageCreateDto.Image!.FileName);
-        var incomingFileSize = imageCreateDto.Image!.Length; // bytes
+        var incomingFileName = imageCreateDto.File!.FileName.ToTranslit().Slugify();
+        var incomingFileExtension = Path.GetExtension(imageCreateDto.File!.FileName);
+        var incomingFileSize = imageCreateDto.File!.Length; // bytes
         var incomingFileMimeType = ContentTypeHelper.GetMimeTypeOrThrow(incomingFileName, ModelState);
 
-        using var fileStream = imageCreateDto.Image.OpenReadStream();
+        using var fileStream = imageCreateDto.File.OpenReadStream();
         var imageInBytes = new byte[incomingFileSize];
-        fileStream.Read(imageInBytes, 0, (int)imageCreateDto.Image.Length);
+        fileStream.Read(imageInBytes, 0, (int)imageCreateDto.File.Length);
 
         var scopeAndFileExists = from i in pgDbContext!.Media!
                                  where i.ScopeUid == imageCreateDto.ScopeUid.Trim() && i.Name == incomingFileName
@@ -309,5 +309,69 @@ public class MediaController : ControllerBase
             var resultList = folderDtos.Concat(fileDtos).ToList();
             return Ok(resultList);
         }
+    }
+
+    [HttpPatch]
+    [ProducesResponseType(typeof(MediaDetailsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<MediaDetailsDto>> Patch([FromForm] MediaUpdateDto mediaUpdateDto)
+    {
+        // Find existing media record by scope UID and file name
+        var existingMedia = await pgDbContext.Media!.FirstOrDefaultAsync(m => 
+            m.ScopeUid == mediaUpdateDto.ScopeUid.Trim() && m.Name == mediaUpdateDto.FileName.Trim());
+        
+        if (existingMedia == null)
+        {
+            throw new EntityNotFoundException(nameof(Media), $"{mediaUpdateDto.ScopeUid}/{mediaUpdateDto.FileName}");
+        }
+
+        // Validate that the new file has the same extension as the existing one
+        var incomingFileExtension = Path.GetExtension(mediaUpdateDto.File!.FileName);
+        if (!string.Equals(existingMedia.Extension, incomingFileExtension, StringComparison.OrdinalIgnoreCase))
+        {
+            ModelState.AddModelError("File", $"File extension must match the existing media extension '{existingMedia.Extension}'.");
+            throw new InvalidModelStateException(ModelState);
+        }
+
+        // Process the new file content
+        var incomingFileSize = mediaUpdateDto.File!.Length;
+        var incomingFileMimeType = ContentTypeHelper.GetMimeTypeOrThrow(existingMedia.Name, ModelState);
+
+        using var fileStream = mediaUpdateDto.File.OpenReadStream();
+        var imageInBytes = new byte[incomingFileSize];
+        await fileStream.ReadAsync(imageInBytes, 0, (int)mediaUpdateDto.File.Length);
+
+        // Update only the binary content and size, preserve other properties (ScopeUid, Name, Extension)
+        existingMedia.Data = imageInBytes;
+        existingMedia.Size = incomingFileSize;
+        existingMedia.MimeType = incomingFileMimeType;
+
+        pgDbContext.Media!.Update(existingMedia);
+        await pgDbContext.SaveChangesAsync();
+
+        Log.Information(
+            "Updated media '{ScopeUid}/{FileName}' (ID: {Id}), preserving ScopeUid, Name, and Extension",
+            existingMedia.ScopeUid,
+            existingMedia.Name,
+            existingMedia.Id);
+
+        // Return the updated media details
+        var updatedMediaDto = new MediaDetailsDto
+        {
+            Id = existingMedia.Id,
+            ScopeUid = existingMedia.ScopeUid,
+            Name = existingMedia.Name,
+            Size = existingMedia.Size,
+            Extension = existingMedia.Extension,
+            MimeType = existingMedia.MimeType,
+            CreatedAt = existingMedia.CreatedAt,
+            UpdatedAt = existingMedia.UpdatedAt,
+            Location = Path.Combine("/api/media", existingMedia.ScopeUid, existingMedia.Name).Replace("\\", "/"),
+        };
+
+        return Ok(updatedMediaDto);
     }
 }

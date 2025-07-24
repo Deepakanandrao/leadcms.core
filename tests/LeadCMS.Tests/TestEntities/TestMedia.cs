@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.StaticFiles;
 
 namespace LeadCMS.Tests.TestEntities
 {
-    public class TestMedia : ImageCreateDto
+    public class TestMedia : MediaCreateDto
     {
         public static string Scope = "test-scope-ui";
 
@@ -22,7 +22,7 @@ namespace LeadCMS.Tests.TestEntities
 
             new FileExtensionContentTypeProvider().TryGetContentType(fileName, out var contentType);
 
-            Image = new FormFile(DataBuffer, 0, DataBuffer.Length, fileName, fileName)
+            File = new FormFile(DataBuffer, 0, DataBuffer.Length, fileName, fileName)
             {
                 Headers = new HeaderDictionary(),
                 ContentType = contentType!,
