@@ -109,9 +109,40 @@ public class MediaController : ControllerBase
 
         var uploadedImageData = await pgDbContext!.Media!.FirstOrDefaultAsync(e => e.ScopeUid == scope && e.Name == fname);
 
-        return uploadedImageData == null
-            ? throw new EntityNotFoundException(nameof(Media), pathToFile)
-            : (ActionResult)File(uploadedImageData!.Data, uploadedImageData.MimeType, fname);
+        if (uploadedImageData == null)
+        {
+            throw new EntityNotFoundException(nameof(Media), pathToFile);
+        }
+
+        // Compute ETag (using file size and updatedAt/createdAt)
+        DateTime lastModified = uploadedImageData.UpdatedAt ?? uploadedImageData.CreatedAt;
+        string etag = $"\"{uploadedImageData.Size}-{lastModified.ToUniversalTime().Ticks}\"";
+        string lastModifiedString = lastModified.ToUniversalTime().ToString("R"); // RFC1123
+
+        // Set ETag and Last-Modified headers
+        Response.Headers["ETag"] = etag;
+        Response.Headers["Last-Modified"] = lastModifiedString;
+
+        // Check If-None-Match and If-Modified-Since
+        var ifNoneMatch = Request.Headers["If-None-Match"].FirstOrDefault();
+        var ifModifiedSince = Request.Headers["If-Modified-Since"].FirstOrDefault();
+
+        if ((!string.IsNullOrEmpty(ifNoneMatch) && ifNoneMatch == etag) ||
+            (!string.IsNullOrEmpty(ifModifiedSince) &&
+                DateTime.TryParse(ifModifiedSince, out var since) &&
+                lastModified.ToUniversalTime() <= since.ToUniversalTime().AddSeconds(1)))
+        {
+            return StatusCode(StatusCodes.Status304NotModified);
+        }
+
+        // For images, return FileStreamResult with no filename so Content-Disposition is not set
+        if (uploadedImageData.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return new FileContentResult(uploadedImageData.Data, uploadedImageData.MimeType);
+        }
+        
+        // For other types, keep default (attachment)
+        return File(uploadedImageData.Data, uploadedImageData.MimeType, fname);
     }
 
     [HttpDelete]

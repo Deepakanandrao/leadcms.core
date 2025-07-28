@@ -26,6 +26,7 @@ FROM base AS final
 RUN apk add --no-cache icu-libs
 RUN apk add --no-cache icu-data-full
 ENV ASPNETCORE_URLS=http://+:80
+ENV ASPNETCORE_FORWARDEDHEADERS_ENABLED=true
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 WORKDIR /app
 COPY --from=publish /app/publish .
