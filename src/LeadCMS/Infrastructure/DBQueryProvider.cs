@@ -106,7 +106,39 @@ namespace LeadCMS.Infrastructure
                 {
                     var expressionParameter = Expression.Parameter(typeof(T));
                     var orderPropertyType = orderCmd.Property.PropertyType;
-                    var orderPropertyExpression = Expression.Property(expressionParameter, orderCmd.Property.Name);
+                    Expression orderPropertyExpression;
+
+                    // Special handling for updatedAt: use coalesce(updatedAt, createdAt)
+                    if (string.Equals(orderCmd.Property.Name, "UpdatedAt", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var updatedAtProp = typeof(T).GetProperty("UpdatedAt");
+                        var createdAtProp = typeof(T).GetProperty("CreatedAt");
+                        if (updatedAtProp != null && createdAtProp != null)
+                        {
+                            var updatedAtExpr = Expression.Property(expressionParameter, updatedAtProp);
+                            var createdAtExpr = Expression.Property(expressionParameter, createdAtProp);
+                            // Ensure both are nullable for coalesce
+                            Expression updatedAtNullable = updatedAtExpr.Type == typeof(DateTime)
+                                ? Expression.Convert(updatedAtExpr, typeof(DateTime?))
+                                : updatedAtExpr;
+                            Expression createdAtNullable = createdAtExpr.Type == typeof(DateTime)
+                                ? Expression.Convert(createdAtExpr, typeof(DateTime?))
+                                : createdAtExpr;
+                            // Coalesce: updatedAt ?? createdAt
+                            orderPropertyExpression = Expression.Coalesce(updatedAtNullable, createdAtNullable);
+                            orderPropertyType = typeof(DateTime?);
+                        }
+                        else
+                        {
+                            // Fallback to original property if not found
+                            orderPropertyExpression = Expression.Property(expressionParameter, orderCmd.Property.Name);
+                        }
+                    }
+                    else
+                    {
+                        orderPropertyExpression = Expression.Property(expressionParameter, orderCmd.Property.Name);
+                    }
+
                     var orderDelegateType = typeof(Func<,>).MakeGenericType(typeof(T), orderPropertyType);
                     var orderLambda = Expression.Lambda(orderDelegateType, orderPropertyExpression, expressionParameter);
                     var methodName = string.Empty;
@@ -123,9 +155,9 @@ namespace LeadCMS.Infrastructure
                     moreThanOne = true;
 
                     var orderMethod = typeof(Queryable).GetMethods().First(
-                                                                        m => m.Name == methodName &&
-                                                                        m.GetGenericArguments().Length == 2 &&
-                                                                        m.GetParameters().Length == 2).MakeGenericMethod(typeof(T), orderPropertyType);
+                        m => m.Name == methodName &&
+                        m.GetGenericArguments().Length == 2 &&
+                        m.GetParameters().Length == 2).MakeGenericMethod(typeof(T), orderPropertyType);
                     BuiltQuery = (IOrderedQueryable<T>)orderMethod.Invoke(null, new object?[] { BuiltQuery, orderLambda })!;
                 }
             }
