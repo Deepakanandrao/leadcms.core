@@ -6,7 +6,6 @@ using System.Reflection;
 using AutoMapper;
 using LeadCMS.Data;
 using LeadCMS.DataAnnotations;
-using LeadCMS.Entities;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -23,11 +22,12 @@ public class PostgresNotificationService : IHostedService, IDisposable
     private readonly IConfiguration configuration;
     private readonly IMapper mapper;
     private readonly HashSet<Type> supportedTypes;
-    
+
     private NpgsqlConnection? notificationConnection;
     private Task? listeningTask;
     private Timer? pollingTimer;
     private CancellationTokenSource? cancellationTokenSource;
+    private CancellationTokenSource? listeningCancellationTokenSource;
     private bool isListening = false;
     private int lastPolledChangeLogId = 0;
 
@@ -49,10 +49,10 @@ public class PostgresNotificationService : IHostedService, IDisposable
     public Task StartAsync(CancellationToken cancellationToken)
     {
         cancellationTokenSource = new CancellationTokenSource();
-        
+
         // Start monitoring client connections
         _ = Task.Run(MonitorClientConnections, cancellationToken);
-        
+
         logger.LogInformation("PostgresNotificationService started");
         return Task.CompletedTask;
     }
@@ -77,6 +77,7 @@ public class PostgresNotificationService : IHostedService, IDisposable
         finally
         {
             cancellationTokenSource?.Dispose();
+            listeningCancellationTokenSource?.Dispose();
             notificationConnection?.Dispose();
             pollingTimer?.Dispose();
         }
@@ -92,7 +93,7 @@ public class PostgresNotificationService : IHostedService, IDisposable
             try
             {
                 var clientCount = clientManager.ConnectedClientCount;
-                
+
                 if (clientCount > 0 && !isListening)
                 {
                     // First client connected - start listening
@@ -136,7 +137,7 @@ public class PostgresNotificationService : IHostedService, IDisposable
             // This determines what changes we need to poll for
             using var scope = serviceProvider.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<PgDbContext>();
-            
+
             var minClientLastId = clientManager.GetMinimumLastChangeLogId();
             if (minClientLastId.HasValue)
             {
@@ -168,9 +169,9 @@ public class PostgresNotificationService : IHostedService, IDisposable
             }
 
             // Setup PostgreSQL NOTIFY listener
-            var connectionString = configuration.GetConnectionString("DefaultConnection") ?? 
+            var connectionString = configuration.GetConnectionString("DefaultConnection") ??
                                    BuildConnectionString();
-            
+
             notificationConnection = new NpgsqlConnection(connectionString);
             await notificationConnection.OpenAsync(cancellationTokenSource!.Token);
 
@@ -188,8 +189,11 @@ public class PostgresNotificationService : IHostedService, IDisposable
 
             logger.LogInformation("Successfully executed LISTEN entity_changes and draft_changes commands");
 
-            // Start background listening task
-            listeningTask = Task.Run(ListenForNotifications, cancellationTokenSource.Token);
+            // Create separate cancellation token for listening task
+            listeningCancellationTokenSource = new CancellationTokenSource();
+
+            // Start background listening task with separate cancellation token
+            listeningTask = Task.Run(() => ListenForNotifications(listeningCancellationTokenSource.Token), cancellationTokenSource.Token);
 
             // Start polling timer as Plan B (every 5 seconds)
             pollingTimer = new Timer(async _ => await PollForChanges(), null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
@@ -222,7 +226,30 @@ public class PostgresNotificationService : IHostedService, IDisposable
             pollingTimer?.Dispose();
             pollingTimer = null;
 
-            // Stop listening task
+            // Cancel the listening task (cancels WaitAsync)
+            if (listeningCancellationTokenSource != null && !listeningCancellationTokenSource.IsCancellationRequested)
+            {
+                listeningCancellationTokenSource.Cancel();
+            }
+
+            // Wait for listening task to finish
+            if (listeningTask != null)
+            {
+                try
+                {
+                    await listeningTask;
+                }
+                catch
+                {
+                    /* ignore */
+                }
+                finally
+                {
+                    listeningTask = null;
+                }
+            }
+            
+            // Now it is safe to execute commands and close the connection
             if (notificationConnection != null)
             {
                 try
@@ -230,10 +257,10 @@ public class PostgresNotificationService : IHostedService, IDisposable
                     // Unlisten from both channels
                     using var cmd1 = new NpgsqlCommand("UNLISTEN entity_changes", notificationConnection);
                     await cmd1.ExecuteNonQueryAsync();
-                    
+
                     using var cmd2 = new NpgsqlCommand("UNLISTEN draft_changes", notificationConnection);
                     await cmd2.ExecuteNonQueryAsync();
-                    
+
                     logger.LogInformation("Successfully executed UNLISTEN commands for both entity_changes and draft_changes");
                 }
                 catch (Exception ex)
@@ -257,11 +284,9 @@ public class PostgresNotificationService : IHostedService, IDisposable
                 }
             }
 
-            if (listeningTask != null)
-            {
-                await listeningTask;
-                listeningTask = null;
-            }
+            // Dispose of the listening cancellation token source
+            listeningCancellationTokenSource?.Dispose();
+            listeningCancellationTokenSource = null;
 
             logger.LogInformation("Stopped PostgreSQL LISTEN and polling");
         }
@@ -274,22 +299,22 @@ public class PostgresNotificationService : IHostedService, IDisposable
     /// <summary>
     /// Background task that waits for PostgreSQL notifications.
     /// </summary>
-    private async Task ListenForNotifications()
+    private async Task ListenForNotifications(CancellationToken cancellationToken)
     {
         try
         {
-            while (isListening && !cancellationTokenSource!.Token.IsCancellationRequested)
+            while (isListening && !cancellationToken.IsCancellationRequested)
             {
                 if (notificationConnection != null && notificationConnection.State == System.Data.ConnectionState.Open)
                 {
-                    await notificationConnection.WaitAsync(cancellationTokenSource.Token);
+                    await notificationConnection.WaitAsync(cancellationToken);
                 }
                 else
                 {
                     // Connection is closed or null, wait a bit before retrying
                     logger.LogWarning("PostgreSQL notification connection is not available, waiting before retry");
-                    await Task.Delay(5000, cancellationTokenSource.Token);
-                    
+                    await Task.Delay(5000, cancellationToken);
+
                     // Try to restart listening if connection is lost
                     if (isListening)
                     {
@@ -315,7 +340,7 @@ public class PostgresNotificationService : IHostedService, IDisposable
             {
                 try
                 {
-                    await Task.Delay(5000, cancellationTokenSource.Token);
+                    await Task.Delay(5000, cancellationToken);
                     await StopListening();
                     await StartListening();
                 }
@@ -408,11 +433,11 @@ public class PostgresNotificationService : IHostedService, IDisposable
                         draft.Data);
 
                     var thisDraftAt = draft.UpdatedAt ?? draft.CreatedAt;
-                    
+
                     if (maxSent == null || thisDraftAt > maxSent)
                     {
                         maxSent = thisDraftAt;
-                    }                        
+                    }
                 }
 
                 if (maxSent != null)
@@ -514,7 +539,7 @@ public class PostgresNotificationService : IHostedService, IDisposable
                         if (maxSent == null || change.Id > maxSent)
                         {
                             maxSent = change.Id;
-                        }                            
+                        }
                     }
                 }
 
@@ -542,7 +567,7 @@ public class PostgresNotificationService : IHostedService, IDisposable
             // Find the entity type
             var assembly = typeof(PgDbContext).Assembly; // Use the correct assembly
             var type = assembly.GetTypes().FirstOrDefault(t => t.Name == entityType);
-            
+
             if (type == null)
             {
                 logger.LogWarning("Entity type {EntityType} not found", entityType);
@@ -602,7 +627,7 @@ public class PostgresNotificationService : IHostedService, IDisposable
             foreach (var entity in entities)
             {
                 var idValue = (int)entity.GetType().GetProperty("Id")!.GetValue(entity)!;
-                
+
                 try
                 {
                     if (detailsDtoType != null)
