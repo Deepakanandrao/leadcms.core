@@ -3,9 +3,9 @@
 // </copyright>
 
 using System.Text;
+using System.Text.Json;
 using LeadCMS.Plugin.Sms.Configuration;
 using LeadCMS.Plugin.Sms.Exceptions;
-using Newtonsoft.Json;
 
 namespace LeadCMS.Plugin.Sms.Services;
 
@@ -21,7 +21,7 @@ public class SmscService : ISmsService
     public async Task SendAsync(string recipient, string message)
     {
         var responseString = string.Empty;
-        var data = JsonConvert.SerializeObject(new
+        var data = JsonSerializer.Serialize(new
         {
             login = smscConfig.Login,
             psw = smscConfig.Password,
@@ -38,10 +38,10 @@ public class SmscService : ISmsService
             responseString = await response.Content.ReadAsStringAsync();
         }
 
-        dynamic? jsonResponseObject = JsonConvert.DeserializeObject(responseString);
-        if (jsonResponseObject != null && jsonResponseObject!["error"] != null)
+        using var jsonDocument = JsonDocument.Parse(responseString);
+        if (jsonDocument.RootElement.TryGetProperty("error", out var errorElement))
         {
-            throw new SmscException($"Failed to send message to {recipient} ( {jsonResponseObject!["error"]} )");
+            throw new SmscException($"Failed to send message to {recipient} ( {errorElement.GetString()} )");
         }
     }
 
