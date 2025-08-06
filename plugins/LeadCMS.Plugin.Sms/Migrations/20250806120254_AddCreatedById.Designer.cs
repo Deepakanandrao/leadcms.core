@@ -2,20 +2,23 @@
 using System;
 using System.Collections.Generic;
 using LeadCMS.Entities;
-using LeadCMS.Plugin.SendGrid.Data;
+using LeadCMS.Plugin.Sms.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace LeadCMS.Plugin.SendGrid.Migrations
+namespace LeadCMS.Plugin.Sms.Migrations
 {
-    [DbContext(typeof(SendgridDbContext))]
-    partial class SendgridDbContextModelSnapshot : ModelSnapshot
+    [DbContext(typeof(SmsDbContext))]
+    [Migration("20250806120254_SyncWithCore_1_61")]
+    partial class AddCreatedById
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2562,7 +2565,7 @@ namespace LeadCMS.Plugin.SendGrid.Migrations
                         });
                 });
 
-            modelBuilder.Entity("LeadCMS.Plugin.SendGrid.Entities.SendgridEvent", b =>
+            modelBuilder.Entity("LeadCMS.Plugin.Sms.Entities.SmsLog", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -2571,44 +2574,49 @@ namespace LeadCMS.Plugin.SendGrid.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("ContactId")
-                        .HasColumnType("integer")
-                        .HasColumnName("contact_id");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<string>("Event")
+                    b.Property<string>("CreatedById")
+                        .HasColumnType("text")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<string>("CreatedByIp")
+                        .HasColumnType("text")
+                        .HasColumnName("created_by_ip");
+
+                    b.Property<string>("CreatedByUserAgent")
+                        .HasColumnType("text")
+                        .HasColumnName("created_by_user_agent");
+
+                    b.Property<string>("Message")
                         .IsRequired()
                         .HasColumnType("text")
-                        .HasColumnName("event");
+                        .HasColumnName("message");
 
-                    b.Property<string>("EventId")
-                        .HasColumnType("text")
-                        .HasColumnName("event_id");
-
-                    b.Property<string>("MessageId")
+                    b.Property<string>("Recipient")
                         .IsRequired()
                         .HasColumnType("text")
-                        .HasColumnName("message_id");
+                        .HasColumnName("recipient");
 
-                    b.Property<string>("Reason")
+                    b.Property<string>("Sender")
                         .IsRequired()
                         .HasColumnType("text")
-                        .HasColumnName("reason");
+                        .HasColumnName("sender");
 
                     b.Property<string>("Source")
                         .HasColumnType("text")
                         .HasColumnName("source");
 
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
                     b.HasKey("Id")
-                        .HasName("pk_sendgrid_event");
+                        .HasName("pk_sms_log");
 
-                    b.HasIndex("ContactId")
-                        .HasDatabaseName("ix_sendgrid_event_contact_id");
-
-                    b.ToTable("sendgrid_event", (string)null);
+                    b.ToTable("sms_log", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -3053,18 +3061,6 @@ namespace LeadCMS.Plugin.SendGrid.Migrations
                         .WithMany()
                         .HasForeignKey("ContactId")
                         .HasConstraintName("fk_unsubscribe_contact_contact_id");
-
-                    b.Navigation("Contact");
-                });
-
-            modelBuilder.Entity("LeadCMS.Plugin.SendGrid.Entities.SendgridEvent", b =>
-                {
-                    b.HasOne("LeadCMS.Entities.Contact", "Contact")
-                        .WithMany()
-                        .HasForeignKey("ContactId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_sendgrid_event_contact_contact_id");
 
                     b.Navigation("Contact");
                 });
