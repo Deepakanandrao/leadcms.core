@@ -114,6 +114,10 @@ public class ConfigController : ControllerBase
         
         var settings = await settingService.GetSettingsByKeysAsync(hardcodedSettingKeys, userId);
 
+        // Get DefaultLanguage from ApiSettings section
+        var apiSettingsSection = configuration.GetSection("ApiSettings");
+        var defaultLanguage = apiSettingsSection["DefaultLanguage"] ?? "en-US";
+
         var configDto = new ConfigDto
         {
             Auth = new AuthConfigDto
@@ -124,6 +128,7 @@ public class ConfigController : ControllerBase
             Entities = availableEntities,
             Languages = languages,
             Settings = settings,
+            DefaultLanguage = defaultLanguage,
         };
 
         return Ok(configDto);
@@ -139,6 +144,8 @@ public class ConfigDto
     public List<LanguageDto> Languages { get; set; } = new List<LanguageDto>();
 
     public Dictionary<string, string> Settings { get; set; } = new Dictionary<string, string>();
+
+    public string DefaultLanguage { get; set; } = "en-US";
 }
 
 public class AuthConfigDto
