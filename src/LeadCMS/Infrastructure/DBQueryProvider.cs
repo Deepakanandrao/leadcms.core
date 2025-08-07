@@ -19,12 +19,12 @@ namespace LeadCMS.Infrastructure
         where T : BaseEntityWithId
     {
         private readonly QueryModelBuilder<T> queryBuilder;
-        
+
         public DBQueryProvider(IQueryable<T> query, QueryModelBuilder<T> queryBuilder)
         {
             BuiltQuery = query;
             this.queryBuilder = queryBuilder;
-        }        
+        }
 
         public IQueryable<T> BuiltQuery { get; private set; }
 
@@ -36,7 +36,7 @@ namespace LeadCMS.Infrastructure
             {
                 BuiltQuery = BuiltQuery.Where(e => queryBuilder.Ids.Contains(e.Id));
             }
-            
+
             AddWhereCommands();
             AddSearchCommands();
 
@@ -67,7 +67,7 @@ namespace LeadCMS.Infrastructure
             // Only allow types that Entity Framework can successfully translate ToString() calls for
             var underlyingType = Nullable.GetUnderlyingType(propertyType);
             var typeToCheck = underlyingType ?? propertyType;
-            
+
             // Allowed types that EF can translate
             return typeToCheck == typeof(int) ||
                    typeToCheck == typeof(long) ||
@@ -196,15 +196,16 @@ namespace LeadCMS.Infrastructure
                         var n = prop.Name;
                         var me = Expression.Property(paramExpr, n);
                         Expression containsExpression;
-                        
+
                         if (prop.PropertyType == typeof(string))
                         {
-                            containsExpression = Expression.Call(me, containsMethod!, Expression.Constant(cmdValue));
+                            var toLowerMethod = typeof(string).GetMethod("ToLower", Type.EmptyTypes);
+                            var meLower = Expression.Call(me, toLowerMethod!);
+                            var valueLower = Expression.Constant(cmdValue.ToLower());
+                            containsExpression = Expression.Call(meLower, containsMethod!, valueLower);
                         }
                         else if (prop.PropertyType == typeof(string[]))
                         {
-                            // For string arrays, use EF.Functions.JsonContains or similar array contains method
-                            // Skip array properties for now as they require special handling
                             continue;
                         }
                         else if (prop.PropertyType.IsArray)
@@ -217,19 +218,19 @@ namespace LeadCMS.Infrastructure
                             // Skip types that Entity Framework cannot translate to SQL
                             var underlyingType = Nullable.GetUnderlyingType(prop.PropertyType);
                             var typeToCheck = underlyingType ?? prop.PropertyType;
-                            
+
                             // Skip enums (including nullable enums) as EF cannot translate enum.ToString()
                             if (typeToCheck.IsEnum)
                             {
                                 continue;
                             }
-                            
+
                             // Skip complex types like Dictionary, custom classes, etc.
                             if (!typeToCheck.IsPrimitive && typeToCheck != typeof(DateTime) && typeToCheck != typeof(decimal) && typeToCheck != typeof(Guid))
                             {
                                 continue;
                             }
-                            
+
                             // For supported primitive types and DateTime, convert to string
                             if (CanTranslateToString(prop.PropertyType))
                             {
@@ -237,7 +238,9 @@ namespace LeadCMS.Infrastructure
                                 if (toStringMethod != null)
                                 {
                                     var ce = Expression.Call(me, toStringMethod);
-                                    containsExpression = Expression.Call(ce, containsMethod!, Expression.Constant(cmdValue));
+                                    var ceLower = Expression.Call(ce, typeof(string).GetMethod("ToLower", Type.EmptyTypes)!);
+                                    var valueLower = Expression.Constant(cmdValue.ToLower());
+                                    containsExpression = Expression.Call(ceLower, containsMethod!, valueLower);
                                 }
                                 else
                                 {
@@ -548,6 +551,6 @@ namespace LeadCMS.Infrastructure
             {
                 return null;
             }
-        }        
+        }
     }
 }

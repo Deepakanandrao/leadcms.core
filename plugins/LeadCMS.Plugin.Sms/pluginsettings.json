@@ -57,15 +57,13 @@
       "Gateway": "Smsc"
     }
   ],
-  "Tasks": [
-    {
-      "SyncSmsLogTask": {
-        "Enable": false,
-        "CronSchedule": "0/30 * * * * ? *",
-        "RetryCount": "2",
-        "RetryInterval": "5",
-        "BatchSize": "100"
-      }
+  "Tasks": {
+    "SyncSmsLogTask": {
+      "Enable": false,
+      "CronSchedule": "0/30 * * * * ? *",
+      "RetryCount": "2",
+      "RetryInterval": "5",
+      "BatchSize": "100"
     }
-  ]
+  }
 }

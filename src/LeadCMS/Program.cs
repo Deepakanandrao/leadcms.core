@@ -108,7 +108,7 @@ public class Program
         ConfigureEmailServices(builder);
         ConfigureTasks(builder);
         ConfigureApiSettings(builder);
-        ConfigureImportSizeLimit(builder);
+        ConfigureMaxRequestBodySize(builder);
         ConfigureEmailVerification(builder);
         ConfigureAccountDetails(builder);
         ConfigureIdentity(builder);
@@ -218,25 +218,25 @@ public class Program
         }
     }
 
-    private static void ConfigureImportSizeLimit(WebApplicationBuilder builder)
+    private static void ConfigureMaxRequestBodySize(WebApplicationBuilder builder)
     {
-        var maxImportSizeConfig = builder.Configuration.GetValue<string>("ApiSettings:MaxImportSize");
+        var maxRequestBodySizeConfig = builder.Configuration.GetValue<string>("ApiSettings:MaxRequestBodySize");
 
-        if (string.IsNullOrEmpty(maxImportSizeConfig))
+        if (string.IsNullOrEmpty(maxRequestBodySizeConfig))
         {
             throw new MissingConfigurationException("Import file size is mandatory.");
         }
 
-        var maxImportSize = StringHelper.GetSizeInBytesFromString(maxImportSizeConfig);
+        var maxRequestBodySize = StringHelper.GetSizeInBytesFromString(maxRequestBodySizeConfig);
 
-        if (maxImportSize is null)
+        if (maxRequestBodySize is null)
         {
-            throw new MissingConfigurationException("Max import file size is invalid.");
+            throw new MissingConfigurationException("Max request body size is invalid.");
         }
 
         builder.WebHost.UseKestrel(options =>
         {
-            options.Limits.MaxRequestBodySize = maxImportSize;
+            options.Limits.MaxRequestBodySize = maxRequestBodySize;
         });
     }
 
