@@ -101,6 +101,25 @@ public class ContactGrowthPointDto
 }
 
 // CMS
+public class CmsMetricsDto
+{
+    public long TotalContent { get; set; }
+
+    public double? ContentChangePct { get; set; }
+
+    public long ContentUpdates { get; set; }
+
+    public double? ContentUpdatesChangePct { get; set; }
+
+    public long TotalMedia { get; set; }
+
+    public double? MediaChangePct { get; set; }
+
+    public long TotalComments { get; set; }
+
+    public double? CommentsChangePct { get; set; }
+}
+
 public class ContentDistributionItemDto
 {
     public string Name { get; set; } = string.Empty; // ContentType Uid or Category
@@ -132,4 +151,35 @@ public class CommentSummaryDto
     public int? ArticleId { get; set; }
 
     public string? Article { get; set; }
+}
+
+public class ContentSummaryDto
+{
+    public int Id { get; set; }
+
+    public string Title { get; set; } = string.Empty;
+
+    public string Type { get; set; } = string.Empty;
+
+    public string Author { get; set; } = string.Empty;
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime? PublishedAt { get; set; }
+}
+
+public class ContentGrowthPointDto
+{
+    public string Period { get; set; } = string.Empty;
+
+    public int Contents { get; set; }
+}
+
+public class TopAuthorDto
+{
+    public string Author { get; set; } = string.Empty;
+
+    public int Count { get; set; }
+
+    public double? ChangePct { get; set; }
 }

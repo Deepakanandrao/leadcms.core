@@ -80,6 +80,64 @@ namespace LeadCMS.Controllers
             return Ok(dto);
         }
 
+        // CMS: key metrics
+        [HttpGet("cms/metrics")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult<CmsMetricsDto>> GetCmsMetrics([FromQuery] PeriodQuery query)
+        {
+            var (start, end, prev) = ResolveRange(query);
+
+            // New content created in range
+            var contentQ = db.Content!.AsNoTracking().Where(c => c.CreatedAt >= start && c.CreatedAt <= end);
+            var totalContent = await contentQ.LongCountAsync();
+
+            // Content updates based on ChangeLog (ObjectType == nameof(Content) and EntityState == Modified)
+            var updatesQ = db.ChangeLogs!.AsNoTracking()
+                .Where(cl => cl.ObjectType == nameof(Content) && cl.EntityState == EntityState.Modified && cl.CreatedAt >= start && cl.CreatedAt <= end);
+            var contentUpdates = await updatesQ.LongCountAsync();
+
+            // Media created in range
+            var mediaQ = db.Media!.AsNoTracking().Where(m => m.CreatedAt >= start && m.CreatedAt <= end);
+            var totalMedia = await mediaQ.LongCountAsync();
+
+            // Comments created in range
+            var commentsQ = db.Comments!.AsNoTracking().Where(c => c.CreatedAt >= start && c.CreatedAt <= end);
+            var totalComments = await commentsQ.LongCountAsync();
+
+            double? contentChange = null, updatesChange = null, mediaChange = null, commentsChange = null;
+            if (prev.HasValue)
+            {
+                var p = prev.Value;
+                var pContent = await db.Content!.AsNoTracking().Where(c => c.CreatedAt >= p.from && c.CreatedAt <= p.to).LongCountAsync();
+                var pUpdates = await db.ChangeLogs!.AsNoTracking()
+                    .Where(cl => cl.ObjectType == nameof(Content) && cl.EntityState == EntityState.Modified && cl.CreatedAt >= p.from && cl.CreatedAt <= p.to)
+                    .LongCountAsync();
+                var pMedia = await db.Media!.AsNoTracking().Where(m => m.CreatedAt >= p.from && m.CreatedAt <= p.to).LongCountAsync();
+                var pComments = await db.Comments!.AsNoTracking().Where(c => c.CreatedAt >= p.from && c.CreatedAt <= p.to).LongCountAsync();
+
+                contentChange = pContent == 0 ? null : (totalContent - pContent) * 100.0 / pContent;
+                updatesChange = pUpdates == 0 ? null : (contentUpdates - pUpdates) * 100.0 / pUpdates;
+                mediaChange = pMedia == 0 ? null : (totalMedia - pMedia) * 100.0 / pMedia;
+                commentsChange = pComments == 0 ? null : (totalComments - pComments) * 100.0 / pComments;
+            }
+
+            var dto = new CmsMetricsDto
+            {
+                TotalContent = totalContent,
+                ContentChangePct = contentChange,
+                ContentUpdates = contentUpdates,
+                ContentUpdatesChangePct = updatesChange,
+                TotalMedia = totalMedia,
+                MediaChangePct = mediaChange,
+                TotalComments = totalComments,
+                CommentsChangePct = commentsChange,
+            };
+
+            return Ok(dto);
+        }
+
         // CRM: sales performance aggregated by month within range
         [HttpGet("crm/sales-performance")]
         public async Task<ActionResult<List<SalesPerformancePointDto>>> GetSalesPerformance([FromQuery] PeriodQuery query)
@@ -347,6 +405,143 @@ namespace LeadCMS.Controllers
                 .Select(g => new ContentDistributionItemDto { Name = g.Key, Value = g.Count() })
                 .OrderByDescending(x => x.Value)
                 .ToListAsync();
+            return Ok(list);
+        }
+
+        // CMS: recent content
+        [HttpGet("cms/recent-content")]
+        public async Task<ActionResult<List<ContentSummaryDto>>> GetRecentContent([FromQuery] int limit = 5)
+        {
+            var list = await db.Content!.AsNoTracking()
+                .OrderByDescending(c => c.CreatedAt)
+                .Take(limit)
+                .Select(c => new ContentSummaryDto
+                {
+                    Id = c.Id,
+                    Title = c.Title,
+                    Type = c.Type,
+                    Author = c.Author,
+                    CreatedAt = c.CreatedAt,
+                    PublishedAt = c.PublishedAt,
+                })
+                .ToListAsync();
+            return Ok(list);
+        }
+
+        // CMS: content growth (created per period)
+        [HttpGet("cms/content-growth")]
+        public async Task<ActionResult<List<ContentGrowthPointDto>>> GetContentGrowth([FromQuery] PeriodQuery query)
+        {
+            var (start, end, _) = ResolveRange(query);
+            var baseQ = db.Content!.AsNoTracking().Where(c => c.CreatedAt >= start && c.CreatedAt <= end);
+
+            List<ContentGrowthPointDto> items;
+            switch (query.GroupBy)
+            {
+                case TimeGroupBy.Day:
+                {
+                    var raw = await baseQ
+                        .GroupBy(c => c.CreatedAt.Date)
+                        .Select(g => new { PeriodStart = g.Key, Count = g.Count() })
+                        .OrderBy(x => x.PeriodStart)
+                        .ToListAsync();
+                    items = raw.Select(x => new ContentGrowthPointDto
+                    {
+                        Period = FormatPeriodLabel(x.PeriodStart, TimeGroupBy.Day),
+                        Contents = x.Count,
+                    }).ToList();
+                    break;
+                }
+
+                case TimeGroupBy.Month:
+                {
+                    var raw = await baseQ
+                        .GroupBy(c => new { c.CreatedAt.Year, c.CreatedAt.Month })
+                        .Select(g => new { g.Key.Year, g.Key.Month, Count = g.Count() })
+                        .OrderBy(x => x.Year).ThenBy(x => x.Month)
+                        .ToListAsync();
+                    items = raw.Select(x => new ContentGrowthPointDto
+                    {
+                        Period = FormatPeriodLabel(new DateTime(x.Year, x.Month, 1, 0, 0, 0, DateTimeKind.Utc), TimeGroupBy.Month),
+                        Contents = x.Count,
+                    }).ToList();
+                    break;
+                }
+
+                case TimeGroupBy.Year:
+                {
+                    var raw = await baseQ
+                        .GroupBy(c => c.CreatedAt.Year)
+                        .Select(g => new { Year = g.Key, Count = g.Count() })
+                        .OrderBy(x => x.Year)
+                        .ToListAsync();
+                    items = raw.Select(x => new ContentGrowthPointDto
+                    {
+                        Period = x.Year.ToString("D4", CultureInfo.InvariantCulture),
+                        Contents = x.Count,
+                    }).ToList();
+                    break;
+                }
+
+                case TimeGroupBy.Week:
+                case TimeGroupBy.Quarter:
+                default:
+                {
+                    var raw = await baseQ
+                        .Select(c => new { c.CreatedAt })
+                        .ToListAsync();
+                    var aggregated = raw
+                        .GroupBy(x => query.GroupBy == TimeGroupBy.Week
+                            ? GetIsoWeekStartUtc(x.CreatedAt)
+                            : GetQuarterStartUtc(x.CreatedAt))
+                        .Select(g => new { PeriodStart = g.Key, Count = g.Count() })
+                        .OrderBy(x => x.PeriodStart)
+                        .ToList();
+                    items = aggregated.Select(x => new ContentGrowthPointDto
+                    {
+                        Period = FormatPeriodLabel(x.PeriodStart, query.GroupBy),
+                        Contents = x.Count,
+                    }).ToList();
+                    break;
+                }
+            }
+
+            return Ok(items);
+        }
+
+        // CMS: top authors by created content count
+        [HttpGet("cms/top-authors")]
+        public async Task<ActionResult<List<TopAuthorDto>>> GetTopAuthors([FromQuery] PeriodQuery query, [FromQuery] int limit = 5)
+        {
+            var (start, end, prev) = ResolveRange(query);
+
+            var q = db.Content!.AsNoTracking()
+                .Where(c => c.CreatedAt >= start && c.CreatedAt <= end)
+                .GroupBy(c => c.Author)
+                .Select(g => new TopAuthorDto { Author = g.Key, Count = g.Count() })
+                .OrderByDescending(x => x.Count)
+                .Take(limit);
+
+            var list = await q.ToListAsync();
+
+            if (prev.HasValue && list.Count > 0)
+            {
+                var p = prev.Value;
+                var prevDict = await db.Content!.AsNoTracking()
+                    .Where(c => c.CreatedAt >= p.from && c.CreatedAt <= p.to)
+                    .GroupBy(c => c.Author)
+                    .Select(g => new { Author = g.Key, Count = g.Count() })
+                    .ToDictionaryAsync(x => x.Author, x => x.Count);
+
+                foreach (var item in list)
+                {
+                    if (prevDict.TryGetValue(item.Author, out var pCount) && pCount != 0)
+                    {
+                        item.ChangePct = (item.Count - pCount) * 100.0 / pCount;
+                    }
+                }
+            }
+
             return Ok(list);
         }
 
