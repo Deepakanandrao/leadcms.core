@@ -106,6 +106,7 @@ namespace LeadCMS.Filters
                 { "taskexecutionlog", "/api/task-execution-logs" },
                 { "sendgridevent", "/api/sendgrid-events" },
                 { "task", "/api/tasks" },
+                { "dashboard", "/api/dashboard" },
             };
 
             // Find which entity this path corresponds to
