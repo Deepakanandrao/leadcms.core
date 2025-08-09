@@ -18,6 +18,9 @@ namespace LeadCMS.Entities
         [Searchable]
         public string Name { get; set; } = string.Empty;
 
+        [Searchable]
+        public string? Description { get; set; }
+
         public long Size { get; set; } = 0;
 
         [Searchable]

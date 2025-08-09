@@ -15,11 +15,14 @@ public class MediaCreateDto
 
     [Required]
     public string ScopeUid { get; set; } = string.Empty;
+
+    // Optional description for media
+    public string? Description { get; set; }
 }
 
 public class MediaUpdateDto
 {
-    [Required]
+    // Optional new file content; if omitted, only metadata (e.g., Description) can be updated
     [MediaExtension]
     public IFormFile? File { get; set; }
 
@@ -28,6 +31,9 @@ public class MediaUpdateDto
 
     [Required]
     public string FileName { get; set; } = string.Empty;
+
+    // Optional description update
+    public string? Description { get; set; }
 }
 
 public class MediaDetailsDto
@@ -39,6 +45,8 @@ public class MediaDetailsDto
     public string ScopeUid { get; set; } = string.Empty;
 
     public string Name { get; set; } = string.Empty;
+
+    public string? Description { get; set; }
 
     public long Size { get; set; } = 0;
 

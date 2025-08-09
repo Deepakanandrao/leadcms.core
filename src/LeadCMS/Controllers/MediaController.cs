@@ -56,6 +56,13 @@ public class MediaController : ControllerBase
             uploadedMedia = scopeAndFileExists!.FirstOrDefault()!;
             uploadedMedia!.Data = imageInBytes;
             uploadedMedia!.Size = incomingFileSize;
+
+            // Update optional description if provided
+            if (!string.IsNullOrWhiteSpace(imageCreateDto.Description))
+            {
+                uploadedMedia.Description = imageCreateDto.Description!.Trim();
+            }
+
             pgDbContext.Media!.Update(uploadedMedia);
         }
         else
@@ -68,6 +75,7 @@ public class MediaController : ControllerBase
                 MimeType = incomingFileMimeType!,
                 ScopeUid = imageCreateDto.ScopeUid.Trim(),
                 Extension = incomingFileExtension,
+                Description = string.IsNullOrWhiteSpace(imageCreateDto.Description) ? null : imageCreateDto.Description!.Trim(),
             };
             await pgDbContext.Media!.AddAsync(uploadedMedia);
         }
@@ -82,6 +90,7 @@ public class MediaController : ControllerBase
             Id = uploadedMedia.Id,
             ScopeUid = uploadedMedia.ScopeUid,
             Name = uploadedMedia.Name,
+            Description = uploadedMedia.Description,
             Size = uploadedMedia.Size,
             Extension = uploadedMedia.Extension,
             MimeType = uploadedMedia.MimeType,
@@ -194,6 +203,7 @@ public class MediaController : ControllerBase
                 Id = m.Id,
                 ScopeUid = m.ScopeUid,
                 Name = m.Name,
+                Description = m.Description,
                 Size = m.Size,
                 Extension = m.Extension,
                 MimeType = m.MimeType,
@@ -234,6 +244,7 @@ public class MediaController : ControllerBase
                         Id = m.Id,
                         ScopeUid = m.ScopeUid,
                         Name = m.Name,
+                        Description = m.Description,
                         Size = m.Size,
                         Extension = m.Extension,
                         MimeType = m.MimeType,
@@ -269,6 +280,7 @@ public class MediaController : ControllerBase
                         Id = m.Id,
                         ScopeUid = m.ScopeUid,
                         Name = m.Name,
+                        Description = m.Description,
                         Size = m.Size,
                         Extension = m.Extension,
                         MimeType = m.MimeType,
@@ -316,6 +328,7 @@ public class MediaController : ControllerBase
                     ScopeUid = folder,
                     Location = folder,
                     Name = humanName,
+                    Description = null,
                     Size = size,
                     MimeType = "inode/directory",
                     CreatedAt = createdAt,
@@ -329,6 +342,7 @@ public class MediaController : ControllerBase
                 Id = m.Id,
                 ScopeUid = m.ScopeUid,
                 Name = m.Name,
+                Description = m.Description,
                 Size = m.Size,
                 Extension = m.Extension,
                 MimeType = m.MimeType,
@@ -359,26 +373,37 @@ public class MediaController : ControllerBase
             throw new EntityNotFoundException(nameof(Media), $"{mediaUpdateDto.ScopeUid}/{mediaUpdateDto.FileName}");
         }
 
-        // Validate that the new file has the same extension as the existing one
-        var incomingFileExtension = Path.GetExtension(mediaUpdateDto.File!.FileName);
-        if (!string.Equals(existingMedia.Extension, incomingFileExtension, StringComparison.OrdinalIgnoreCase))
+        // If a file is provided, update the binary keeping name/extension; otherwise only update metadata
+        if (mediaUpdateDto.File != null)
         {
-            ModelState.AddModelError("File", $"File extension must match the existing media extension '{existingMedia.Extension}'.");
-            throw new InvalidModelStateException(ModelState);
+            // Validate that the new file has the same extension as the existing one
+            var incomingFileExtension = Path.GetExtension(mediaUpdateDto.File.FileName);
+            if (!string.Equals(existingMedia.Extension, incomingFileExtension, StringComparison.OrdinalIgnoreCase))
+            {
+                ModelState.AddModelError("File", $"File extension must match the existing media extension '{existingMedia.Extension}'.");
+                throw new InvalidModelStateException(ModelState);
+            }
+
+            // Process the new file content
+            var incomingFileSize = mediaUpdateDto.File.Length;
+            var incomingFileMimeType = ContentTypeHelper.GetMimeTypeOrThrow(existingMedia.Name, ModelState);
+
+            using var fileStream = mediaUpdateDto.File.OpenReadStream();
+            var imageInBytes = new byte[incomingFileSize];
+            await fileStream.ReadAsync(imageInBytes, 0, (int)mediaUpdateDto.File.Length);
+
+            // Update only the binary content and size, preserve other properties (ScopeUid, Name, Extension)
+            existingMedia.Data = imageInBytes;
+            existingMedia.Size = incomingFileSize;
+            existingMedia.MimeType = incomingFileMimeType;
         }
 
-        // Process the new file content
-        var incomingFileSize = mediaUpdateDto.File!.Length;
-        var incomingFileMimeType = ContentTypeHelper.GetMimeTypeOrThrow(existingMedia.Name, ModelState);
-
-        using var fileStream = mediaUpdateDto.File.OpenReadStream();
-        var imageInBytes = new byte[incomingFileSize];
-        await fileStream.ReadAsync(imageInBytes, 0, (int)mediaUpdateDto.File.Length);
-
-        // Update only the binary content and size, preserve other properties (ScopeUid, Name, Extension)
-        existingMedia.Data = imageInBytes;
-        existingMedia.Size = incomingFileSize;
-        existingMedia.MimeType = incomingFileMimeType;
+        // Update description if provided (can be set to empty to clear)
+        if (mediaUpdateDto.Description != null)
+        {
+            var trimmed = mediaUpdateDto.Description.Trim();
+            existingMedia.Description = string.IsNullOrEmpty(trimmed) ? null : trimmed;
+        }
 
         pgDbContext.Media!.Update(existingMedia);
         await pgDbContext.SaveChangesAsync();
@@ -395,6 +420,7 @@ public class MediaController : ControllerBase
             Id = existingMedia.Id,
             ScopeUid = existingMedia.ScopeUid,
             Name = existingMedia.Name,
+            Description = existingMedia.Description,
             Size = existingMedia.Size,
             Extension = existingMedia.Extension,
             MimeType = existingMedia.MimeType,
