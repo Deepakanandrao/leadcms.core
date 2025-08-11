@@ -28,6 +28,8 @@ public class DealBaseDto
 
     [Required]
     public string UserId { get; set; } = string.Empty;
+
+    public string[]? Tags { get; set; }
 }
 
 public class DealCreateDto : DealBaseDto
@@ -54,6 +56,8 @@ public class DealUpdateDto
     public DateTime? ActualCloseDate { get; set; }
 
     public string? UserId { get; set; }
+
+    public string[]? Tags { get; set; }
 }
 
 public class DealDetailsDto : DealBaseDto

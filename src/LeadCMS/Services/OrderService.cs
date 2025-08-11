@@ -52,7 +52,26 @@ namespace LeadCMS.Services
 
         public Task SaveRangeAsync(List<Order> items)
         {
-            throw new NotImplementedException();
+            // Recalculate and persist a range of orders with the same rules as SaveAsync
+            foreach (var order in items)
+            {
+                RecalculateOrder(order);
+            }
+
+            var existing = items.Where(o => o.Id > 0).ToList();
+            var @new = items.Where(o => o.Id == 0).ToList();
+
+            if (existing.Count > 0)
+            {
+                pgDbContext.Orders!.UpdateRange(existing);
+            }
+
+            if (@new.Count > 0)
+            {
+                return pgDbContext.Orders!.AddRangeAsync(@new);
+            }
+
+            return Task.CompletedTask;
         }
 
         public void SetDBContext(PgDbContext pgDbContext)

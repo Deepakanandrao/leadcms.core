@@ -17,12 +17,14 @@ namespace LeadCMS.Controllers;
 [Route("api/[controller]")]
 public class OrdersController : BaseControllerWithImport<Order, OrderCreateDto, OrderUpdateDto, OrderDetailsDto, OrderImportDto>
 {
+    private readonly IOrderService orderService;
     private readonly CommentableControllerExtension commentableControllerExtension;
 
-    public OrdersController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Order> queryProviderFactory, CommentableControllerExtension commentableControllerExtension)
+    public OrdersController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Order> queryProviderFactory, CommentableControllerExtension commentableControllerExtension, IOrderService orderService)
         : base(dbContext, mapper, esDbContext, queryProviderFactory)
     {
         this.commentableControllerExtension = commentableControllerExtension;
+        this.orderService = orderService;
     }
 
     [AllowAnonymous]
@@ -45,5 +47,10 @@ public class OrdersController : BaseControllerWithImport<Order, OrderCreateDto, 
     public async Task<ActionResult<CommentDetailsDto>> PostComment(int id, [FromBody] CommentCreateBaseDto value)
     {
         return await commentableControllerExtension.PostComment(commentableControllerExtension.CreateCommentForICommentable<Order>(value, id), this);
+    }
+
+    protected override async Task SaveRangeAsync(List<Order> newRecords)
+    {
+        await orderService.SaveRangeAsync(newRecords);
     }
 }

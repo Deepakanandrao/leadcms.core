@@ -41,6 +41,8 @@ public class CommentCreateBaseDto
     public string? Source { get; set; }
 
     public string Language { get; set; } = string.Empty;
+
+    public string[]? Tags { get; set; }
 }
 
 public class CommentCreateDto : CommentCreateBaseDto
@@ -99,6 +101,8 @@ public class CommentDetailsDto : AnonymousCommentDetailsDto
     [Ignore]
 
     public ContactDetailsDto? Contact { get; set; }
+
+    public string[]? Tags { get; set; }
 }
 
 public class CommentImportDto : BaseImportDto
@@ -151,4 +155,7 @@ public class CommentImportDto : BaseImportDto
     [Optional]
     [SurrogateForeignKey(typeof(Comment), "Key", "ParentId")]
     public string? ParentKey { get; set; }
+
+    [Optional]
+    public string[]? Tags { get; set; }
 }

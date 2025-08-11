@@ -80,6 +80,10 @@ public class Domain : BaseEntityWithIdAndDates
 
     [JsonIgnore]
     public virtual ICollection<Contact>? Contacts { get; set; }
+
+    [Searchable]
+    [Column(TypeName = "jsonb")]
+    public string[]? Tags { get; set; }
 }
 
 public class DnsRecord

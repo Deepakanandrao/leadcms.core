@@ -35,6 +35,8 @@ public class OrderCreateDto
     public string? Source { get; set; }
 
     public OrderStatus Status { get; set; } = OrderStatus.Pending;
+
+    public string[]? Tags { get; set; }
 }
 
 public class OrderUpdateDto
@@ -47,6 +49,8 @@ public class OrderUpdateDto
     public string? Data { get; set; }
 
     public OrderStatus? Status { get; set; }
+
+    public string[]? Tags { get; set; }
 }
 
 public class OrderDetailsDto : OrderCreateDto
@@ -107,4 +111,10 @@ public class OrderImportDto : BaseImportDto
 
     [Optional]
     public string? Data { get; set; }
+
+    [Optional]
+    public string[]? Tags { get; set; }
+
+    [Optional]
+    public OrderStatus? Status { get; set; }
 }

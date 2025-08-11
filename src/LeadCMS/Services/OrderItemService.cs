@@ -44,7 +44,40 @@ namespace LeadCMS.Services
 
         public Task SaveRangeAsync(List<OrderItem> items)
         {
-            throw new NotImplementedException();
+            // Calculate totals for each item and persist in batch, mirroring SaveAsync
+            foreach (var item in items)
+            {
+                item.CurrencyTotal = CalculateOrderItemCurrencyTotal(item);
+                item.Total = CalculateOrderItemTotal(item, item.Order!.ExchangeRate);
+            }
+
+            var existing = items.Where(i => i.Id > 0).ToList();
+            var @new = items.Where(i => i.Id == 0).ToList();
+
+            if (existing.Count > 0)
+            {
+                pgDbContext.OrderItems!.UpdateRange(existing);
+            }
+
+            if (@new.Count > 0)
+            {
+                return pgDbContext.OrderItems!.AddRangeAsync(@new).ContinueWith(_ =>
+                {
+                    // Recalculate parent orders after batch insert
+                    foreach (var order in items.Select(i => i.Order!).Where(o => o != null).Distinct())
+                    {
+                        orderService.RecalculateOrder(order);
+                    }
+                });
+            }
+
+            // Recalculate parent orders after updates
+            foreach (var order in items.Select(i => i.Order!).Where(o => o != null).Distinct())
+            {
+                orderService.RecalculateOrder(order);
+            }
+
+            return Task.CompletedTask;
         }
 
         public void SetDBContext(PgDbContext pgDbContext)

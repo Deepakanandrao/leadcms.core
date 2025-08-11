@@ -104,4 +104,9 @@ public class OrderItemsController : BaseControllerWithImport<OrderItem, OrderIte
 
         return NoContent();
     }
+
+    protected override async Task SaveRangeAsync(List<OrderItem> newRecords)
+    {
+        await orderItemService.SaveRangeAsync(newRecords);
+    }
 }

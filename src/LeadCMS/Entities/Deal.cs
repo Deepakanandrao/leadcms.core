@@ -51,4 +51,8 @@ public class Deal : BaseEntity
     [JsonIgnore]
     [ForeignKey("UserId")]
     public virtual User? CreatedBy { get; set; }
+
+    [Searchable]
+    [Column(TypeName = "jsonb")]
+    public string[]? Tags { get; set; }
 }

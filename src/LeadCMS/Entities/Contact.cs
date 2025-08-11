@@ -91,6 +91,10 @@ public class Contact : BaseEntity, ICommentable
     [Column(TypeName = "jsonb")]
     public Dictionary<string, string>? SocialMedia { get; set; }
 
+    [Searchable]
+    [Column(TypeName = "jsonb")]
+    public string[]? Tags { get; set; }
+
     [Required]
     public int DomainId { get; set; }
 

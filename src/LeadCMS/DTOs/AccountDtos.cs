@@ -56,6 +56,8 @@ public class AccountDetailsInfo
 
     public string? State { get; set; }
 
+    public Continent? ContinentCode { get; set; }
+
     public Country? CountryCode { get; set; }
 
     public string? EmployeesRange { get; set; }
@@ -82,6 +84,8 @@ public class AccountUpdateDto
     public string? City { get; set; }
 
     public string? StateCode { get; set; }
+
+    public Continent? ContinentCode { get; set; }
 
     public Country? CountryCode { get; set; }
 
@@ -124,6 +128,9 @@ public class AccountImportDto : BaseImportDto
 
     [Optional]
     public string? StateCode { get; set; }
+
+    [Optional]
+    public Continent? ContinentCode { get; set; }
 
     [Optional]
     public Country? CountryCode { get; set; }

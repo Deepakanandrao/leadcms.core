@@ -43,6 +43,8 @@ public class DomainCreateDto
 
     [Optional]
     public string? Source { get; set; }
+
+    public string[]? Tags { get; set; }
 }
 
 public class DomainUpdateDto
@@ -62,6 +64,8 @@ public class DomainUpdateDto
     public bool? Disposable { get; set; }
 
     public bool? CatchAll { get; set; }
+
+    public string[]? Tags { get; set; }
 }
 
 public class DomainDetailsDto : DomainCreateDto
@@ -120,4 +124,7 @@ public class DomainImportDto : BaseImportDtoWithDates
 
     [Optional]
     public bool? MxCheck { get; set; }
+
+    [Optional]
+    public string[]? Tags { get; set; }
 }

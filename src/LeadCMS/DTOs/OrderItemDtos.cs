@@ -37,9 +37,6 @@ public class OrderItemUpdateDto
     [MinLength(1)]
     public string? ProductName { get; set; }
 
-    [MinLength(1)]
-    public string? LicenseCode { get; set; }
-
     public decimal? UnitPrice { get; set; }
 
     [Range(1, int.MaxValue, ErrorMessage = "Minimum quantity should be 1")]
@@ -75,9 +72,6 @@ public class OrderItemImportDto : BaseImportDto
 
     [Optional]
     public string? ProductName { get; set; } = string.Empty;
-
-    [Optional]
-    public string? LicenseCode { get; set; } = string.Empty;
 
     [Optional]
     public decimal? UnitPrice { get; set; } = 0;

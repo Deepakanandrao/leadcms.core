@@ -41,6 +41,7 @@ public class Order : BaseEntity, ICommentable
     /// <summary>
     /// Gets or sets internal consecutive order number associates with orders provided by payment processing system.
     /// </summary>
+    [Searchable]
     public string? OrderNumber { get; set; }
 
     /// <summary>
@@ -103,6 +104,10 @@ public class Order : BaseEntity, ICommentable
 
     [JsonIgnore]
     public virtual IList<Discount>? Discounts { get; set; }
+
+    [Searchable]
+    [Column(TypeName = "jsonb")]
+    public string[]? Tags { get; set; }
 
     public static string GetCommentableType()
     {

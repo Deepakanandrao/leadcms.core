@@ -47,8 +47,8 @@ namespace LeadCMS.Filters
             // Second pass: clean up references to excluded schemas in remaining schemas
             CleanupSchemaReferences(schemas);
 
-            // Third pass: clean up operation request/response schemas and remove problematic paths
-            CleanupOperations(swaggerDoc);
+            // Third pass: clean up operation request/response schemas and remove problematic paths (context aware)
+            CleanupOperations(swaggerDoc, context);
 
             // Remove excluded paths
             var excludePaths = swaggerDoc.Paths.Where(p => OperationNeedsToBeExcluded(context, p.Key)).ToList();
@@ -244,7 +244,7 @@ namespace LeadCMS.Filters
             }
         }
 
-        private void CleanupOperations(OpenApiDocument swaggerDoc)
+        private void CleanupOperations(OpenApiDocument swaggerDoc, DocumentFilterContext context)
         {
             var pathsToRemove = new List<string>();
 
@@ -257,30 +257,50 @@ namespace LeadCMS.Filters
                     // Check request body schemas
                     if (operation.RequestBody?.Content != null)
                     {
-                        hasInvalidRefs = operation.RequestBody.Content.Values.Any(content => HasInvalidSchemaReference(content.Schema));
-                        if (hasInvalidRefs)
+                        var invalidContentTypes = operation.RequestBody.Content
+                            .Where(kvp => HasInvalidSchemaReference(kvp.Value.Schema))
+                            .Select(kvp => kvp.Key)
+                            .ToList();
+
+                        if (invalidContentTypes.Count > 0)
                         {
-                            break;
+                            hasInvalidRefs = true;
+                            // Prune invalid media types instead of marking whole path for removal (only if path is otherwise included)
+                            foreach (var ct in invalidContentTypes)
+                            {
+                                operation.RequestBody.Content.Remove(ct);
+                            }
                         }
+
+                        // Continue evaluating responses to prune them too; do not break early so we can clean
                     }
 
                     // Check response schemas
                     if (operation.Responses != null)
                     {
-                        hasInvalidRefs = operation.Responses.Values
-                            .Where(response => response.Content != null)
-                            .SelectMany(response => response.Content.Values)
-                            .Any(content => HasInvalidSchemaReference(content.Schema));
-                    }
-
-                    if (hasInvalidRefs)
-                    {
-                        break;
+                        foreach (var responseContent in operation.Responses.Values
+                            .Where(r => r.Content != null)
+                            .Select(r => r.Content))
+                        {
+                            var invalidResponseContentTypes = responseContent
+                                .Where(kvp => HasInvalidSchemaReference(kvp.Value.Schema))
+                                .Select(kvp => kvp.Key)
+                                .ToList();
+                            if (invalidResponseContentTypes.Count > 0)
+                            {
+                                hasInvalidRefs = true;
+                                foreach (var ct in invalidResponseContentTypes)
+                                {
+                                    responseContent.Remove(ct);
+                                }
+                            }
+                        }
                     }
                 }
 
-                if (hasInvalidRefs)
+                if (hasInvalidRefs && OperationNeedsToBeExcluded(context, path.Key))
                 {
+                    // Only remove path if it is NOT explicitly included (per OperationNeedsToBeExcluded logic)
                     pathsToRemove.Add(path.Key);
                 }
             }

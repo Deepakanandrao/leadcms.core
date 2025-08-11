@@ -77,4 +77,8 @@ public class Comment : BaseEntity
     public virtual Comment? Parent { get; set; }
 
     public string Key { get; set; } = string.Empty;
+
+    [Searchable]
+    [Column(TypeName = "jsonb")]
+    public string[]? Tags { get; set; }
 }

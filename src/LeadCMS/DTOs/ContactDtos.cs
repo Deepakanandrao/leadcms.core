@@ -50,6 +50,8 @@ public abstract class BaseContactDto
 
     public Dictionary<string, string>? SocialMedia { get; set; }
 
+    public string[]? Tags { get; set; }
+
     [SwaggerHide]
     public int? UnsubscribeId { get; set; }
 
@@ -208,4 +210,7 @@ public class ContactImportDto : BaseImportDto
 
     [Optional]
     public int? DomainId { get; set; }
+
+    [Optional]
+    public string[]? Tags { get; set; }
 }
