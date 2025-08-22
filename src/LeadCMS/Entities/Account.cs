@@ -50,7 +50,6 @@ public class Account : BaseEntity, ICommentable
     [Column(TypeName = "jsonb")]
     public Dictionary<string, string>? SocialMedia { get; set; }
 
-    [Searchable]
     [Column(TypeName = "jsonb")]
     public string? Data { get; set; }
 
