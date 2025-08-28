@@ -24,6 +24,9 @@ namespace LeadCMS.Entities
         [Searchable]
         public string Language { get; set; } = string.Empty;
 
+        [Searchable]
+        public string? TranslationKey { get; set; }
+
         [JsonIgnore]
         public virtual ICollection<EmailTemplate>? EmailTemplates { get; set; }
     }

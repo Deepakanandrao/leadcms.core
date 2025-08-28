@@ -47,6 +47,9 @@ namespace LeadCMS.Entities
         [Searchable]
         public string Language { get; set; } = string.Empty;
 
+        [Searchable]
+        public string? TranslationKey { get; set; }
+
         /// <summary>
         /// Gets or sets how many times an email should resend once sending failed.
         /// </summary>

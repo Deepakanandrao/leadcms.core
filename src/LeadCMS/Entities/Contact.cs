@@ -88,6 +88,9 @@ public class Contact : BaseEntity, ICommentable
     public string? Language { get; set; }
 
     [Searchable]
+    public string? TranslationKey { get; set; }
+
+    [Searchable]
     [Column(TypeName = "jsonb")]
     public Dictionary<string, string>? SocialMedia { get; set; }
 

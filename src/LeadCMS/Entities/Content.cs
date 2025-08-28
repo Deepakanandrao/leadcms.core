@@ -51,6 +51,9 @@ public class Content : BaseEntity, ICommentable
     public string Language { get; set; } = string.Empty;
 
     [Searchable]
+    public string? TranslationKey { get; set; }
+
+    [Searchable]
     public string Category { get; set; } = string.Empty;
 
     [Searchable]
