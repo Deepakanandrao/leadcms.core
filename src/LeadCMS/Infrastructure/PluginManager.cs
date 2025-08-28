@@ -2,6 +2,8 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Text.Json;
+using LeadCMS.DTOs;
 using LeadCMS.Interfaces;
 
 namespace LeadCMS.Infrastructure;
@@ -44,6 +46,31 @@ public static class PluginManager
         return PluginList;
     }
 
+    public static List<DynamicModuleDto> GetAllDynamicModules()
+    {
+        var modules = new List<DynamicModuleDto>();
+        var pluginsDirectory = new DirectoryInfo(PluginsFolder);
+        foreach (var pluginDir in pluginsDirectory.GetDirectories())
+        {
+            var configFile = pluginDir.GetFiles("dynamic-modules.json").FirstOrDefault();
+            if (configFile != null)
+            {
+                var json = File.ReadAllText(configFile.FullName);
+                var options = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                };
+                var pluginModules = JsonSerializer.Deserialize<List<DynamicModuleDto>>(json!, options);
+                if (pluginModules != null)
+                {
+                    modules.AddRange(pluginModules);
+                }
+            }
+        }
+        
+        return modules;
+    }
+    
     private static void LoadPlugins(DirectoryInfo pluginsDirectory, ConfigurationManager configurationManager)
     {
         var enabledPlugins = configurationManager.GetSection("Plugins").Get<string[]>();
