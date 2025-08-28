@@ -2,12 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
-using System;
-using System.Security.Policy;
-using LeadCMS.Entities;
-using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
-using Microsoft.AspNetCore.Http;
 
 namespace LeadCMS.Tests;
 

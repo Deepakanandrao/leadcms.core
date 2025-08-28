@@ -26,6 +26,7 @@ public class PostgresNotificationService : IHostedService, IDisposable
     private NpgsqlConnection? notificationConnection;
     private Task? listeningTask;
     private Timer? pollingTimer;
+    private Timer? draftPollingTimer;
     private CancellationTokenSource? cancellationTokenSource;
     private CancellationTokenSource? listeningCancellationTokenSource;
     private bool isListening = false;
@@ -195,8 +196,9 @@ public class PostgresNotificationService : IHostedService, IDisposable
             // Start background listening task with separate cancellation token
             listeningTask = Task.Run(() => ListenForNotifications(listeningCancellationTokenSource.Token), cancellationTokenSource.Token);
 
-            // Start polling timer as Plan B (every 5 seconds)
+            // Start polling timers as Plan B (every 5 seconds)
             pollingTimer = new Timer(async _ => await PollForChanges(), null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+            draftPollingTimer = new Timer(async _ => await PollForDraftChanges(), null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
 
             isListening = true;
             logger.LogInformation("Started PostgreSQL LISTEN and polling. Baseline ChangeLog ID: {LastId}", lastPolledChangeLogId);
@@ -222,9 +224,12 @@ public class PostgresNotificationService : IHostedService, IDisposable
         {
             isListening = false;
 
-            // Stop polling timer
+            // Stop polling timers
             pollingTimer?.Dispose();
             pollingTimer = null;
+
+            draftPollingTimer?.Dispose();
+            draftPollingTimer = null;
 
             // Cancel the listening task (cancels WaitAsync)
             if (listeningCancellationTokenSource != null && !listeningCancellationTokenSource.IsCancellationRequested)

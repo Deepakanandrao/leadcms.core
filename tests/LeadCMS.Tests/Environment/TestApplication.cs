@@ -33,7 +33,10 @@ public class TestApplication : WebApplicationFactory<Program>
             Program.CreateDefaultIdentity(scope).Wait();
 
             var esDbContext = scope.ServiceProvider.GetRequiredService<EsDbContext>();
-            esDbContext.ElasticClient.Indices.Delete("*");
+            if (esDbContext.ElasticClient != null)
+            {
+                esDbContext.ElasticClient.Indices.Delete("*");
+            }            
         }
     }
 

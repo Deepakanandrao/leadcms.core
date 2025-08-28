@@ -132,7 +132,7 @@ public class SseClientManager
                     data = client.IncludeContent ? entityData : null,
                 };
 
-                var task = SendToClientAsync(client, notification);
+                var task = SendToClientAsync(client, notification, "content-updated");
                 tasks.Add(task);
             }
             catch (Exception ex)
@@ -184,7 +184,7 @@ public class SseClientManager
                 data = draftData,
             };
 
-            await SendToClientAsync(client, notification); // 0 for ChangeLogId, not used for drafts
+            await SendToClientAsync(client, notification, "draft-updated");
             
             logger.LogInformation("[SSE] ========= Finished Sending Update ===========");
         }
@@ -228,7 +228,7 @@ public class SseClientManager
     /// <summary>
     /// Send notification to a specific client.
     /// </summary>
-    private async Task SendToClientAsync(SseClient client, object notification)
+    private async Task SendToClientAsync(SseClient client, object notification, string eventType)
     {
         try
         {
@@ -239,8 +239,9 @@ public class SseClientManager
             }
 
             var json = JsonHelper.Serialize(notification);
-            var data = $"data: {json}\n\n";
-            var bytes = Encoding.UTF8.GetBytes(data);
+
+            var sseData = $"event: {eventType}\ndata: {json}\n\n";
+            var bytes = Encoding.UTF8.GetBytes(sseData);
 
             await client.Response.Body.WriteAsync(bytes, client.CancellationToken);
             await client.Response.Body.FlushAsync(client.CancellationToken);

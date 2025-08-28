@@ -9,7 +9,7 @@ public class TestContent : ContentCreateDto
     public TestContent(string uid = "")
     {
         Slug = $"test-slug{uid}";
-        Type = "Test Template";
+        Type = "blog-post";
         Author = "Peter Liapin";
         Title = $"Test Title (via test suit){uid}";
         Description = $"This is a sample test description{uid}";
