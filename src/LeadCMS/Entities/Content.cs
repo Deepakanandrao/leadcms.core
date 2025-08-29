@@ -6,6 +6,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 using LeadCMS.DataAnnotations;
+using LeadCMS.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Entities;
@@ -14,7 +15,7 @@ namespace LeadCMS.Entities;
 [SupportsElastic]
 [SupportsChangeLog]
 [Index(nameof(Slug), nameof(Language), IsUnique = true)]
-public class Content : BaseEntity, ICommentable
+public class Content : BaseEntity, ICommentable, ITranslatable
 {
     [Searchable]
     [Required]

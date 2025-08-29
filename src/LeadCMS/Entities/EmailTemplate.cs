@@ -6,12 +6,13 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 using LeadCMS.DataAnnotations;
+using LeadCMS.Interfaces;
 
 namespace LeadCMS.Entities
 {
     [Table("email_template")]
     [SupportsChangeLog]
-    public class EmailTemplate : BaseEntity
+    public class EmailTemplate : BaseEntity, ITranslatable
     {
         [Required]
         [Searchable]

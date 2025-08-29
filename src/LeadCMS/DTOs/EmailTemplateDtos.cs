@@ -28,6 +28,8 @@ public class EmailTemplateCreateDto
     [Required]
     public string Language { get; set; } = string.Empty;
 
+    public string? TranslationKey { get; set; }
+
     [Required]
     public int EmailGroupId { get; set; }
 }
@@ -48,6 +50,10 @@ public class EmailTemplateUpdateDto
 
     [MinLength(1)]
     public string? FromName { get; set; }
+
+    public string? Language { get; set; }
+
+    public string? TranslationKey { get; set; }
 
     public int? EmailGroupId { get; set; }
 }

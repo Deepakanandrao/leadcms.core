@@ -36,6 +36,8 @@ public class ContentCreateDto
     [LanguageCode]
     public string Language { get; set; } = string.Empty;
 
+    public string? TranslationKey { get; set; }
+
     public string Category { get; set; } = string.Empty;
 
     public string[] Tags { get; set; } = Array.Empty<string>();
@@ -75,6 +77,8 @@ public class ContentUpdateDto
     [MinLength(1)]
     [LanguageCode(nullAllowed: true)]
     public string? Language { get; set; }
+
+    public string? TranslationKey { get; set; }
 
     public string? Category { get; set; }
 
@@ -128,6 +132,9 @@ public class ContentImportDto : BaseImportDto
 
     [Optional]
     public string? Language { get; set; }
+
+    [Optional]
+    public string? TranslationKey { get; set; }
 
     [Optional]
     public string? Category { get; set; }

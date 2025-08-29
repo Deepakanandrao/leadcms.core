@@ -6,6 +6,7 @@ using AutoMapper;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
+using LeadCMS.Enums;
 using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
@@ -20,14 +21,16 @@ namespace LeadCMS.Controllers;
 public class ContentController : BaseControllerWithImport<Content, ContentCreateDto, ContentUpdateDto, ContentDetailsDto, ContentImportDto>
 {
     private readonly CommentableControllerExtension commentableControllerExtension;
+    private readonly ITranslationService translationService;
     private readonly IMediaResolver mediaResolver;
     private readonly IHttpContextHelper httpContextHelper;
     private readonly ILogger<ContentController> logger;
 
-    public ContentController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Content> queryProviderFactory, CommentableControllerExtension commentableControllerExtension, IMediaResolver mediaResolver, IHttpContextHelper httpContextHelper, ILogger<ContentController> logger)
+    public ContentController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Content> queryProviderFactory, CommentableControllerExtension commentableControllerExtension, ITranslationService translationService, IMediaResolver mediaResolver, IHttpContextHelper httpContextHelper, ILogger<ContentController> logger)
         : base(dbContext, mapper, esDbContext, queryProviderFactory)
     {
         this.commentableControllerExtension = commentableControllerExtension;
+        this.translationService = translationService;
         this.mediaResolver = mediaResolver;
         this.httpContextHelper = httpContextHelper;
         this.logger = logger;
@@ -273,5 +276,20 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         }
 
         return Ok();
+    }
+
+    [HttpGet("{id}/translation-draft/{language}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ContentDetailsDto>> GetTranslationDraft(int id, string language, [FromQuery] TranslationTransformerType transformer = TranslationTransformerType.EmptyCopy)
+    {
+        var translationDraft = await translationService.CreateTranslationDraftAsync<Content>(id, language, transformer);
+        var draftDto = mapper.Map<ContentDetailsDto>(translationDraft);
+        
+        return Ok(draftDto);
     }
 }

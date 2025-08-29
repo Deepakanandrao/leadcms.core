@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using LeadCMS.Exceptions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
@@ -89,6 +90,24 @@ public class ErrorsController : Controller
                     HttpContext,
                     StatusCodes.Status401Unauthorized,
                     unauthorizedException.Message);
+                break;
+            case TranslationConflictException translationConflictException:
+                problemDetails = ProblemDetailsFactory.CreateProblemDetails(
+                    HttpContext,
+                    StatusCodes.Status409Conflict,
+                    translationConflictException.Message);
+                
+                problemDetails.Extensions["entityType"] = translationConflictException.EntityType;
+                problemDetails.Extensions["entityId"] = translationConflictException.EntityId;
+                problemDetails.Extensions["language"] = translationConflictException.Language;
+                break;
+            case NotTranslatableException notTranslatableException:
+                problemDetails = ProblemDetailsFactory.CreateProblemDetails(
+                    HttpContext,
+                    StatusCodes.Status400BadRequest,
+                    notTranslatableException.Message);
+                
+                problemDetails.Extensions["entityType"] = notTranslatableException.EntityType;
                 break;
             default:
                 problemDetails = ProblemDetailsFactory.CreateProblemDetails(

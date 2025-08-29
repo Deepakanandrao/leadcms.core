@@ -6,6 +6,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 using LeadCMS.DataAnnotations;
+using LeadCMS.Interfaces;
 
 namespace LeadCMS.Entities;
 
@@ -20,7 +21,7 @@ public enum CommentStatus
 [SupportsElastic]
 [SupportsChangeLog]
 [SurrogateIdentity(nameof(Key))]
-public class Comment : BaseEntity
+public class Comment : BaseEntity, ITranslatable
 {
     private string authorEmail = string.Empty;
 

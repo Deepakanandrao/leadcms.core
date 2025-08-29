@@ -42,6 +42,8 @@ public class CommentCreateBaseDto
 
     public string Language { get; set; } = string.Empty;
 
+    public string? TranslationKey { get; set; }
+
     public string[]? Tags { get; set; }
 }
 
@@ -82,6 +84,8 @@ public class AnonymousCommentDetailsDto
     public string AvatarUrl { get; set; } = string.Empty;
 
     public string Language { get; set; } = string.Empty;
+
+    public string? TranslationKey { get; set; }
 
     [Ignore]
     public ContentDetailsDto? Content { get; set; }
@@ -139,6 +143,9 @@ public class CommentImportDto : BaseImportDto
 
     [Optional]
     public string? Language { get; set; }
+
+    [Optional]
+    public string? TranslationKey { get; set; }
 
     [Optional]
     public int CommentableId { get; set; }

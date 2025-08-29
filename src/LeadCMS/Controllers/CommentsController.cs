@@ -7,6 +7,7 @@ using AutoMapper;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
+using LeadCMS.Enums;
 using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
@@ -24,12 +25,14 @@ public class CommentsController : BaseControllerWithImport<Comment, CommentCreat
 
     private readonly ICommentService commentService;
     private readonly CommentableControllerExtension commentableControllerExtension;
+    private readonly ITranslationService translationService;
 
-    public CommentsController(PgDbContext dbContext, IMapper mapper, ICommentService commentService, EsDbContext esDbContext, QueryProviderFactory<Comment> queryProviderFactory, CommentableControllerExtension commentableControllerExtension)
+    public CommentsController(PgDbContext dbContext, IMapper mapper, ICommentService commentService, EsDbContext esDbContext, QueryProviderFactory<Comment> queryProviderFactory, CommentableControllerExtension commentableControllerExtension, ITranslationService translationService)
         : base(dbContext, mapper, esDbContext, queryProviderFactory)
     {
         this.commentService = commentService;
         this.commentableControllerExtension = commentableControllerExtension;
+        this.translationService = translationService;
         additionalImportChecker = new CommentsImportChecker(dbContext);
     }
 
@@ -126,6 +129,21 @@ public class CommentsController : BaseControllerWithImport<Comment, CommentCreat
         }
 
         return await commentableControllerExtension.PostComment(comment, this);
+    }
+
+    [HttpGet("{id}/translation-draft/{language}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<CommentDetailsDto>> GetTranslationDraft(int id, string language, [FromQuery] TranslationTransformerType transformer = TranslationTransformerType.EmptyCopy)
+    {
+        var translationDraft = await translationService.CreateTranslationDraftAsync<Comment>(id, language, transformer);
+        var draftDto = mapper.Map<CommentDetailsDto>(translationDraft);
+        
+        return Ok(draftDto);
     }
 
     protected override async Task SaveRangeAsync(List<Comment> comments)

@@ -6,12 +6,13 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 using LeadCMS.DataAnnotations;
+using LeadCMS.Interfaces;
 
 namespace LeadCMS.Entities
 {
     [Table("email_group")]
     [SupportsChangeLog]
-    public class EmailGroup : BaseEntity
+    public class EmailGroup : BaseEntity, ITranslatable
     {
         /// <summary>
         /// Gets or sets the name of the email group.

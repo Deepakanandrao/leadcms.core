@@ -80,6 +80,7 @@ public class Program
         builder.Services.AddTransient(typeof(ESOnlyQueryProviderFactory<>), typeof(ESOnlyQueryProviderFactory<>));
         builder.Services.AddSingleton<IEmailService, EmailService>();
         builder.Services.AddTransient<CommentableControllerExtension, CommentableControllerExtension>();
+        builder.Services.AddScoped<ITranslationService, TranslationService>();
         builder.Services.AddScoped<IDealService, DealService>();
         builder.Services.AddTransient<IOrderService, OrderService>();
         builder.Services.AddTransient<IDiscountService, DiscountService>();

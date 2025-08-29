@@ -11,6 +11,7 @@ public class TestComment : CommentCreateDto
         AuthorName = $"Test Author{uid}";
         AuthorEmail = $"contact{uid}@test{uid}.net";
         Body = $"Test Comment{uid}";
+        Language = "en";
         CommentableId = commentableId;
         CommentableType = Content.GetCommentableType();
     }

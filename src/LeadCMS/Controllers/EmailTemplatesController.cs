@@ -6,7 +6,9 @@ using AutoMapper;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
+using LeadCMS.Enums;
 using LeadCMS.Infrastructure;
+using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -16,8 +18,26 @@ namespace LeadCMS.Controllers;
 [Route("api/[controller]")]
 public class EmailTemplatesController : BaseController<EmailTemplate, EmailTemplateCreateDto, EmailTemplateUpdateDto, EmailTemplateDetailsDto>
 {
-    public EmailTemplatesController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<EmailTemplate> queryProviderFactory)
+    private readonly ITranslationService translationService;
+
+    public EmailTemplatesController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<EmailTemplate> queryProviderFactory, ITranslationService translationService)
     : base(dbContext, mapper, esDbContext, queryProviderFactory)
     {
+        this.translationService = translationService;
+    }
+
+    [HttpGet("{id}/translation-draft/{language}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<EmailTemplateDetailsDto>> GetTranslationDraft(int id, string language, [FromQuery] TranslationTransformerType transformer = TranslationTransformerType.EmptyCopy)
+    {
+        var translationDraft = await translationService.CreateTranslationDraftAsync<EmailTemplate>(id, language, transformer);
+        var draftDto = mapper.Map<EmailTemplateDetailsDto>(translationDraft);
+
+        return Ok(draftDto);
     }
 }

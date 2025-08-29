@@ -11,12 +11,21 @@ public class EmailGroupCreateDto
 {
     [Required]
     public string Name { get; set; } = string.Empty;
+
+    [Required]
+    public string Language { get; set; } = string.Empty;
+
+    public string? TranslationKey { get; set; }
 }
 
 public class EmailGroupUpdateDto
 {
     [MinLength(1)]
     public string? Name { get; set; }
+
+    public string? Language { get; set; }
+
+    public string? TranslationKey { get; set; }
 }
 
 public class EmailGroupDetailsDto : EmailGroupCreateDto

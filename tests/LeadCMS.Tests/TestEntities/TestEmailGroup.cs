@@ -9,5 +9,6 @@ public class TestEmailGroup : EmailGroupCreateDto
     public TestEmailGroup(string uid = "")
     {
         Name = $"TestEmailGroup{uid}";
+        Language = "en";
     }
 }

@@ -9,5 +9,8 @@ public class TestContact : ContactCreateDto
     public TestContact(string uid = "")
     {
         Email = $"contact{uid}@test{uid}.net";
+        FirstName = $"FirstName_{uid}";
+        LastName = $"LastName_{uid}";
+        Language = "en";
     }
 }
