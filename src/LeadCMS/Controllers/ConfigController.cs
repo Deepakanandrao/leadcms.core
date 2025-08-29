@@ -5,6 +5,8 @@
 using System.Globalization;
 using LeadCMS.Configuration;
 using LeadCMS.Data;
+using LeadCMS.DTOs;
+using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -118,6 +120,8 @@ public class ConfigController : ControllerBase
         var apiSettingsSection = configuration.GetSection("ApiSettings");
         var defaultLanguage = apiSettingsSection["DefaultLanguage"] ?? "en-US";
 
+        var dynamicModules = PluginManager.GetAllDynamicModules();
+
         var configDto = new ConfigDto
         {
             Auth = new AuthConfigDto
@@ -129,6 +133,7 @@ public class ConfigController : ControllerBase
             Languages = languages,
             Settings = settings,
             DefaultLanguage = defaultLanguage,
+            Modules = dynamicModules,
         };
 
         return Ok(configDto);
@@ -146,6 +151,8 @@ public class ConfigDto
     public Dictionary<string, string> Settings { get; set; } = new Dictionary<string, string>();
 
     public string DefaultLanguage { get; set; } = "en-US";
+    
+    public List<DynamicModuleDto>? Modules { get; set; }
 }
 
 public class AuthConfigDto
