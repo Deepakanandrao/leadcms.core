@@ -25,4 +25,15 @@ public interface ITranslationService
     /// <exception cref="NotTranslatableException">Thrown when the entity does not support translations.</exception>
     Task<T> CreateTranslationDraftAsync<T>(int entityId, string language, TranslationTransformerType transformerType)
         where T : BaseEntityWithId, ITranslatable;
+
+    /// <summary>
+    /// Gets all existing translations for the specified entity.
+    /// </summary>
+    /// <typeparam name="T">The entity type that implements ITranslatable.</typeparam>
+    /// <param name="entityId">The ID of the entity to get translations for.</param>
+    /// <returns>A list of all translations for the entity.</returns>
+    /// <exception cref="EntityNotFoundException">Thrown when the entity is not found.</exception>
+    /// <exception cref="NotTranslatableException">Thrown when the entity does not support translations.</exception>
+    Task<List<T>> GetTranslationsAsync<T>(int entityId)
+        where T : BaseEntityWithId, ITranslatable;
 }

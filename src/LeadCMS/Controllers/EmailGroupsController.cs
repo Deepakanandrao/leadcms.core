@@ -40,4 +40,15 @@ public class EmailGroupsController : BaseController<EmailGroup, EmailGroupCreate
 
         return Ok(draftDto);
     }
+
+    [HttpGet("{id}/translations")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<List<EmailGroupDetailsDto>>> GetTranslations(int id)
+    {
+        var translations = await translationService.GetTranslationsAsync<EmailGroup>(id);
+        return Ok(mapper.Map<List<EmailGroupDetailsDto>>(translations));
+    }
 }

@@ -90,7 +90,44 @@ public class TranslationService : ITranslationService
         }
 
         return translationDraft;
-    }    
+    }
+
+    /// <inheritdoc/>
+    public async Task<List<T>> GetTranslationsAsync<T>(int entityId)
+        where T : BaseEntityWithId, ITranslatable
+    {
+        var entityType = typeof(T);
+
+        // Get the DbSet for the entity type
+        var dbSet = dbContext.Set<T>();
+
+        // Find the original entity
+        var originalEntity = await dbSet.FindAsync(entityId);
+        if (originalEntity == null)
+        {
+            throw new EntityNotFoundException(entityType.Name, entityId.ToString());
+        }
+
+        // Verify the entity supports translations
+        if (originalEntity is not ITranslatable)
+        {
+            throw new NotTranslatableException(entityType.Name);
+        }
+
+        // If the original entity doesn't have a translation key, return only the original
+        if (string.IsNullOrEmpty(originalEntity.TranslationKey))
+        {
+            return new List<T> { originalEntity };
+        }
+
+        // Get all entities with the same translation key (including the original)
+        var translations = await dbSet
+            .Where(e => e.TranslationKey == originalEntity.TranslationKey)
+            .OrderBy(e => e.Id) // Order by ID to ensure consistent ordering
+            .ToListAsync();
+
+        return translations;
+    }
 
     private static void ResetTrackingFields<T>(T entity)
         where T : BaseEntityWithId
@@ -136,7 +173,7 @@ public class TranslationService : ITranslationService
         copy.Id = 0;
 
         // Set the new language
-        copy.Language = language;        
+        copy.Language = language;
 
         // The translation key is already copied from the original entity
 
@@ -157,5 +194,5 @@ public class TranslationService : ITranslationService
         copy.Source = "Translated from " + originalEntity.Id;
 
         return copy;
-    }    
+    }
 }

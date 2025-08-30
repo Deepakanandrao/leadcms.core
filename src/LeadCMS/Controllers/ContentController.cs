@@ -85,7 +85,7 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
                 dto.Body = MediaUriTransformer.Transform(dto.Body, mediaResolver, HttpContext, mode);
                 dto.CoverImageUrl = mediaResolver.Resolve(dto.CoverImageUrl, HttpContext, mode);
             }
-            
+
             return Ok(dto);
         }
 
@@ -256,7 +256,7 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
                 ObjectId = 0, // 0 means new/unsaved
                 Data = draftJson,
             };
-            
+
             await dbContext.ContentDrafts!.AddAsync(draft);
         }
 
@@ -289,7 +289,21 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
     {
         var translationDraft = await translationService.CreateTranslationDraftAsync<Content>(id, language, transformer);
         var draftDto = mapper.Map<ContentDetailsDto>(translationDraft);
-        
+
         return Ok(draftDto);
+    }
+
+    [HttpGet("{id}/translations")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<List<ContentDetailsDto>>> GetTranslations(int id)
+    {
+        var translations = await translationService.GetTranslationsAsync<Content>(id);
+        var translationDtos = mapper.Map<List<ContentDetailsDto>>(translations);
+
+        return Ok(translationDtos);
     }
 }
