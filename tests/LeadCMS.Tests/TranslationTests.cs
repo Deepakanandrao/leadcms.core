@@ -609,6 +609,114 @@ public class TranslationTests : BaseTestAutoLogin
         response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.OK);
     }
 
+    [Theory]
+    [InlineData("ko-KR")] // Korean - not supported
+    [InlineData("hi-IN")] // Hindi - not supported
+    [InlineData("th-TH")] // Thai - not supported
+    [InlineData("pl-PL")] // Polish - not supported
+    [InlineData("tr-TR")] // Turkish - not supported
+    public async Task GetTranslationDraft_UnsupportedLanguage_ReturnsBadRequest(string unsupportedLanguage)
+    {
+        // Arrange
+        var content = new TestContent();
+        var contentUrl = await PostTest("/api/content", content);
+        var contentId = GetIdFromUrl(contentUrl);
+
+        // Act
+        var response = await GetRequest($"/api/content/{contentId}/translation-draft/{unsupportedLanguage}?transformer=emptyCopy");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var problemDetails = JsonHelper.Deserialize<ProblemDetails>(responseContent);
+        problemDetails.Should().NotBeNull();
+        problemDetails!.Status.Should().Be(400);
+        problemDetails.Extensions.Should().ContainKey("language");
+        problemDetails.Extensions["language"]!.ToString().Should().Be(unsupportedLanguage);
+    }
+
+    [Fact]
+    public async Task GetTranslationDraft_UnsupportedLanguage_EmailGroup_ReturnsBadRequest()
+    {
+        // Arrange
+        var emailGroup = new TestEmailGroup();
+        var emailGroupUrl = await PostTest("/api/email-groups", emailGroup);
+        var emailGroupId = GetIdFromUrl(emailGroupUrl);
+
+        // Act
+        var response = await GetRequest($"/api/email-groups/{emailGroupId}/translation-draft/vi-VN?transformer=emptyCopy");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var problemDetails = JsonHelper.Deserialize<ProblemDetails>(responseContent);
+        problemDetails.Should().NotBeNull();
+        problemDetails!.Status.Should().Be(400);
+        problemDetails.Extensions.Should().ContainKey("language");
+        problemDetails.Extensions["language"]!.ToString().Should().Be("vi-VN");
+    }
+
+    [Fact]
+    public async Task GetTranslationDraft_UnsupportedLanguage_EmailTemplate_ReturnsBadRequest()
+    {
+        // Arrange
+        var emailGroup = new TestEmailGroup();
+        var emailGroupUrl = await PostTest("/api/email-groups", emailGroup);
+        var emailGroupId = GetIdFromUrl(emailGroupUrl);
+
+        var emailTemplate = new TestEmailTemplate();
+        emailTemplate.EmailGroupId = emailGroupId;
+        var templateUrl = await PostTest("/api/email-templates", emailTemplate);
+        var templateId = GetIdFromUrl(templateUrl);
+
+        // Act
+        var response = await GetRequest($"/api/email-templates/{templateId}/translation-draft/bn-BD?transformer=emptyCopy");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var problemDetails = JsonHelper.Deserialize<ProblemDetails>(responseContent);
+        problemDetails.Should().NotBeNull();
+        problemDetails!.Status.Should().Be(400);
+        problemDetails.Extensions.Should().ContainKey("language");
+        problemDetails.Extensions["language"]!.ToString().Should().Be("bn-BD");
+    }
+
+    [Fact]
+    public async Task GetTranslationDraft_UnsupportedLanguage_Comment_ReturnsBadRequest()
+    {
+        // Arrange
+        // Create a content item to comment on
+        var content = new TestContent();
+        var contentUrl = await PostTest("/api/content", content);
+        var contentId = GetIdFromUrl(contentUrl);
+
+        // Create a contact for the comment
+        var contact = new TestContact();
+        await PostTest("/api/contacts", contact);
+
+        // Create a comment
+        var comment = new TestComment(string.Empty, contentId);
+        var commentUrl = await PostTest("/api/comments", comment);
+        var commentId = GetIdFromUrl(commentUrl);
+
+        // Act
+        var response = await GetRequest($"/api/comments/{commentId}/translation-draft/ur-PK?transformer=emptyCopy");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var problemDetails = JsonHelper.Deserialize<ProblemDetails>(responseContent);
+        problemDetails.Should().NotBeNull();
+        problemDetails!.Status.Should().Be(400);
+        problemDetails.Extensions.Should().ContainKey("language");
+        problemDetails.Extensions["language"]!.ToString().Should().Be("ur-PK");
+    }
+
     /// <summary>
     /// Helper method to extract ID from a URL like "/api/content/123".
     /// </summary>

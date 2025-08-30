@@ -23,6 +23,7 @@ public interface ITranslationService
     /// <exception cref="EntityNotFoundException">Thrown when the entity is not found.</exception>
     /// <exception cref="TranslationConflictException">Thrown when a translation already exists for the specified language.</exception>
     /// <exception cref="NotTranslatableException">Thrown when the entity does not support translations.</exception>
+    /// <exception cref="UnsupportedLanguageException">Thrown when the language is not supported.</exception>
     Task<T> CreateTranslationDraftAsync<T>(int entityId, string language, TranslationTransformerType transformerType)
         where T : BaseEntityWithId, ITranslatable;
 

@@ -96,7 +96,7 @@ public class ErrorsController : Controller
                     HttpContext,
                     StatusCodes.Status409Conflict,
                     translationConflictException.Message);
-                
+
                 problemDetails.Extensions["entityType"] = translationConflictException.EntityType;
                 problemDetails.Extensions["entityId"] = translationConflictException.EntityId;
                 problemDetails.Extensions["language"] = translationConflictException.Language;
@@ -106,8 +106,17 @@ public class ErrorsController : Controller
                     HttpContext,
                     StatusCodes.Status400BadRequest,
                     notTranslatableException.Message);
-                
+
                 problemDetails.Extensions["entityType"] = notTranslatableException.EntityType;
+                break;
+            case UnsupportedLanguageException unsupportedLanguageException:
+                problemDetails = ProblemDetailsFactory.CreateProblemDetails(
+                    HttpContext,
+                    StatusCodes.Status400BadRequest,
+                    unsupportedLanguageException.Message);
+
+                problemDetails.Extensions["language"] = unsupportedLanguageException.Language;
+                problemDetails.Extensions["supportedLanguages"] = unsupportedLanguageException.SupportedLanguages;
                 break;
             default:
                 problemDetails = ProblemDetailsFactory.CreateProblemDetails(

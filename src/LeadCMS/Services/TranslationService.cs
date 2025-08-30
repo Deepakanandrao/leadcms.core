@@ -20,22 +20,28 @@ public class TranslationService : ITranslationService
 {
     private readonly PgDbContext dbContext;
     private readonly IMapper mapper;
+    private readonly ILanguageValidationService languageValidationService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TranslationService"/> class.
     /// </summary>
     /// <param name="dbContext">The database context.</param>
     /// <param name="mapper">The AutoMapper instance.</param>
-    public TranslationService(PgDbContext dbContext, IMapper mapper)
+    /// <param name="languageValidationService">The language validation service.</param>
+    public TranslationService(PgDbContext dbContext, IMapper mapper, ILanguageValidationService languageValidationService)
     {
         this.dbContext = dbContext;
         this.mapper = mapper;
+        this.languageValidationService = languageValidationService;
     }
 
     /// <inheritdoc/>
     public async Task<T> CreateTranslationDraftAsync<T>(int entityId, string language, TranslationTransformerType transformerType)
         where T : BaseEntityWithId, ITranslatable
     {
+        // Validate the language is supported
+        languageValidationService.ValidateLanguage(language);
+
         var entityType = typeof(T);
 
         // Get the DbSet for the entity type

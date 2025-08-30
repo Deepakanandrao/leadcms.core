@@ -80,6 +80,7 @@ public class Program
         builder.Services.AddTransient(typeof(ESOnlyQueryProviderFactory<>), typeof(ESOnlyQueryProviderFactory<>));
         builder.Services.AddSingleton<IEmailService, EmailService>();
         builder.Services.AddTransient<CommentableControllerExtension, CommentableControllerExtension>();
+        builder.Services.AddScoped<ILanguageValidationService, LanguageValidationService>();
         builder.Services.AddScoped<ITranslationService, TranslationService>();
         builder.Services.AddScoped<IDealService, DealService>();
         builder.Services.AddTransient<IOrderService, OrderService>();
@@ -141,7 +142,7 @@ public class Program
         builder.Services.Configure<ForwardedHeadersOptions>(options =>
         {
             options.ForwardedHeaders = ForwardedHeaders.All;
-        });        
+        });
 
         app = builder.Build();
         app.UseCors();
@@ -154,7 +155,7 @@ public class Program
 
         app.UseSwagger();
         app.UseSwaggerUI();
-        app.UseDefaultFiles();        
+        app.UseDefaultFiles();
         app.UseStaticFiles();
 
         app.UseAuthentication();
@@ -546,7 +547,7 @@ public class Program
         {
             builder.Services.AddScoped<ITask, SyncEsTask>();
         }
-        
+
         builder.Services.AddScoped<ITask, SyncIpDetailsTask>();
         builder.Services.AddScoped<ITask, DomainVerificationTask>();
         builder.Services.AddScoped<ITask, ContactScheduledEmailTask>();
