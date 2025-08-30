@@ -7,7 +7,7 @@
     <RootNamespace>LeadCMS</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <UserSecretsId>98270385-43f2-4d3c-11d5-02d0d77fc2d9</UserSecretsId>
-    <ReleaseVersion>1.2.67-pre</ReleaseVersion>
+    <ReleaseVersion>1.2.68-pre</ReleaseVersion>
     <AssemblyName>LeadCMS</AssemblyName>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageId>LeadCMS</PackageId>
@@ -83,7 +83,7 @@
     <Folder Include="Elastic\" />
     <Folder Include="Elastic\Migrations\" />
   </ItemGroup>
-  
+
   <ItemGroup>
     <None Update="README.md">
       <Pack>True</Pack>
@@ -106,10 +106,10 @@
   <ItemGroup>
     <EmbeddedResource Include="Resources\free_domains.txt">
         <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-    </EmbeddedResource>    
+    </EmbeddedResource>
     <EmbeddedResource Include="Resources\disposable_domains.txt">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>
   </ItemGroup>
-  
+
 </Project>

@@ -5,10 +5,10 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <ReleaseVersion>1.2.67-pre</ReleaseVersion>
+    <ReleaseVersion>1.2.68-pre</ReleaseVersion>
     <EnableDynamicLoading>true</EnableDynamicLoading>
-    <Configurations>Debug;Release;Migration</Configurations>  
-  </PropertyGroup>  
+    <Configurations>Debug;Release;Migration</Configurations>
+  </PropertyGroup>
 
   <PropertyGroup>
     <OutputPath>..\..\src\LeadCMS\bin\$(Configuration)\$(TargetFramework)\plugins\$(AssemblyName)</OutputPath>
@@ -25,8 +25,8 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </ProjectReference>
-  </ItemGroup>  
-  
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
