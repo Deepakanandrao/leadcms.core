@@ -89,6 +89,9 @@ public class Program
         builder.Services.AddSingleton<IMediaResolver, MediaResolver>();
         builder.Services.AddScoped<IRedirectService, RedirectService>();
 
+        // Add capabilities service for plugin extensibility
+        builder.Services.AddSingleton<ICapabilityService, CapabilityService>();
+
         // Add SSE services for real-time change notifications
         builder.Services.AddSingleton<SseClientManager>();
         builder.Services.AddHostedService<PostgresNotificationService>();
@@ -341,6 +344,13 @@ public class Program
         {
             controllersBuilder = controllersBuilder.AddApplicationPart(plugin.GetType().Assembly).AddControllersAsServices();
             plugin.ConfigureServices(builder.Services, builder.Configuration);
+
+            // Register plugin capabilities if the plugin implements ICapabilityProvider
+            if (plugin is ICapabilityProvider capabilityProvider)
+            {
+                // We'll register this after the service provider is built
+                builder.Services.AddSingleton<ICapabilityProvider>(capabilityProvider);
+            }
         }
     }
 

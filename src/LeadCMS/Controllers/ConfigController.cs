@@ -21,17 +21,20 @@ public class ConfigController : ControllerBase
     private readonly IServiceProvider serviceProvider;
     private readonly ISettingService settingService;
     private readonly IHttpContextHelper httpContextHelper;
+    private readonly ICapabilityService capabilityService;
 
     public ConfigController(
-        IConfiguration configuration, 
+        IConfiguration configuration,
         IServiceProvider serviceProvider,
         ISettingService settingService,
-        IHttpContextHelper httpContextHelper)
+        IHttpContextHelper httpContextHelper,
+        ICapabilityService capabilityService)
     {
         this.configuration = configuration;
         this.serviceProvider = serviceProvider;
         this.settingService = settingService;
         this.httpContextHelper = httpContextHelper;
+        this.capabilityService = capabilityService;
     }
 
     [HttpGet]
@@ -76,7 +79,7 @@ public class ConfigController : ControllerBase
                     allEntities.Add(entityType.Name);
                 }
             }
-            
+
             var pluginDbContexts = scope.ServiceProvider.GetServices<PluginDbContextBase>();
             foreach (var pluginContext in pluginDbContexts)
             {
@@ -113,7 +116,7 @@ public class ConfigController : ControllerBase
         {
             userId = await httpContextHelper.GetCurrentUserIdAsync();
         }
-        
+
         var settings = await settingService.GetSettingsByKeysAsync(hardcodedSettingKeys, userId);
 
         // Get DefaultLanguage from ApiSettings section
@@ -121,6 +124,9 @@ public class ConfigController : ControllerBase
         var defaultLanguage = apiSettingsSection["DefaultLanguage"] ?? "en-US";
 
         var dynamicModules = PluginManager.GetAllDynamicModules();
+
+        // Get all capabilities from registered providers
+        var capabilities = capabilityService.GetAllCapabilities();
 
         var configDto = new ConfigDto
         {
@@ -134,6 +140,7 @@ public class ConfigController : ControllerBase
             Settings = settings,
             DefaultLanguage = defaultLanguage,
             Modules = dynamicModules,
+            Capabilities = capabilities,
         };
 
         return Ok(configDto);
@@ -151,8 +158,10 @@ public class ConfigDto
     public Dictionary<string, string> Settings { get; set; } = new Dictionary<string, string>();
 
     public string DefaultLanguage { get; set; } = "en-US";
-    
+
     public List<DynamicModuleDto>? Modules { get; set; }
+
+    public IEnumerable<string> Capabilities { get; set; } = Array.Empty<string>();
 }
 
 public class AuthConfigDto

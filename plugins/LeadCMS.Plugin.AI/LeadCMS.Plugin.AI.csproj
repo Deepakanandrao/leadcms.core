@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <ReleaseVersion>1.2.69-pre</ReleaseVersion>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Configurations>Debug;Release;Migration</Configurations>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <OutputPath>..\..\src\LeadCMS\bin\$(Configuration)\$(TargetFramework)\plugins\$(AssemblyName)</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="pluginsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup Condition="'$(Configuration)'!='Migration'">
+    <ProjectReference Include="..\..\src\LeadCMS\LeadCMS.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="OpenAI" Version="2.3.0" />
+    <!-- Insert additional references above this line -->
+  </ItemGroup>
+
+  <!-- Remove conflicting assemblies that are already provided by the host application -->
+  <Target Name="RemoveConflictingAssemblies" AfterTargets="AfterBuild">
+    <ItemGroup>
+      <ConflictingFiles Include="$(OutputPath)Microsoft.Extensions.Logging.Abstractions.dll" />
+      <ConflictingFiles Include="$(OutputPath)Microsoft.Extensions.DependencyInjection.Abstractions.dll" />
+      <ConflictingFiles Include="$(OutputPath)Microsoft.Extensions.Configuration.Abstractions.dll" />
+      <ConflictingFiles Include="$(OutputPath)Microsoft.Extensions.Http.dll" />
+      <ConflictingFiles Include="$(OutputPath)System.Text.Json.dll" />
+    </ItemGroup>
+    <Delete Files="@(ConflictingFiles)" ContinueOnError="true" />
+  </Target>
+
+  <!--This ItemGroup is required to support migration generating with the "dotnet ef migrations add" command-->
+  <ItemGroup Condition="'$(Configuration)'=='Migration'">
+    <ProjectReference Include="..\..\src\LeadCMS\LeadCMS.csproj" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>
