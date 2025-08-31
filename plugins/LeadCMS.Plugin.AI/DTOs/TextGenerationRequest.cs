@@ -9,10 +9,4 @@ public class TextGenerationRequest
     public string UserPrompt { get; set; } = string.Empty;
 
     public string SystemPrompt { get; set; } = string.Empty;
-
-    public string? Model { get; set; }
-
-    public int? MaxTokens { get; set; }
-
-    public Dictionary<string, object> AdditionalParameters { get; set; } = new Dictionary<string, object>();
 }

@@ -39,10 +39,7 @@ public class OpenAIProviderService : IAIProviderService
 
             messages.Add(ChatMessage.CreateUserMessage(request.UserPrompt));
 
-            var chatRequest = new ChatCompletionOptions
-            {
-                MaxOutputTokenCount = request.MaxTokens ?? 4096,
-            };
+            var chatRequest = new ChatCompletionOptions();
 
             // Always use the best available model
             var modelToUse = "gpt-5";
