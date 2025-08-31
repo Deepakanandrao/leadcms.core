@@ -46,34 +46,4 @@ public class TextGenerationController : ControllerBase
             return StatusCode(500, new { error = ex.Message });
         }
     }
-
-    /// <summary>
-    /// Generate text with a simple prompt (no system prompt).
-    /// </summary>
-    /// <param name="prompt">The text prompt.</param>
-    /// <returns>Generated text response.</returns>
-    [HttpPost("simple")]
-    [SwaggerOperation(Tags = new[] { "AIAssistance" })]
-    public async Task<ActionResult<TextGenerationResponse>> GenerateSimpleText([FromBody] string prompt)
-    {
-        if (string.IsNullOrWhiteSpace(prompt))
-        {
-            return BadRequest("Prompt is required");
-        }
-
-        var request = new TextGenerationRequest
-        {
-            UserPrompt = prompt,
-        };
-
-        try
-        {
-            var response = await textGenerationService.GenerateTextAsync(request);
-            return Ok(response);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { error = ex.Message });
-        }
-    }
 }

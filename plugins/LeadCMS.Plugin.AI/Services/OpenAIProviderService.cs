@@ -97,8 +97,7 @@ public class OpenAIProviderService : IAIProviderService
             };
 
             // Always use the best available image model
-            var modelToUse = "dall-e-3";
-            var response = await client.GetImageClient(modelToUse).GenerateImageAsync(request.Prompt, imageRequest);
+            var response = await client.GetImageClient("dall-e-3").GenerateImageAsync(request.Prompt, imageRequest);
 
             var images = new List<DTOs.GeneratedImage>();
             if (response.Value != null)
@@ -113,7 +112,7 @@ public class OpenAIProviderService : IAIProviderService
             return new ImageGenerationResponse
             {
                 Images = images,
-                Model = modelToUse,
+                Model = "dall-e-3",
                 Metadata = new Dictionary<string, object>
                 {
                     ["created"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),

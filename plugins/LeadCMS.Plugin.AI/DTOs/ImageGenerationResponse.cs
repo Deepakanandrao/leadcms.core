@@ -18,6 +18,4 @@ public class GeneratedImage
     public string Url { get; set; } = string.Empty;
 
     public string? RevisedPrompt { get; set; }
-
-    public byte[]? ImageData { get; set; }
 }
