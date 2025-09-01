@@ -25,8 +25,9 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
     private readonly IMediaResolver mediaResolver;
     private readonly IHttpContextHelper httpContextHelper;
     private readonly ILogger<ContentController> logger;
+    private readonly IMdxComponentParserService mdxComponentParserService;
 
-    public ContentController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Content> queryProviderFactory, CommentableControllerExtension commentableControllerExtension, ITranslationService translationService, IMediaResolver mediaResolver, IHttpContextHelper httpContextHelper, ILogger<ContentController> logger)
+    public ContentController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Content> queryProviderFactory, CommentableControllerExtension commentableControllerExtension, ITranslationService translationService, IMediaResolver mediaResolver, IHttpContextHelper httpContextHelper, ILogger<ContentController> logger, IMdxComponentParserService mdxComponentParserService)
         : base(dbContext, mapper, esDbContext, queryProviderFactory)
     {
         this.commentableControllerExtension = commentableControllerExtension;
@@ -34,6 +35,84 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         this.mediaResolver = mediaResolver;
         this.httpContextHelper = httpContextHelper;
         this.logger = logger;
+        this.mdxComponentParserService = mdxComponentParserService;
+    }
+
+    /// <summary>
+    /// Creates new content and automatically clears MDX component cache for the content type.
+    /// </summary>
+    public override async Task<ActionResult<ContentDetailsDto>> Post([FromBody] ContentCreateDto value)
+    {
+        var result = await base.Post(value);
+
+        // Clear cache for the content type if it's an MDX type
+        if (result.Result is CreatedAtActionResult createdResult && 
+            createdResult.Value is ContentDetailsDto contentDto && 
+            !string.IsNullOrEmpty(contentDto.Type))
+        {
+            await ClearCacheIfMdxType(contentDto.Type);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Updates existing content and automatically clears MDX component cache for the content type.
+    /// </summary>
+    public override async Task<ActionResult<ContentDetailsDto>> Patch(int id, [FromBody] ContentUpdateDto value)
+    {
+        // Get the existing content to know the type
+        var existingContent = await FindOrThrowNotFound(id);
+        
+        var result = await base.Patch(id, value);
+
+        // Clear cache for the content type if it's an MDX type
+        if (!string.IsNullOrEmpty(existingContent.Type))
+        {
+            await ClearCacheIfMdxType(existingContent.Type);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Deletes content and automatically clears MDX component cache for the content type.
+    /// </summary>
+    public override async Task<ActionResult> Delete(int id)
+    {
+        // Get the existing content to know the type before deletion
+        var existingContent = await FindOrThrowNotFound(id);
+        var contentType = existingContent.Type;
+
+        var result = await base.Delete(id);
+
+        // Clear cache for the content type if it's an MDX type
+        if (!string.IsNullOrEmpty(contentType))
+        {
+            await ClearCacheIfMdxType(contentType);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Imports content and automatically clears MDX component cache for affected content types.
+    /// </summary>
+    public override async Task<ActionResult<ImportResult>> Import([FromBody] List<ContentImportDto> importRecords)
+    {
+        var result = await base.Import(importRecords);
+
+        // Get unique content types from the import records and clear cache for MDX types
+        var contentTypes = importRecords.Where(r => !string.IsNullOrEmpty(r.Type))
+                                      .Select(r => r.Type!)
+                                      .Distinct();
+
+        foreach (var contentType in contentTypes)
+        {
+            await ClearCacheIfMdxType(contentType);
+        }
+
+        return result;
     }
 
     [HttpGet]
@@ -305,5 +384,79 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         var translationDtos = mapper.Map<List<ContentDetailsDto>>(translations);
 
         return Ok(translationDtos);
+    }
+
+    [HttpGet("mdx-components/{contentType}")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<MdxComponentAnalysisDto>> GetMdxComponents(string contentType, [FromQuery] bool useCache = true, [FromQuery] int? maxCacheAgeHours = 1)
+    {
+        try
+        {
+            MdxComponentAnalysisDto? result = null;
+
+            // Try to get cached results first if requested
+            if (useCache && maxCacheAgeHours.HasValue)
+            {
+                var maxAge = TimeSpan.FromHours(maxCacheAgeHours.Value);
+                result = await mdxComponentParserService.GetCachedAnalysisAsync(contentType, maxAge);
+            }
+
+            // If no cached result, perform analysis
+            if (result == null)
+            {
+                result = await mdxComponentParserService.AnalyzeContentTypeAsync(contentType);
+            }
+
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "Content Type Not Found",
+                Detail = ex.Message,
+                Status = StatusCodes.Status404NotFound,
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to analyze MDX components for content type: {ContentType}", contentType);
+            return StatusCode(StatusCodes.Status500InternalServerError, new ProblemDetails
+            {
+                Title = "Analysis Failed",
+                Detail = "An error occurred while analyzing MDX components",
+                Status = StatusCodes.Status500InternalServerError,
+            });
+        }
+    }
+
+    /// <summary>
+    /// Clears the MDX component cache for a content type if it's an MDX format type.
+    /// </summary>
+    private async Task ClearCacheIfMdxType(string contentType)
+    {
+        try
+        {
+            // Check if the content type is MDX format
+            var contentTypeEntity = await dbContext.ContentTypes!
+                .Where(ct => ct.Uid == contentType && ct.Format == ContentFormat.MDX)
+                .FirstOrDefaultAsync();
+
+            if (contentTypeEntity != null)
+            {
+                logger.LogInformation("Clearing MDX component cache for content type: {ContentType}", contentType);
+                await mdxComponentParserService.ClearCacheAsync(contentType);
+                logger.LogDebug("Successfully cleared MDX component cache for content type: {ContentType}", contentType);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log the error but don't fail the main operation
+            logger.LogWarning(ex, "Failed to clear MDX component cache for content type: {ContentType}", contentType);
+        }
     }
 }

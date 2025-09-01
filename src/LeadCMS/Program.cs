@@ -60,6 +60,7 @@ public class Program
         builder.Configuration.AddEnvironmentVariables();
 
         builder.Services.AddHttpContextAccessor();
+        builder.Services.AddMemoryCache();
         builder.Services.AddSingleton<IHttpContextHelper, HttpContextHelper>();
         builder.Services.AddTransient<IMxVerifyService, MxVerifyService>();
         builder.Services.AddTransient<IIdentityService, IdentityService>();
@@ -88,6 +89,7 @@ public class Program
         builder.Services.AddTransient<IEmailSchedulingService, EmailSchedulingService>();
         builder.Services.AddSingleton<IMediaResolver, MediaResolver>();
         builder.Services.AddScoped<IRedirectService, RedirectService>();
+        builder.Services.AddScoped<IMdxComponentParserService, MdxComponentParserService>();
 
         // Add capabilities service for plugin extensibility
         builder.Services.AddSingleton<ICapabilityService, CapabilityService>();
