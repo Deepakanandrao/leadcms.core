@@ -62,6 +62,8 @@ namespace LeadCMS.Controllers
             var result = await dbSet.AddAsync(newValue);
             await dbContext.SaveChangesAsync();
 
+            await OnAfterCreateAsync(newValue);
+
             var resultsToClient = mapper.Map<TD>(newValue);
 
             return CreatedAtAction(nameof(GetOne), new { id = result.Entity.Id }, resultsToClient);
@@ -92,6 +94,8 @@ namespace LeadCMS.Controllers
             dbContext.Remove(existingEntity);
 
             await dbContext.SaveChangesAsync();
+
+            await OnAfterDeleteAsync(existingEntity);
 
             return NoContent();
         }
@@ -266,9 +270,44 @@ namespace LeadCMS.Controllers
             mapper.Map(value, existingEntity);
             await dbContext.SaveChangesAsync();
 
+            await OnAfterUpdateAsync(existingEntity);
+
             var resultsToClient = mapper.Map<TD>(existingEntity);
 
             return Ok(resultsToClient);
+        }
+
+        /// <summary>
+        /// Called after an entity is successfully created. Override this method to add custom post-creation logic.
+        /// </summary>
+        /// <param name="entity">The created entity.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
+        protected virtual async Task OnAfterCreateAsync(T entity)
+        {
+            // Default implementation does nothing
+            await Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Called after an entity is successfully updated. Override this method to add custom post-update logic.
+        /// </summary>
+        /// <param name="entity">The updated entity.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
+        protected virtual async Task OnAfterUpdateAsync(T entity)
+        {
+            // Default implementation does nothing
+            await Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Called after an entity is successfully deleted. Override this method to add custom post-deletion logic.
+        /// </summary>
+        /// <param name="entity">The deleted entity.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
+        protected virtual async Task OnAfterDeleteAsync(T entity)
+        {
+            // Default implementation does nothing
+            await Task.CompletedTask;
         }
 
         private static void RemoveSecondLevelObjects(IList<TD> data)

@@ -155,7 +155,22 @@ public class BaseControllerWithImport<T, TC, TU, TD, TI> : BaseController<T, TC,
 
         await dbContext.SaveChangesAsync();
 
+        // Call the hook after successful import
+        await OnAfterImportAsync(newRecords, importRecords);
+
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Called after entities are successfully imported. Override this method to add custom post-import logic.
+    /// </summary>
+    /// <param name="importedEntities">The list of imported entities.</param>
+    /// <param name="importRecords">The original import records.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    protected virtual async Task OnAfterImportAsync(List<T> importedEntities, List<TI> importRecords)
+    {
+        // Default implementation does nothing
+        await Task.CompletedTask;
     }
 
     protected virtual async Task SaveRangeAsync(List<T> newRecords)

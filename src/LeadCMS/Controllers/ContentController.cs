@@ -38,83 +38,6 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         this.mdxComponentParserService = mdxComponentParserService;
     }
 
-    /// <summary>
-    /// Creates new content and automatically clears MDX component cache for the content type.
-    /// </summary>
-    public override async Task<ActionResult<ContentDetailsDto>> Post([FromBody] ContentCreateDto value)
-    {
-        var result = await base.Post(value);
-
-        // Clear cache for the content type if it's an MDX type
-        if (result.Result is CreatedAtActionResult createdResult &&
-            createdResult.Value is ContentDetailsDto contentDto &&
-            !string.IsNullOrEmpty(contentDto.Type))
-        {
-            await ClearCacheIfMdxType(contentDto.Type);
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// Updates existing content and automatically clears MDX component cache for the content type.
-    /// </summary>
-    public override async Task<ActionResult<ContentDetailsDto>> Patch(int id, [FromBody] ContentUpdateDto value)
-    {
-        // Get the existing content to know the type
-        var existingContent = await FindOrThrowNotFound(id);
-
-        var result = await base.Patch(id, value);
-
-        // Clear cache for the content type if it's an MDX type
-        if (!string.IsNullOrEmpty(existingContent.Type))
-        {
-            await ClearCacheIfMdxType(existingContent.Type);
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// Deletes content and automatically clears MDX component cache for the content type.
-    /// </summary>
-    public override async Task<ActionResult> Delete(int id)
-    {
-        // Get the existing content to know the type before deletion
-        var existingContent = await FindOrThrowNotFound(id);
-        var contentType = existingContent.Type;
-
-        var result = await base.Delete(id);
-
-        // Clear cache for the content type if it's an MDX type
-        if (!string.IsNullOrEmpty(contentType))
-        {
-            await ClearCacheIfMdxType(contentType);
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// Imports content and automatically clears MDX component cache for affected content types.
-    /// </summary>
-    public override async Task<ActionResult<ImportResult>> Import([FromBody] List<ContentImportDto> importRecords)
-    {
-        var result = await base.Import(importRecords);
-
-        // Get unique content types from the import records and clear cache for MDX types
-        var contentTypes = importRecords.Where(r => !string.IsNullOrEmpty(r.Type))
-                                      .Select(r => r.Type!)
-                                      .Distinct();
-
-        foreach (var contentType in contentTypes)
-        {
-            await ClearCacheIfMdxType(contentType);
-        }
-
-        return result;
-    }
-
     [HttpGet]
     [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -431,6 +354,55 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
                 Detail = "An error occurred while analyzing MDX components",
                 Status = StatusCodes.Status500InternalServerError,
             });
+        }
+    }
+
+    /// <summary>
+    /// Called after content is successfully created to clear MDX component cache if needed.
+    /// </summary>
+    protected override async Task OnAfterCreateAsync(Content entity)
+    {
+        if (!string.IsNullOrEmpty(entity.Type))
+        {
+            await ClearCacheIfMdxType(entity.Type);
+        }
+    }
+
+    /// <summary>
+    /// Called after content is successfully updated to clear MDX component cache if needed.
+    /// </summary>
+    protected override async Task OnAfterUpdateAsync(Content entity)
+    {
+        if (!string.IsNullOrEmpty(entity.Type))
+        {
+            await ClearCacheIfMdxType(entity.Type);
+        }
+    }
+
+    /// <summary>
+    /// Called after content is successfully deleted to clear MDX component cache if needed.
+    /// </summary>
+    protected override async Task OnAfterDeleteAsync(Content entity)
+    {
+        if (!string.IsNullOrEmpty(entity.Type))
+        {
+            await ClearCacheIfMdxType(entity.Type);
+        }
+    }
+
+    /// <summary>
+    /// Called after content is successfully imported to clear MDX component cache for affected content types.
+    /// </summary>
+    protected override async Task OnAfterImportAsync(List<Content> importedEntities, List<ContentImportDto> importRecords)
+    {
+        // Get unique content types from the import records and clear cache for MDX types
+        var contentTypes = importRecords.Where(r => !string.IsNullOrEmpty(r.Type))
+                                      .Select(r => r.Type!)
+                                      .Distinct();
+
+        foreach (var contentType in contentTypes)
+        {
+            await ClearCacheIfMdxType(contentType);
         }
     }
 
