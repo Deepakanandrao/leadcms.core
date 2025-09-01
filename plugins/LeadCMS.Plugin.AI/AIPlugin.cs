@@ -27,6 +27,7 @@ public class AIPlugin : IPlugin, ICapabilityProvider
         services.AddSingleton<ITextGenerationService, TextGenerationService>();
         services.AddSingleton<IImageGenerationService, ImageGenerationService>();
         services.AddScoped<IContentAITranslationService, ContentAITranslationService>();
+        services.AddScoped<IContentGenerationService, ContentGenerationService>();
     }
 
     public IEnumerable<string> GetCapabilities()

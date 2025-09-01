@@ -46,8 +46,8 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         var result = await base.Post(value);
 
         // Clear cache for the content type if it's an MDX type
-        if (result.Result is CreatedAtActionResult createdResult && 
-            createdResult.Value is ContentDetailsDto contentDto && 
+        if (result.Result is CreatedAtActionResult createdResult &&
+            createdResult.Value is ContentDetailsDto contentDto &&
             !string.IsNullOrEmpty(contentDto.Type))
         {
             await ClearCacheIfMdxType(contentDto.Type);
@@ -63,7 +63,7 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
     {
         // Get the existing content to know the type
         var existingContent = await FindOrThrowNotFound(id);
-        
+
         var result = await base.Patch(id, value);
 
         // Clear cache for the content type if it's an MDX type
