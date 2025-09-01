@@ -32,42 +32,20 @@ public class ContentGenerationController : ControllerBase
     [SwaggerOperation(Tags = new[] { "Content" })]
     public async Task<ActionResult<ContentDetailsDto>> GenerateContent([FromBody] ContentGenerationRequest request)
     {
-        if (request == null)
-        {
-            return BadRequest("Request body is required");
-        }
+        var response = await contentGenerationService.GenerateContentAsync(request);
+        return Ok(response);
+    }
 
-        if (string.IsNullOrWhiteSpace(request.Language))
-        {
-            return BadRequest("Language is required");
-        }
-
-        if (string.IsNullOrWhiteSpace(request.ContentType))
-        {
-            return BadRequest("ContentType is required");
-        }
-
-        if (string.IsNullOrWhiteSpace(request.Prompt))
-        {
-            return BadRequest("Prompt is required");
-        }
-
-        try
-        {
-            var response = await contentGenerationService.GenerateContentAsync(request);
-            return Ok(response);
-        }
-        catch (ArgumentException ex)
-        {
-            return NotFound(new { error = ex.Message });
-        }
-        catch (Exception ex) when (ex.Message.Contains("Not enough data in the database"))
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { error = ex.Message });
-        }
+    /// <summary>
+    /// Generate edits for existing content based on a prompt using AI.
+    /// </summary>
+    /// <param name="request">The content edit request containing content ID and edit prompt.</param>
+    /// <returns>Generated edits for the existing content based on user prompt.</returns>
+    [HttpPost("ai-edit")]
+    [SwaggerOperation(Tags = new[] { "Content" })]
+    public async Task<ActionResult<ContentDetailsDto>> EditContent([FromBody] ContentEditRequest request)
+    {
+        var response = await contentGenerationService.GenerateContentEditAsync(request);
+        return Ok(response);
     }
 }

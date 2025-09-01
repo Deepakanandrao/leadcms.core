@@ -3,6 +3,7 @@
 // </copyright>
 
 using LeadCMS.Exceptions;
+using LeadCMS.Exceptions.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
@@ -26,6 +27,22 @@ public class ErrorsController : Controller
 
         switch (error)
         {
+            // Handle base HTTP exceptions first (this will catch plugin exceptions that extend these)
+            case IHttpStatusException httpStatusException:
+                problemDetails = ProblemDetailsFactory.CreateProblemDetails(
+                    HttpContext,
+                    httpStatusException.StatusCode,
+                    error.Message);
+
+                // Add any additional extensions from the exception
+                var extensions = httpStatusException.GetExtensions();
+                foreach (var kvp in extensions)
+                {
+                    problemDetails.Extensions[kvp.Key] = kvp.Value;
+                }
+
+                break;
+
             case InvalidModelStateException exception:
                 problemDetails = ProblemDetailsFactory.CreateValidationProblemDetails(
                     HttpContext,

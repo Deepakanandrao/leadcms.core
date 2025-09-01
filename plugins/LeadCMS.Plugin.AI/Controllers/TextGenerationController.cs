@@ -31,19 +31,7 @@ public class TextGenerationController : ControllerBase
     [SwaggerOperation(Tags = new[] { "AIAssistance" })]
     public async Task<ActionResult<TextGenerationResponse>> GenerateText([FromBody] TextGenerationRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.UserPrompt))
-        {
-            return BadRequest("User prompt is required");
-        }
-
-        try
-        {
-            var response = await textGenerationService.GenerateTextAsync(request);
-            return Ok(response);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { error = ex.Message });
-        }
+        var response = await textGenerationService.GenerateTextAsync(request);
+        return Ok(response);
     }
 }

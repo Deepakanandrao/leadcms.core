@@ -31,19 +31,7 @@ public class ImageGenerationController : ControllerBase
     [SwaggerOperation(Tags = new[] { "AIAssistance" })]
     public async Task<ActionResult<ImageGenerationResponse>> GenerateImage([FromBody] ImageGenerationRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Prompt))
-        {
-            return BadRequest("Prompt is required");
-        }
-
-        try
-        {
-            var response = await imageGenerationService.GenerateImageAsync(request);
-            return Ok(response);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { error = ex.Message });
-        }
+        var response = await imageGenerationService.GenerateImageAsync(request);
+        return Ok(response);
     }
 }

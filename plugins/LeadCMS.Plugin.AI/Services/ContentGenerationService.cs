@@ -18,6 +18,33 @@ namespace LeadCMS.Plugin.AI.Services;
 
 public class ContentGenerationService : IContentGenerationService
 {
+    private const string EditSystemPrompt = @"You are a content editor assistant. Your task is to edit existing content based on user prompts while maintaining the original structure and improving quality.
+
+Guidelines:
+- Preserve the core meaning and structure of the original content
+- Apply the user's requested changes thoughtfully
+- Maintain appropriate tone and style
+- Ensure all content is factual and well-written
+- Keep the same format (markdown, etc.) as the original
+
+Return your response as valid JSON with these fields:
+- title: Edited article title
+- slug: URL-friendly slug (lowercase, hyphens instead of spaces)
+- description: Brief summary/meta description
+- body: Main content body (preserve markdown formatting)
+- tags: Array of relevant tags
+- category: Relevant category
+
+Example format:
+{
+  ""title"": ""Updated Article Title"",
+  ""slug"": ""updated-article-title"",
+  ""description"": ""Brief description of the updated content"",
+  ""body"": ""# Main Heading\n\nUpdated content here..."",
+  ""tags"": [""tag1"", ""tag2""],
+  ""category"": ""category1""
+}";
+
     private readonly PgDbContext dbContext;
     private readonly ITextGenerationService textGenerationService;
     private readonly IMdxComponentParserService mdxComponentParserService;
@@ -45,7 +72,7 @@ public class ContentGenerationService : IContentGenerationService
 
         if (contentType == null)
         {
-            throw new ArgumentException($"Content type '{request.ContentType}' not found", nameof(request));
+            throw new AIContentTypeNotFoundException(request.ContentType);
         }
 
         // Step 2: Find sample content records
@@ -117,6 +144,50 @@ public class ContentGenerationService : IContentGenerationService
         {
             Log.Error(ex, "Failed to generate content for type {ContentType} in language {Language}", request.ContentType, request.Language);
             throw new AIProviderException("ContentGeneration", "Failed to generate content", ex);
+        }
+    }
+
+    public async Task<ContentDetailsDto> GenerateContentEditAsync(ContentEditRequest request)
+    {
+        var existingContent = await dbContext.Content!.FindAsync(request.ContentId);
+        if (existingContent == null)
+        {
+            throw new AIContentNotFoundException(request.ContentId);
+        }
+
+        var systemPrompt = BuildEditSystemPrompt();
+        var userPrompt = BuildEditUserPrompt(existingContent, request.Prompt);
+
+        var textRequest = new TextGenerationRequest
+        {
+            SystemPrompt = systemPrompt,
+            UserPrompt = userPrompt,
+        };
+
+        try
+        {
+            var response = await textGenerationService.GenerateTextAsync(textRequest);
+
+            // Parse the generated JSON content
+            var contentData = JsonSerializer.Deserialize<JsonElement>(response.GeneratedText);
+
+            return new ContentDetailsDto
+            {
+                Title = contentData.TryGetProperty("title", out var titleProp) ? (titleProp.GetString() ?? existingContent.Title) : existingContent.Title,
+                Slug = contentData.TryGetProperty("slug", out var slugProp) ? (slugProp.GetString() ?? existingContent.Slug) : existingContent.Slug,
+                Description = contentData.TryGetProperty("description", out var descProp) ? (descProp.GetString() ?? existingContent.Description) : existingContent.Description,
+                Body = contentData.TryGetProperty("body", out var bodyProp) ? (bodyProp.GetString() ?? existingContent.Body) : existingContent.Body,
+                Tags = contentData.TryGetProperty("tags", out var tagsProp) ? GetStringArrayProperty(contentData, "tags") : (existingContent.Tags ?? Array.Empty<string>()),
+                Category = contentData.TryGetProperty("category", out var categoryProp) ? (categoryProp.GetString() ?? existingContent.Category) : existingContent.Category,
+            };
+        }
+        catch (JsonException ex)
+        {
+            throw new AIProviderException("ContentGeneration", $"Failed to parse AI response as JSON: {ex.Message}", ex);
+        }
+        catch (Exception ex)
+        {
+            throw new AIProviderException("ContentGeneration", $"Failed to generate content edit: {ex.Message}", ex);
         }
     }
 
@@ -262,5 +333,27 @@ Remember to return only the JSON structure as specified in the system prompt.";
         }
 
         return result.ToArray();
+    }
+
+    private string BuildEditSystemPrompt()
+    {
+        return EditSystemPrompt;
+    }
+
+    private string BuildEditUserPrompt(Content existingContent, string userPrompt)
+    {
+        return $@"Please edit the following content based on this request: {userPrompt}
+
+Original Content:
+Title: {existingContent.Title}
+Slug: {existingContent.Slug}
+Description: {existingContent.Description}
+Tags: {string.Join(", ", existingContent.Tags ?? Array.Empty<string>())}
+Category: {existingContent.Category}
+
+Body:
+{existingContent.Body}
+
+Please provide the edited version in the specified JSON format.";
     }
 }

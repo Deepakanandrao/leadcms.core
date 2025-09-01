@@ -10,4 +10,6 @@ namespace LeadCMS.Plugin.AI.Interfaces;
 public interface IContentGenerationService
 {
     Task<ContentDetailsDto> GenerateContentAsync(ContentGenerationRequest request);
+
+    Task<ContentDetailsDto> GenerateContentEditAsync(ContentEditRequest request);
 }

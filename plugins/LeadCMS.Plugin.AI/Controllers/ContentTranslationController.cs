@@ -42,54 +42,10 @@ public class ContentTranslationController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(language))
         {
-            return BadRequest("Language parameter is required");
+            throw new BadRequestException("Language parameter is required");
         }
 
-        try
-        {
-            var translationDraft = await contentAITranslationService.CreateAITranslationDraftAsync(id, language);
-            return Ok(translationDraft);
-        }
-        catch (EntityNotFoundException)
-        {
-            return NotFound();
-        }
-        catch (TranslationConflictException)
-        {
-            return Conflict(new ProblemDetails
-            {
-                Status = 409,
-                Title = "Translation already exists",
-                Detail = $"A translation for language '{language}' already exists for this content.",
-            });
-        }
-        catch (UnsupportedLanguageException ex)
-        {
-            return BadRequest(new ProblemDetails
-            {
-                Status = 400,
-                Title = "Unsupported language",
-                Detail = ex.Message,
-                Extensions = { ["language"] = language },
-            });
-        }
-        catch (NotTranslatableException)
-        {
-            return BadRequest(new ProblemDetails
-            {
-                Status = 400,
-                Title = "Content not translatable",
-                Detail = "This content type does not support translations.",
-            });
-        }
-        catch (Exception)
-        {
-            return StatusCode(500, new ProblemDetails
-            {
-                Status = 500,
-                Title = "AI translation failed",
-                Detail = "Failed to generate AI translation. Please try again later.",
-            });
-        }
+        var translationDraft = await contentAITranslationService.CreateAITranslationDraftAsync(id, language);
+        return Ok(translationDraft);
     }
 }
