@@ -149,14 +149,8 @@ Example format:
 
     public async Task<ContentDetailsDto> GenerateContentEditAsync(ContentEditRequest request)
     {
-        var existingContent = await dbContext.Content!.FindAsync(request.ContentId);
-        if (existingContent == null)
-        {
-            throw new AIContentNotFoundException(request.ContentId);
-        }
-
         var systemPrompt = BuildEditSystemPrompt();
-        var userPrompt = BuildEditUserPrompt(existingContent, request.Prompt);
+        var userPrompt = BuildEditUserPrompt(request, request.Prompt);
 
         var textRequest = new TextGenerationRequest
         {
@@ -173,12 +167,21 @@ Example format:
 
             return new ContentDetailsDto
             {
-                Title = contentData.TryGetProperty("title", out var titleProp) ? (titleProp.GetString() ?? existingContent.Title) : existingContent.Title,
-                Slug = contentData.TryGetProperty("slug", out var slugProp) ? (slugProp.GetString() ?? existingContent.Slug) : existingContent.Slug,
-                Description = contentData.TryGetProperty("description", out var descProp) ? (descProp.GetString() ?? existingContent.Description) : existingContent.Description,
-                Body = contentData.TryGetProperty("body", out var bodyProp) ? (bodyProp.GetString() ?? existingContent.Body) : existingContent.Body,
-                Tags = contentData.TryGetProperty("tags", out var tagsProp) ? GetStringArrayProperty(contentData, "tags") : (existingContent.Tags ?? Array.Empty<string>()),
-                Category = contentData.TryGetProperty("category", out var categoryProp) ? (categoryProp.GetString() ?? existingContent.Category) : existingContent.Category,
+                Title = contentData.TryGetProperty("title", out var titleProp) ? (titleProp.GetString() ?? request.Title ?? string.Empty) : (request.Title ?? string.Empty),
+                Slug = contentData.TryGetProperty("slug", out var slugProp) ? (slugProp.GetString() ?? request.Slug ?? string.Empty) : (request.Slug ?? string.Empty),
+                Description = contentData.TryGetProperty("description", out var descProp) ? (descProp.GetString() ?? request.Description ?? string.Empty) : (request.Description ?? string.Empty),
+                Body = contentData.TryGetProperty("body", out var bodyProp) ? (bodyProp.GetString() ?? request.Body ?? string.Empty) : (request.Body ?? string.Empty),
+                Tags = contentData.TryGetProperty("tags", out var tagsProp) ? GetStringArrayProperty(contentData, "tags") : (request.Tags ?? Array.Empty<string>()),
+                Category = contentData.TryGetProperty("category", out var categoryProp) ? (categoryProp.GetString() ?? request.Category ?? string.Empty) : (request.Category ?? string.Empty),
+                Author = request.Author ?? string.Empty,
+                Type = request.Type ?? string.Empty,
+                Language = request.Language ?? string.Empty,
+                CoverImageUrl = request.CoverImageUrl,
+                CoverImageAlt = request.CoverImageAlt,
+                TranslationKey = request.TranslationKey,
+                AllowComments = request.AllowComments ?? false,
+                Source = request.Source,
+                PublishedAt = request.PublishedAt,
             };
         }
         catch (JsonException ex)
@@ -340,19 +343,19 @@ Remember to return only the JSON structure as specified in the system prompt.";
         return EditSystemPrompt;
     }
 
-    private string BuildEditUserPrompt(Content existingContent, string userPrompt)
+    private string BuildEditUserPrompt(ContentEditRequest contentData, string userPrompt)
     {
         return $@"Please edit the following content based on this request: {userPrompt}
 
-Original Content:
-Title: {existingContent.Title}
-Slug: {existingContent.Slug}
-Description: {existingContent.Description}
-Tags: {string.Join(", ", existingContent.Tags ?? Array.Empty<string>())}
-Category: {existingContent.Category}
+Current Content:
+Title: {contentData.Title ?? "[No title]"}
+Slug: {contentData.Slug ?? "[No slug]"}
+Description: {contentData.Description ?? "[No description]"}
+Tags: {string.Join(", ", contentData.Tags ?? Array.Empty<string>())}
+Category: {contentData.Category ?? "[No category]"}
 
 Body:
-{existingContent.Body}
+{contentData.Body ?? "[No content]"}
 
 Please provide the edited version in the specified JSON format.";
     }

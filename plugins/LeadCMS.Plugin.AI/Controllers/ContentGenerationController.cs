@@ -39,8 +39,8 @@ public class ContentGenerationController : ControllerBase
     /// <summary>
     /// Generate edits for existing content based on a prompt using AI.
     /// </summary>
-    /// <param name="request">The content edit request containing content ID and edit prompt.</param>
-    /// <returns>Generated edits for the existing content based on user prompt.</returns>
+    /// <param name="request">The content edit request containing the current content data and edit prompt.</param>
+    /// <returns>Generated edits for the content based on user prompt.</returns>
     [HttpPost("ai-edit")]
     [SwaggerOperation(Tags = new[] { "Content" })]
     public async Task<ActionResult<ContentDetailsDto>> EditContent([FromBody] ContentEditRequest request)

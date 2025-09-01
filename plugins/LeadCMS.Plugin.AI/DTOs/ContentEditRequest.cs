@@ -3,16 +3,19 @@
 // </copyright>
 
 using System.ComponentModel.DataAnnotations;
+using LeadCMS.DTOs;
 
 namespace LeadCMS.Plugin.AI.DTOs;
 
-public class ContentEditRequest
+/// <summary>
+/// Request DTO for AI-powered content editing that includes the current content data and user's editing prompt.
+/// </summary>
+public class ContentEditRequest : ContentUpdateDto
 {
-    [Required]
-    [Range(1, int.MaxValue, ErrorMessage = "ContentId must be greater than 0")]
-    public int ContentId { get; set; }
-
-    [Required]
+    /// <summary>
+    /// Gets or sets the user's prompt describing the desired changes to the content.
+    /// </summary>
+    [Required(ErrorMessage = "Prompt is required")]
     [MinLength(1, ErrorMessage = "Prompt cannot be empty")]
     public string Prompt { get; set; } = string.Empty;
 }
