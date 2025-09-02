@@ -32,13 +32,24 @@
   </ItemGroup>
 
   <!-- Remove conflicting assemblies that are already provided by the host application -->
-  <Target Name="RemoveConflictingAssemblies" AfterTargets="AfterBuild">
+  <ItemGroup>
+    <ConflictingAssemblyNames Include="Microsoft.Extensions.Logging.Abstractions.dll" />
+    <ConflictingAssemblyNames Include="Microsoft.Extensions.DependencyInjection.Abstractions.dll" />
+    <ConflictingAssemblyNames Include="Microsoft.Extensions.Configuration.Abstractions.dll" />
+    <ConflictingAssemblyNames Include="Microsoft.Extensions.Http.dll" />
+    <ConflictingAssemblyNames Include="System.Text.Json.dll" />
+  </ItemGroup>
+
+  <Target Name="RemoveConflictingAssembliesAfterBuild" AfterTargets="AfterBuild">
     <ItemGroup>
-      <ConflictingFiles Include="$(OutputPath)Microsoft.Extensions.Logging.Abstractions.dll" />
-      <ConflictingFiles Include="$(OutputPath)Microsoft.Extensions.DependencyInjection.Abstractions.dll" />
-      <ConflictingFiles Include="$(OutputPath)Microsoft.Extensions.Configuration.Abstractions.dll" />
-      <ConflictingFiles Include="$(OutputPath)Microsoft.Extensions.Http.dll" />
-      <ConflictingFiles Include="$(OutputPath)System.Text.Json.dll" />
+      <ConflictingFiles Include="@(ConflictingAssemblyNames->'$(OutputPath)%(Identity)')" />
+    </ItemGroup>
+    <Delete Files="@(ConflictingFiles)" ContinueOnError="true" />
+  </Target>
+
+  <Target Name="RemoveConflictingAssembliesAfterPublish" AfterTargets="AfterPublish">
+    <ItemGroup>
+      <ConflictingFiles Include="@(ConflictingAssemblyNames->'$(PublishDir)%(Identity)')" />
     </ItemGroup>
     <Delete Files="@(ConflictingFiles)" ContinueOnError="true" />
   </Target>
