@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
 
   leadcms:
-    image: leadcms/core:develop
+    image: leadcms/core:latest
     container_name: leadcms
     ports:
       - "8080:80"

@@ -5,7 +5,7 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <ReleaseVersion>1.2.73-pre</ReleaseVersion>
+    <ReleaseVersion>1.2.74-pre</ReleaseVersion>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <Configurations>Debug;Release;Migration</Configurations>
   </PropertyGroup>
@@ -47,7 +47,7 @@
     <Delete Files="@(ConflictingFiles)" ContinueOnError="true" />
   </Target>
 
-  <Target Name="RemoveConflictingAssembliesAfterPublish" AfterTargets="AfterPublish">
+  <Target Name="RemoveConflictingAssembliesAfterPublish" AfterTargets="PublishItemsOutputGroup">
     <ItemGroup>
       <ConflictingFiles Include="@(ConflictingAssemblyNames->'$(PublishDir)%(Identity)')" />
     </ItemGroup>
