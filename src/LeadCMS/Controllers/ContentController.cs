@@ -290,6 +290,14 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
     public async Task<ActionResult<ContentDetailsDto>> GetTranslationDraft(int id, string language, [FromQuery] TranslationTransformerType transformer = TranslationTransformerType.EmptyCopy)
     {
         var translationDraft = await translationService.CreateTranslationDraftAsync<Content>(id, language, transformer);
+
+        // Preserve the Type value from the original entity
+        var originalEntity = await dbSet.FindAsync(id);
+        if (originalEntity != null)
+        {
+            translationDraft.Type = originalEntity.Type;
+        }
+
         var draftDto = mapper.Map<ContentDetailsDto>(translationDraft);
 
         return Ok(draftDto);
