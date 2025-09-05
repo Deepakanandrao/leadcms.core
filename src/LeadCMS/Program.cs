@@ -454,6 +454,7 @@ public class Program
         builder.Services.AddSwaggerGen(config =>
         {
             config.OperationFilter<MediaResolutionHeaderOperationFilter>();
+            config.OperationFilter<Swagger.IncludeTranslationsOperationFilter>();
 
             foreach (var swaggerConfigurator in swaggerConfigurators)
             {

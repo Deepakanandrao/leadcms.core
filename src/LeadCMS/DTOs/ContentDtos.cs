@@ -101,6 +101,9 @@ public class ContentDetailsDto : ContentCreateDto
 
     [Ignore]
     public List<CommentDetailsDto>? Comments { get; set; }
+
+    [Ignore]
+    public Dictionary<string, int?>? Translations { get; set; }
 }
 
 public class ContentImportDto : BaseImportDto

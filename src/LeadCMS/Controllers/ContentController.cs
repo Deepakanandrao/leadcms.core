@@ -3,6 +3,7 @@
 // </copyright>
 
 using AutoMapper;
+using LeadCMS.Attributes;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
@@ -13,6 +14,8 @@ using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi.Models;
+using Swashbuckle.AspNetCore.Annotations;
 
 namespace LeadCMS.Controllers;
 
@@ -26,8 +29,9 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
     private readonly IHttpContextHelper httpContextHelper;
     private readonly ILogger<ContentController> logger;
     private readonly IMdxComponentParserService mdxComponentParserService;
+    private readonly ILanguageValidationService languageValidationService;
 
-    public ContentController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Content> queryProviderFactory, CommentableControllerExtension commentableControllerExtension, ITranslationService translationService, IMediaResolver mediaResolver, IHttpContextHelper httpContextHelper, ILogger<ContentController> logger, IMdxComponentParserService mdxComponentParserService)
+    public ContentController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Content> queryProviderFactory, CommentableControllerExtension commentableControllerExtension, ITranslationService translationService, IMediaResolver mediaResolver, IHttpContextHelper httpContextHelper, ILogger<ContentController> logger, IMdxComponentParserService mdxComponentParserService, ILanguageValidationService languageValidationService)
         : base(dbContext, mapper, esDbContext, queryProviderFactory)
     {
         this.commentableControllerExtension = commentableControllerExtension;
@@ -36,16 +40,22 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         this.httpContextHelper = httpContextHelper;
         this.logger = logger;
         this.mdxComponentParserService = mdxComponentParserService;
+        this.languageValidationService = languageValidationService;
     }
 
     [HttpGet]
     [AllowAnonymous]
+    [IncludeTranslationsParameter(Description = "Include translation mappings in the response")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public override async Task<ActionResult<List<ContentDetailsDto>>> Get([FromQuery] string? query)
     {
+        // Check for includeTranslations parameter manually from query string since we can't change the base method signature
+        var includeTranslations = Request.Query.ContainsKey("includeTranslations") &&
+                                 bool.TryParse(Request.Query["includeTranslations"], out var parsed) && parsed;
+
         var result = await base.Get(query);
         var mode = MediaResolutionHelper.GetResolutionMode(HttpContext);
 
@@ -61,6 +71,11 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
                 }
             }
 
+            if (includeTranslations)
+            {
+                await PopulateTranslationsAsync(list);
+            }
+
             return Ok(list);
         }
 
@@ -71,12 +86,17 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
     // GET api/{entity}s/5
     [HttpGet("{id}")]
     [AllowAnonymous]
+    [IncludeTranslationsParameter(Description = "Include translation mappings in the response")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public override async Task<ActionResult<ContentDetailsDto>> GetOne(int id)
     {
+        // Check for includeTranslations parameter manually from query string
+        var includeTranslations = Request.Query.ContainsKey("includeTranslations") &&
+                                 bool.TryParse(Request.Query["includeTranslations"], out var parsed) && parsed;
+
         var result = await base.GetOne(id);
         var mode = MediaResolutionHelper.GetResolutionMode(HttpContext);
 
@@ -86,6 +106,11 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
             {
                 dto.Body = MediaUriTransformer.Transform(dto.Body, mediaResolver, HttpContext, mode);
                 dto.CoverImageUrl = mediaResolver.Resolve(dto.CoverImageUrl, HttpContext, mode);
+            }
+
+            if (includeTranslations)
+            {
+                await PopulateTranslationsAsync(new List<ContentDetailsDto> { dto });
             }
 
             return Ok(dto);
@@ -437,6 +462,79 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         {
             // Log the error but don't fail the main operation
             logger.LogWarning(ex, "Failed to clear MDX component cache for content type: {ContentType}", contentType);
+        }
+    }
+
+    /// <summary>
+    /// Populates the translations property for a list of content DTOs.
+    /// </summary>
+    /// <param name="contentList">The list of content DTOs to populate translations for.</param>
+    private async Task PopulateTranslationsAsync(List<ContentDetailsDto> contentList)
+    {
+        if (contentList == null || !contentList.Any())
+        {
+            return;
+        }
+
+        // Get supported languages from configuration
+        var supportedLanguages = languageValidationService.GetSupportedLanguages();
+
+        // Extract all translation keys from the content list (excluding nulls)
+        var translationKeys = contentList
+            .Where(c => !string.IsNullOrEmpty(c.TranslationKey))
+            .Select(c => c.TranslationKey!)
+            .Distinct()
+            .ToList();
+
+        // If no translation keys, set translations as null for all items and return
+        if (!translationKeys.Any())
+        {
+            foreach (var content in contentList)
+            {
+                content.Translations = null;
+            }
+
+            return;
+        }
+
+        // Get all translations for the translation keys
+        var allTranslations = await dbSet
+            .Where(c => translationKeys.Contains(c.TranslationKey!))
+            .Select(c => new { c.Id, c.Language, c.TranslationKey })
+            .ToListAsync();
+
+        // Group translations by translation key (filter out null keys)
+        var translationsByKey = allTranslations
+            .Where(t => t.TranslationKey != null)
+            .GroupBy(t => t.TranslationKey!)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        // Populate translations for each content item
+        foreach (var content in contentList)
+        {
+            var translations = new Dictionary<string, int?>();
+
+            // Initialize all supported languages with null
+            foreach (var language in supportedLanguages)
+            {
+                translations[language] = null;
+            }
+
+            // If content has a translation key, populate with actual translation IDs
+            if (!string.IsNullOrEmpty(content.TranslationKey) &&
+                translationsByKey.TryGetValue(content.TranslationKey, out var contentTranslations))
+            {
+                foreach (var translation in contentTranslations)
+                {
+                    // Use the language code as key (might need conversion from full locale to short code)
+                    if (translation.Language != null)
+                    {
+                        translations[translation.Language] = translation.Id;
+                    }
+                }
+            }
+
+            content.Translations = translations;
         }
     }
 }
