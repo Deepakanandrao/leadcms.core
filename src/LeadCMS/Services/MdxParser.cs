@@ -2,7 +2,8 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
-using HtmlAgilityPack;
+using System.Text;
+using System.Text.Json;
 
 namespace LeadCMS.Services;
 
@@ -78,7 +79,7 @@ public class MdxParser
                         Name = componentName,
                         Properties = componentMatch.Properties,
                         AcceptsChildren = componentMatch.HasChildren,
-                        Examples = new List<string> { TruncateExample(componentMatch.FullMatch) },
+                        Examples = new List<string> { TruncateExample(componentMatch.FullMatch, componentMatch.HasChildren) },
                         UsageCount = 1,
                     };
                 }
@@ -102,8 +103,8 @@ public class MdxParser
         var components = new List<ComponentMatch>();
 
         // Pattern to match JSX components (self-closing and opening tags)
-        // This handles multiline content and complex props
-        var componentPattern = @"<([A-Z][a-zA-Z0-9]*)\s*([^>]*?)(/?)>";
+        // This handles multiline content and complex props, including dotted component names like TwoColumns.HalfWidthColumn
+        var componentPattern = @"<([A-Z][a-zA-Z0-9]*(?:\.[A-Z][a-zA-Z0-9]*)*)\s*([^>]*?)(/?)>";
         var matches = System.Text.RegularExpressions.Regex.Matches(
             content,
             componentPattern,
@@ -116,8 +117,8 @@ public class MdxParser
             var isSelfClosing = match.Groups[3].Value == "/";
             var fullMatch = match.Value;
 
-            // Skip standard HTML tags
-            if (StandardHtmlTags.Contains(componentName.ToLowerInvariant()))
+            // Skip standard HTML tags (only if they are lowercase, not React components)
+            if (StandardHtmlTags.Contains(componentName) && componentName == componentName.ToLowerInvariant())
             {
                 continue;
             }
@@ -127,7 +128,8 @@ public class MdxParser
             if (!isSelfClosing)
             {
                 // Look for closing tag to determine if it has children
-                var closingTagPattern = $@"</{componentName}\s*>";
+                var escapedComponentName = System.Text.RegularExpressions.Regex.Escape(componentName);
+                var closingTagPattern = $@"</{escapedComponentName}\s*>";
                 var closingMatch = System.Text.RegularExpressions.Regex.Match(content, closingTagPattern);
                 if (closingMatch.Success && closingMatch.Index > match.Index)
                 {
@@ -135,6 +137,13 @@ public class MdxParser
                     // Include content up to closing tag in full match
                     var endIndex = closingMatch.Index + closingMatch.Length;
                     fullMatch = content.Substring(match.Index, endIndex - match.Index);
+                }
+                else
+                {
+                    // No closing tag found, but since it's not self-closing, assume it has children
+                    // and create a minimal valid example
+                    hasChildren = true;
+                    fullMatch = match.Value.TrimEnd('>') + $">...</{componentName}>";
                 }
             }
 
@@ -191,155 +200,69 @@ public class MdxParser
     }
 
     /// <summary>
-    /// Extracts individual props from a props string, handling complex JSX expressions.
+    /// Extracts individual props from a props string using simpler regex approach.
     /// </summary>
     private List<PropMatch> ExtractPropsFromString(string propsString)
     {
         var props = new List<PropMatch>();
-        var i = 0;
 
-        while (i < propsString.Length)
+        if (string.IsNullOrWhiteSpace(propsString))
         {
-            // Skip whitespace
-            while (i < propsString.Length && char.IsWhiteSpace(propsString[i]))
+            return props;
+        }
+
+        // Use regex to match prop patterns: propName="value" or propName={value} or standalone propName
+        var propPattern = @"(\w+(?:-\w+)*)(?:\s*=\s*(""[^""]*""|'[^']*'|\{[^}]*\}|\S+))?";
+        var matches = System.Text.RegularExpressions.Regex.Matches(propsString, propPattern);
+
+        foreach (var groups in matches.Select(match => match.Groups))
+        {
+            var propName = groups[1].Value;
+            var propValue = groups[2].Success ? groups[2].Value : "true";
+
+            // Handle complex JSX expressions that might contain nested braces
+            if (propValue.StartsWith('{'))
             {
-                i++;
-            }
-
-            if (i >= propsString.Length)
-            {
-                break;
-            }
-
-            // Find prop name
-            var nameStart = i;
-            while (i < propsString.Length &&
-                   (char.IsLetterOrDigit(propsString[i]) || propsString[i] == '_' || propsString[i] == '-'))
-            {
-                i++;
-            }
-
-            if (i <= nameStart)
-            {
-                break;
-            }
-
-            var propName = propsString.Substring(nameStart, i - nameStart);
-
-            // Skip whitespace
-            while (i < propsString.Length && char.IsWhiteSpace(propsString[i]))
-            {
-                i++;
-            }
-
-            string propValue = string.Empty;
-
-            // Check if there's a value (=)
-            if (i < propsString.Length && propsString[i] == '=')
-            {
-                i++; // Skip =
-
-                // Skip whitespace
-                while (i < propsString.Length && char.IsWhiteSpace(propsString[i]))
-                {
-                    i++;
-                }
-
-                if (i < propsString.Length)
-                {
-                    if (propsString[i] == '{')
-                    {
-                        // JSX expression - find matching closing brace
-                        var braceCount = 0;
-                        var valueStart = i;
-
-                        do
-                        {
-                            if (propsString[i] == '{')
-                            {
-                                braceCount++;
-                            }
-                            else if (propsString[i] == '}')
-                            {
-                                braceCount--;
-                            }
-
-                            i++;
-                        }
-                        while (i < propsString.Length && braceCount > 0);
-
-                        propValue = propsString.Substring(valueStart, i - valueStart);
-                    }
-                    else if (propsString[i] == '"')
-                    {
-                        // String literal
-                        i++; // Skip opening quote
-                        var valueStart = i;
-
-                        while (i < propsString.Length && propsString[i] != '"')
-                        {
-                            if (propsString[i] == '\\')
-                            {
-                                i++; // Skip escaped character
-                            }
-
-                            i++;
-                        }
-
-                        if (i < propsString.Length)
-                        {
-                            propValue = '"' + propsString.Substring(valueStart, i - valueStart) + '"';
-                            i++; // Skip closing quote
-                        }
-                    }
-                    else if (propsString[i] == '\'')
-                    {
-                        // String literal with single quotes
-                        i++; // Skip opening quote
-                        var valueStart = i;
-
-                        while (i < propsString.Length && propsString[i] != '\'')
-                        {
-                            if (propsString[i] == '\\')
-                            {
-                                i++; // Skip escaped character
-                            }
-
-                            i++;
-                        }
-
-                        if (i < propsString.Length)
-                        {
-                            propValue = '\'' + propsString.Substring(valueStart, i - valueStart) + '\'';
-                            i++; // Skip closing quote
-                        }
-                    }
-                    else
-                    {
-                        // Unquoted value (boolean props, etc.)
-                        var valueStart = i;
-                        while (i < propsString.Length &&
-                               !char.IsWhiteSpace(propsString[i]) &&
-                               propsString[i] != '=' &&
-                               propsString[i] != '/')
-                        {
-                            i++;
-                        }
-
-                        propValue = propsString.Substring(valueStart, i - valueStart);
-                    }
-                }
-            }
-            else
-            {
-                // Boolean prop without value
-                propValue = "true";
+                propValue = ExtractBalancedBraces(propsString, groups[2].Index);
             }
 
             props.Add(new PropMatch { Name = propName, Value = propValue });
         }
 
         return props;
+    }
+
+    /// <summary>
+    /// Extracts balanced JSX expressions starting from a given index.
+    /// </summary>
+    private string ExtractBalancedBraces(string input, int startIndex)
+    {
+        if (startIndex >= input.Length || input[startIndex] != '{')
+        {
+            return string.Empty;
+        }
+
+        var braceCount = 0;
+        var endIndex = startIndex;
+
+        for (int i = startIndex; i < input.Length; i++)
+        {
+            if (input[i] == '{')
+            {
+                braceCount++;
+            }
+            else if (input[i] == '}')
+            {
+                braceCount--;
+                if (braceCount == 0)
+                {
+                    endIndex = i;
+                    break;
+                }
+            }
+        }
+
+        return input.Substring(startIndex, endIndex - startIndex + 1);
     }
 
     /// <summary>
@@ -370,7 +293,7 @@ public class MdxParser
     }
 
     /// <summary>
-    /// Truncates a property value to a reasonable length for examples.
+    /// Truncates a property value to a reasonable length for examples while preserving MDX structure.
     /// </summary>
     private string TruncatePropertyValue(string value)
     {
@@ -379,13 +302,255 @@ public class MdxParser
             return value;
         }
 
-        // For JSX expressions, try to keep them readable
+        // For JSX expressions, ensure we keep the closing brace and create valid syntax
         if (value.StartsWith('{') && value.EndsWith('}'))
         {
-            return value.Length > 100 ? value.Substring(0, 97) + "..." : value;
+            if (value.Length > 100)
+            {
+                var innerContent = value.Substring(1, value.Length - 2); // Remove outer braces
+                var truncatedInner = TruncateJsxExpression(innerContent, 95);
+                return '{' + truncatedInner + '}';
+            }
+
+            return value;
+        }
+
+        // For quoted strings, preserve the quotes
+        if ((value.StartsWith('"') && value.EndsWith('"')) || (value.StartsWith('\'') && value.EndsWith('\'')))
+        {
+            if (value.Length > 100)
+            {
+                var quote = value[0];
+                var innerContent = value.Substring(1, value.Length - 2); // Remove quotes
+                var truncatedInner = innerContent.Length > 95 ? innerContent.Substring(0, 95) + "..." : innerContent;
+                return quote + truncatedInner + quote;
+            }
+
+            return value;
         }
 
         return value.Substring(0, 97) + "...";
+    }
+
+    /// <summary>
+    /// Truncates JSX expression content while maintaining valid syntax.
+    /// </summary>
+    private string TruncateJsxExpression(string jsxContent, int maxLength)
+    {
+        if (jsxContent.Length <= maxLength)
+        {
+            return jsxContent;
+        }
+
+        // Detect the type of JSX content and truncate appropriately
+        var trimmed = jsxContent.Trim();
+
+        // Try to parse as JSON first for arrays and objects
+        if (TryTruncateJsonExpression(trimmed, maxLength, out var truncatedJson))
+        {
+            return truncatedJson;
+        }
+
+        // String literal
+        if ((trimmed.StartsWith('"') && trimmed.IndexOf('"', 1) >= 0) ||
+            (trimmed.StartsWith('\'') && trimmed.IndexOf('\'', 1) >= 0))
+        {
+            var quote = trimmed[0];
+            return quote + "..." + quote;
+        }
+
+        // Variable name or simple expression
+        if (maxLength > 10)
+        {
+            return trimmed.Substring(0, Math.Min(maxLength - 3, trimmed.Length)) + "...";
+        }
+
+        return "...";
+    }
+
+    /// <summary>
+    /// Attempts to truncate a JSON expression using System.Text.Json.
+    /// </summary>
+    private bool TryTruncateJsonExpression(string expression, int maxLength, out string truncated)
+    {
+        truncated = expression;
+
+        try
+        {
+            using var document = JsonDocument.Parse(expression, new JsonDocumentOptions
+            {
+                AllowTrailingCommas = true,
+            });
+            var root = document.RootElement;
+
+            switch (root.ValueKind)
+            {
+                case JsonValueKind.Array:
+                    truncated = TruncateArrayLiteral(expression, maxLength);
+                    return true;
+
+                case JsonValueKind.Object:
+                    truncated = TruncateObjectLiteral(expression, maxLength);
+                    return true;
+
+                default:
+                    // For other JSON types, serialize back with potential truncation
+                    var serialized = JsonSerializer.Serialize(root);
+                    if (serialized.Length <= maxLength)
+                    {
+                        truncated = serialized;
+                        return true;
+                    }
+
+                    break;
+            }
+        }
+        catch (JsonException)
+        {
+            // Not valid JSON, continue with other methods
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Truncates array literals while maintaining valid syntax.
+    /// </summary>
+    private string TruncateArrayLiteral(string arrayContent, int maxLength)
+    {
+        if (arrayContent.Length <= maxLength)
+        {
+            return arrayContent;
+        }
+
+        // For arrays, try to keep at least the opening bracket and show it's an array
+        if (maxLength < 10)
+        {
+            return "[...]";
+        }
+
+        // Try to parse and extract first elements using System.Text.Json
+        try
+        {
+            using var document = JsonDocument.Parse(arrayContent, new JsonDocumentOptions
+            {
+                AllowTrailingCommas = true,
+            });
+            var root = document.RootElement;
+
+            if (root.ValueKind == JsonValueKind.Array)
+            {
+                var truncated = TruncateJsonArray(root, maxLength - 10); // Leave room for ...]
+                return truncated + "...]";
+            }
+        }
+        catch (JsonException)
+        {
+            // If JSON parsing fails, fall back to simple truncation
+        }
+
+        // Fallback to simple truncation with proper closing
+        return "[...]";
+    }
+
+    /// <summary>
+    /// Truncates a JSON array while preserving structure.
+    /// </summary>
+    private string TruncateJsonArray(JsonElement arrayElement, int maxLength)
+    {
+        var result = new StringBuilder("[");
+        var isFirst = true;
+
+        foreach (var element in arrayElement.EnumerateArray())
+        {
+            if (!isFirst)
+            {
+                result.Append(", ");
+            }
+
+            var elementJson = JsonSerializer.Serialize(element);
+
+            // Check if adding this element would exceed the limit
+            if (result.Length + elementJson.Length > maxLength)
+            {
+                break;
+            }
+
+            result.Append(elementJson);
+            isFirst = false;
+        }
+
+        return result.ToString();
+    }
+
+    /// <summary>
+    /// Truncates object literals while maintaining valid syntax.
+    /// </summary>
+    private string TruncateObjectLiteral(string objectContent, int maxLength)
+    {
+        if (objectContent.Length <= maxLength)
+        {
+            return objectContent;
+        }
+
+        // For objects, try to keep at least the opening brace and show it's an object
+        if (maxLength < 10)
+        {
+            return "{...}";
+        }
+
+        // Try to parse and extract first properties using System.Text.Json
+        try
+        {
+            using var document = JsonDocument.Parse(objectContent, new JsonDocumentOptions
+            {
+                AllowTrailingCommas = true,
+            });
+            var root = document.RootElement;
+
+            if (root.ValueKind == JsonValueKind.Object)
+            {
+                var truncated = TruncateJsonObject(root, maxLength - 10); // Leave room for ...}
+                return truncated + "...}";
+            }
+        }
+        catch (JsonException)
+        {
+            // If JSON parsing fails, fall back to simple truncation
+        }
+
+        // Fallback to simple truncation with proper closing
+        return "{...}";
+    }
+
+    /// <summary>
+    /// Truncates a JSON object while preserving structure.
+    /// </summary>
+    private string TruncateJsonObject(JsonElement objectElement, int maxLength)
+    {
+        var result = new StringBuilder("{");
+        var isFirst = true;
+
+        foreach (var property in objectElement.EnumerateObject())
+        {
+            if (!isFirst)
+            {
+                result.Append(", ");
+            }
+
+            var propertyJson = $"\"{property.Name}\": {JsonSerializer.Serialize(property.Value)}";
+
+            // Check if adding this property would exceed the limit
+            if (result.Length + propertyJson.Length > maxLength)
+            {
+                break;
+            }
+
+            result.Append(propertyJson);
+            isFirst = false;
+        }
+
+        return result.ToString();
     }
 
     /// <summary>
@@ -393,7 +558,9 @@ public class MdxParser
     /// </summary>
     private void AddExampleIfNotExists(MdxComponentInfo component, string example)
     {
-        var truncated = TruncateExample(example);
+        // Infer if component has children from the example structure
+        var hasChildren = InferHasChildrenFromExample(example);
+        var truncated = TruncateExample(example, hasChildren);
         if (!component.Examples.Contains(truncated) && component.Examples.Count < 5)
         {
             component.Examples.Add(truncated);
@@ -401,11 +568,253 @@ public class MdxParser
     }
 
     /// <summary>
-    /// Truncates an example to a reasonable length.
+    /// Infers whether a component has children based on its structure.
     /// </summary>
-    private string TruncateExample(string example)
+    private bool InferHasChildrenFromExample(string example)
     {
-        return example.Length > 200 ? example.Substring(0, 200) + "..." : example;
+        // Check if it's self-closing (ends with />)
+        if (example.TrimEnd().EndsWith("/>"))
+        {
+            return false;
+        }
+
+        // Check if it has a closing tag
+        var componentPattern = @"<([A-Z][a-zA-Z0-9]*(?:\.[A-Z][a-zA-Z0-9]*)*)";
+        var match = System.Text.RegularExpressions.Regex.Match(example, componentPattern);
+        if (match.Success)
+        {
+            var componentName = match.Groups[1].Value;
+            var escapedComponentName = System.Text.RegularExpressions.Regex.Escape(componentName);
+            var closingPattern = $@"</{escapedComponentName}\s*>";
+            return System.Text.RegularExpressions.Regex.IsMatch(example, closingPattern);
+        }
+
+        return true; // Default to having children if uncertain
+    }
+
+    /// <summary>
+    /// Truncates an example to a reasonable length while preserving valid MDX structure.
+    /// </summary>
+    private string TruncateExample(string example, bool hasChildren)
+    {
+        if (example.Length <= 200)
+        {
+            return example;
+        }
+
+        // Try to find a valid truncation point that preserves MDX structure
+        var truncated = TruncateMdxSafely(example, 200, hasChildren);
+        return truncated;
+    }
+
+    /// <summary>
+    /// Safely truncates MDX content while preserving component structure.
+    /// </summary>
+    private string TruncateMdxSafely(string mdxContent, int maxLength, bool hasChildren)
+    {
+        if (mdxContent.Length <= maxLength)
+        {
+            return mdxContent;
+        }
+
+        // Extract the component name from the opening tag
+        var componentPattern = @"<([A-Z][a-zA-Z0-9]*(?:\.[A-Z][a-zA-Z0-9]*)*)";
+        var match = System.Text.RegularExpressions.Regex.Match(mdxContent, componentPattern);
+
+        if (!match.Success)
+        {
+            // Fallback for non-component content
+            return mdxContent.Substring(0, Math.Min(maxLength - 3, mdxContent.Length)) + "...";
+        }
+
+        var componentName = match.Groups[1].Value;
+
+        // If it's a self-closing component, try to preserve the self-closing structure
+        if (!hasChildren)
+        {
+            // For self-closing components, try to find a good truncation point before the />
+            var selfClosingTruncated = mdxContent.Substring(0, Math.Min(maxLength - 5, mdxContent.Length));
+            return EnsureValidMdxStructure(selfClosingTruncated, false, componentName);
+        }
+
+        // For components with children, we need to be more careful
+        // Try to find a good truncation point that doesn't break the structure
+        var truncated = FindGoodTruncationPoint(mdxContent, maxLength - $"</{componentName}>".Length - 5);
+        return EnsureValidMdxStructure(truncated, true, componentName);
+    }
+
+    /// <summary>
+    /// Finds a good truncation point that doesn't break component or attribute boundaries.
+    /// </summary>
+    private string FindGoodTruncationPoint(string content, int maxLength)
+    {
+        if (maxLength >= content.Length)
+        {
+            return content;
+        }
+
+        // Look for safe truncation points (end of attributes, end of nested components, etc.)
+        var safeTruncationPoints = new List<int>();
+
+        // Add points after complete nested component tags
+        var nestedComponentPattern = @"</[^>]+>";
+        var nestedMatches = System.Text.RegularExpressions.Regex.Matches(content, nestedComponentPattern);
+        foreach (System.Text.RegularExpressions.Match match in nestedMatches)
+        {
+            var endPos = match.Index + match.Length;
+            if (endPos <= maxLength)
+            {
+                safeTruncationPoints.Add(endPos);
+            }
+        }
+
+        // Add points after self-closing tags
+        var selfClosingPattern = @"/>";
+        var selfClosingMatches = System.Text.RegularExpressions.Regex.Matches(content, selfClosingPattern);
+        foreach (System.Text.RegularExpressions.Match match in selfClosingMatches)
+        {
+            var endPos = match.Index + match.Length;
+            if (endPos <= maxLength)
+            {
+                safeTruncationPoints.Add(endPos);
+            }
+        }
+
+        // Add points after complete opening tags
+        var openingTagPattern = @"<[^/>]+>";
+        var openingMatches = System.Text.RegularExpressions.Regex.Matches(content, openingTagPattern);
+        foreach (System.Text.RegularExpressions.Match match in openingMatches)
+        {
+            var endPos = match.Index + match.Length;
+            if (endPos <= maxLength)
+            {
+                safeTruncationPoints.Add(endPos);
+            }
+        }
+
+        // Use the latest safe truncation point
+        if (safeTruncationPoints.Any())
+        {
+            var bestPoint = safeTruncationPoints.Max();
+            return content.Substring(0, bestPoint);
+        }
+
+        // If no safe points found, truncate at maxLength but try to avoid breaking attributes
+        var fallbackTruncation = content.Substring(0, maxLength);
+
+        // Try to truncate before an incomplete attribute if possible
+        var lastSpace = fallbackTruncation.LastIndexOf(' ');
+        var lastQuote = Math.Max(fallbackTruncation.LastIndexOf('"'), fallbackTruncation.LastIndexOf('\''));
+        var lastBrace = fallbackTruncation.LastIndexOf('{');
+
+        // If we're in the middle of an attribute, truncate before it
+        if (lastSpace > lastQuote && lastSpace > lastBrace && lastSpace > maxLength - 50)
+        {
+            return content.Substring(0, lastSpace);
+        }
+
+        return fallbackTruncation;
+    }
+
+    /// <summary>
+    /// Ensures the truncated MDX has valid structure by balancing braces, quotes, and adding proper closing tags.
+    /// </summary>
+    private string EnsureValidMdxStructure(string mdxContent, bool hasChildren, string componentName)
+    {
+        var result = new StringBuilder(mdxContent);
+
+        // Count unbalanced structures
+        var openBraces = mdxContent.Count(c => c == '{');
+        var closeBraces = mdxContent.Count(c => c == '}');
+        var doubleQuotes = mdxContent.Count(c => c == '"');
+        var singleQuotes = mdxContent.Count(c => c == '\'');
+
+        // Close unbalanced braces
+        while (openBraces > closeBraces)
+        {
+            result.Append('}');
+            closeBraces++;
+        }
+
+        // Close unbalanced quotes
+        if (doubleQuotes % 2 != 0)
+        {
+            result.Append('"');
+        }
+
+        if (singleQuotes % 2 != 0)
+        {
+            result.Append('\'');
+        }
+
+        // Ensure proper component closing
+        var content = result.ToString();
+
+        if (hasChildren)
+        {
+            // For components with children, ensure we have a proper closing tag
+            if (!content.Contains($"</{componentName}>"))
+            {
+                // Check if we're in the middle of an opening tag
+                var lastOpenAngle = content.LastIndexOf('<');
+                var lastCloseAngle = content.LastIndexOf('>');
+
+                if (lastOpenAngle > lastCloseAngle)
+                {
+                    // We're in the middle of an opening tag, close it first
+                    result.Append(">");
+                }
+                else if (!content.EndsWith('>'))
+                {
+                    // If not ending with >, we might be in text content, which is fine
+                    // But we still need to ensure we close the component
+                }
+
+                // Always add the closing tag for components with children
+                result.Append($"</{componentName}>");
+            }
+        }
+        else
+        {
+            // For self-closing components, ensure proper self-closing syntax
+            if (content.StartsWith('<') && !content.EndsWith("/>"))
+            {
+                // Check if we're in the middle of an opening tag
+                var lastOpenAngle = content.LastIndexOf('<');
+                var lastCloseAngle = content.LastIndexOf('>');
+
+                if (lastOpenAngle > lastCloseAngle)
+                {
+                    // We're in the middle of an opening tag
+                    // Remove any trailing > if present and add proper self-closing
+                    if (content.EndsWith('>'))
+                    {
+                        result.Length -= 1;
+                    }
+
+                    // Ensure it ends with />
+                    if (!content.TrimEnd().EndsWith('/'))
+                    {
+                        result.Append(" />");
+                    }
+                    else
+                    {
+                        result.Append(">");
+                    }
+                }
+                else
+                {
+                    // We have a complete opening tag, convert to self-closing
+                    if (content.EndsWith('>') && !content.EndsWith("/>"))
+                    {
+                        result.Length -= 1; // Remove the >
+                        result.Append(" />");
+                    }
+                }
+            }
+        }
+
+        return result.ToString();
     }
 
     /// <summary>
@@ -458,20 +867,56 @@ public class MdxParser
             return "string";
         }
 
-        // Array literals
-        if (expression.StartsWith('[') && expression.EndsWith(']'))
+        // Try to parse as JSON to detect arrays and objects
+        if (TryParseJsonExpression(expression, out var jsonType))
         {
-            return "array";
-        }
-
-        // Object literals
-        if (expression.StartsWith('{') && expression.EndsWith('}'))
-        {
-            return "object";
+            return jsonType;
         }
 
         // Function calls, variables, etc.
         return "expression";
+    }
+
+    /// <summary>
+    /// Attempts to parse a JSX expression as JSON to determine its type.
+    /// </summary>
+    private bool TryParseJsonExpression(string expression, out string type)
+    {
+        type = "expression";
+
+        // Quick structural checks first
+        if (expression.StartsWith('[') && expression.EndsWith(']'))
+        {
+            type = "array";
+            return TryValidateJsonStructure(expression);
+        }
+
+        if (expression.StartsWith('{') && expression.EndsWith('}'))
+        {
+            type = "object";
+            return TryValidateJsonStructure(expression);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Validates if a string has valid JSON structure using System.Text.Json.
+    /// </summary>
+    private bool TryValidateJsonStructure(string jsonString)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(jsonString, new JsonDocumentOptions
+            {
+                AllowTrailingCommas = true,
+            });
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
