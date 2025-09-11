@@ -85,7 +85,7 @@ public class Contact : BaseEntity, ICommentable
     public int? Timezone { get; set; }
 
     [Searchable]
-    public string Language { get; set; } = string.Empty;
+    public string? Language { get; set; }
 
     [Searchable]
     public string? TranslationKey { get; set; }
