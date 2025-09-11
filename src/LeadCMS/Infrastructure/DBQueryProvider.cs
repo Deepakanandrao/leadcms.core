@@ -338,8 +338,21 @@ namespace LeadCMS.Infrastructure
                     }
                     else
                     {
-                        var valueParameterExpression = Expression.Constant(value, cmd.Property.PropertyType);
-                        var eqExpression = Expression.Equal(parameter, valueParameterExpression);
+                        Expression eqExpression;
+                        if (cmd.Property.PropertyType == typeof(string) && value != null)
+                        {
+                            // Use ToLower() for case-insensitive string comparison that EF Core can translate
+                            var toLowerMethod = typeof(string).GetMethod("ToLower", Type.EmptyTypes);
+                            var parameterToLower = Expression.Call(parameter, toLowerMethod!);
+                            var valueToLower = Expression.Constant(value.ToString()!.ToLower(), typeof(string));
+                            eqExpression = Expression.Equal(parameterToLower, valueToLower);
+                        }
+                        else
+                        {
+                            var valueParameterExpression = Expression.Constant(value, cmd.Property.PropertyType);
+                            eqExpression = Expression.Equal(parameter, valueParameterExpression);
+                        }
+
                         orExpression = Expression.Or(orExpression, eqExpression);
                     }
                 }
@@ -399,7 +412,7 @@ namespace LeadCMS.Infrastructure
                 var matchOperation = typeof(Regex).GetMethod("IsMatch", BindingFlags.Static | BindingFlags.Public, new[] { typeof(string), typeof(string), typeof(RegexOptions) });
                 var trueConstant = Expression.Constant(true);
                 var falseConstant = Expression.Constant(false);
-                var regexOptionExpression = Expression.Constant(RegexOptions.Compiled);
+                var regexOptionExpression = Expression.Constant(RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
                 if (cmd.Operation == WOperand.Like)
                 {
@@ -420,7 +433,7 @@ namespace LeadCMS.Infrastructure
                 var matchOperation = typeof(Regex).GetMethod("IsMatch", BindingFlags.Static | BindingFlags.Public, new[] { typeof(string), typeof(string), typeof(RegexOptions) });
                 var trueConstant = Expression.Constant(true);
                 var falseConstant = Expression.Constant(false);
-                var regexOptionExpression = Expression.Constant(RegexOptions.Compiled);
+                var regexOptionExpression = Expression.Constant(RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
                 var data = cmd.ParseContainValue(cmd.StringValue);
                 var sb = new StringBuilder();
@@ -498,17 +511,41 @@ namespace LeadCMS.Infrastructure
             // Parse comma-separated values, trim whitespace, and convert to property type
             var stringValues = cmd.StringValue.Split(',').Select(s => s.Trim()).ToArray();
             var parsedValues = cmd.ParseValues(stringValues);
-            var valuesArray = Array.CreateInstance(cmd.Property.PropertyType, parsedValues.Count);
-            for (int i = 0; i < parsedValues.Count; i++)
-            {
-                valuesArray.SetValue(parsedValues[i], i);
-            }
 
-            var containsMethod = typeof(Enumerable).GetMethods()
-                .First(m => m.Name == "Contains" && m.GetParameters().Length == 2)
-                .MakeGenericMethod(cmd.Property.PropertyType);
-            var arrayExpr = Expression.Constant(valuesArray);
-            return Expression.Call(containsMethod, arrayExpr, parameter);
+            if (cmd.Property.PropertyType == typeof(string))
+            {
+                // For string properties, use case-insensitive comparison with ToLower()
+                Expression orExpression = Expression.Constant(false);
+                var toLowerMethod = typeof(string).GetMethod("ToLower", Type.EmptyTypes);
+                var parameterToLower = Expression.Call(parameter, toLowerMethod!);
+
+                foreach (var value in parsedValues)
+                {
+                    if (value != null)
+                    {
+                        var valueToLower = Expression.Constant(value.ToString()!.ToLower(), typeof(string));
+                        var eqExpression = Expression.Equal(parameterToLower, valueToLower);
+                        orExpression = Expression.Or(orExpression, eqExpression);
+                    }
+                }
+
+                return orExpression;
+            }
+            else
+            {
+                // For non-string properties, use the original Contains logic
+                var valuesArray = Array.CreateInstance(cmd.Property.PropertyType, parsedValues.Count);
+                for (int i = 0; i < parsedValues.Count; i++)
+                {
+                    valuesArray.SetValue(parsedValues[i], i);
+                }
+
+                var containsMethod = typeof(Enumerable).GetMethods()
+                    .First(m => m.Name == "Contains" && m.GetParameters().Length == 2)
+                    .MakeGenericMethod(cmd.Property.PropertyType);
+                var arrayExpr = Expression.Constant(valuesArray);
+                return Expression.Call(containsMethod, arrayExpr, parameter);
+            }
         }
 
         private async Task<IList<T>?> GetSelectResult()

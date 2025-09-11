@@ -36,7 +36,7 @@ namespace LeadCMS.Infrastructure
             this.queryBuilder = queryBuilder;
             searchableTextProperties = typeof(T).GetProperties().Where(p => p.IsDefined(typeof(SearchableAttribute), false) && p.PropertyType == typeof(string)).ToArray();
             searchableNonTextProperties = typeof(T).GetProperties().Where(p => p.IsDefined(typeof(SearchableAttribute), false) && p.PropertyType != typeof(string)).ToArray();
-            
+
             try
             {
                 elasticClient.Indices.UpdateSettings(indexName, s => s.IndexSettings(i => i.Setting(UpdatableIndexSettings.MaxResultWindow, maxResultWindow)));
@@ -293,7 +293,13 @@ namespace LeadCMS.Infrastructure
                         {
                             if (cmd.Property.PropertyType == typeof(string))
                             {
-                                resQueries.Add(new TermQuery { Field = new Field(GetElasticKeywordName(cmd.Property)), Value = parsedValue!.ToString() });
+                                // For string properties, use case-insensitive wildcard query for exact match
+                                resQueries.Add(new WildcardQuery
+                                {
+                                    Field = new Field(GetElasticKeywordName(cmd.Property)),
+                                    Value = parsedValue!.ToString(),
+                                    CaseInsensitive = true,
+                                });
                             }
                             else
                             {
@@ -314,12 +320,15 @@ namespace LeadCMS.Infrastructure
                 {
                     if (cmd.Operation == WOperand.Like)
                     {
-                        return new RegexpQuery { Field = new Field(cmd.Property), Value = cmd.StringValue };
+                        return new RegexpQuery { Field = new Field(cmd.Property), Value = "(?i)" + cmd.StringValue };
                     }
                     else if (cmd.Operation == WOperand.Contains)
                     {
                         var data = cmd.ParseContainValue(cmd.StringValue);
                         var sb = new StringBuilder();
+
+                        // Add case insensitive flag at the beginning
+                        sb.Append("(?i)");
 
                         foreach (var d in data)
                         {
@@ -355,11 +364,18 @@ namespace LeadCMS.Infrastructure
                             var parsedValues = cmd.ParseValues(cmd.StringValue.Split(',').Select(s => s.Trim()));
                             if (cmd.Property.PropertyType == typeof(string))
                             {
-                                return new TermsQuery
-                                {
-                                    Field = new Field(GetElasticKeywordName(cmd.Property)),
-                                    Terms = parsedValues.Select(v => v?.ToString()).ToArray(),
-                                };
+                                // For string properties, use case-insensitive wildcard queries
+                                var wildcardQueries = parsedValues
+                                    .Where(v => v != null)
+                                    .Select(v => (QueryContainer)new WildcardQuery
+                                    {
+                                        Field = new Field(GetElasticKeywordName(cmd.Property)),
+                                        Value = v!.ToString(),
+                                        CaseInsensitive = true,
+                                    })
+                                    .ToArray();
+
+                                return new BoolQuery { Should = wildcardQueries };
                             }
                             else
                             {
@@ -369,7 +385,7 @@ namespace LeadCMS.Infrastructure
                                     Terms = parsedValues.ToArray(),
                                 };
                             }
-                            
+
                         case WOperand.GreaterThan:
                         case WOperand.GreaterThanOrEqualTo:
                         case WOperand.LessThan:
