@@ -28,6 +28,8 @@ public class AIPlugin : IPlugin, ICapabilityProvider
         services.AddSingleton<IImageGenerationService, ImageGenerationService>();
         services.AddScoped<IContentAITranslationService, ContentAITranslationService>();
         services.AddScoped<IContentGenerationService, ContentGenerationService>();
+        services.AddScoped<IEmailTemplateAITranslationService, EmailTemplateAITranslationService>();
+        services.AddScoped<IEmailTemplateGenerationService, EmailTemplateGenerationService>();
     }
 
     public IEnumerable<string> GetCapabilities()
