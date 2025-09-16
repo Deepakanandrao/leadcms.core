@@ -83,7 +83,11 @@ public class ApiSettingsConfig
 
     public string MaxRequestBodySize { get; set; } = string.Empty;
 
-    public string DefaultLanguage { get; set; } = "en-US";
+    public string DefaultLanguage { get; set; } = "en";
+
+    public string DefaultFromEmail { get; set; } = "no-reply@leadcms.ai";
+
+    public string DefaultFromName { get; set; } = "LeadCMS";
 }
 
 public class GeolocationApiConfig
@@ -217,4 +221,17 @@ public class IdentityConfig
     public double LockoutTime { get; set; } = 5;
 
     public int MaxFailedAccessAttempts { get; set; } = 10;
+
+    // Password policy configuration
+    public bool RequireDigit { get; set; } = true;
+
+    public bool RequireUppercase { get; set; } = true;
+
+    public bool RequireLowercase { get; set; } = true;
+
+    public bool RequireNonAlphanumeric { get; set; } = true;
+
+    public int RequiredLength { get; set; } = 6;
+
+    public int RequiredUniqueChars { get; set; } = 1;
 }

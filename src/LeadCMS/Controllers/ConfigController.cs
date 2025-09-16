@@ -121,7 +121,7 @@ public class ConfigController : ControllerBase
 
         // Get DefaultLanguage from ApiSettings section
         var apiSettingsSection = configuration.GetSection("ApiSettings");
-        var defaultLanguage = apiSettingsSection["DefaultLanguage"] ?? "en-US";
+        var defaultLanguage = apiSettingsSection["DefaultLanguage"] ?? "en";
 
         var dynamicModules = PluginManager.GetAllDynamicModules();
 
@@ -157,7 +157,7 @@ public class ConfigDto
 
     public Dictionary<string, string> Settings { get; set; } = new Dictionary<string, string>();
 
-    public string DefaultLanguage { get; set; } = "en-US";
+    public string DefaultLanguage { get; set; } = "en";
 
     public List<DynamicModuleDto>? Modules { get; set; }
 

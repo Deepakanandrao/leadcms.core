@@ -3,6 +3,7 @@
 // </copyright>
 
 using AutoMapper;
+using LeadCMS.Configuration;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;
@@ -10,6 +11,7 @@ using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using Swashbuckle.AspNetCore.Annotations;
 
 namespace LeadCMS.Controllers;
@@ -21,12 +23,18 @@ public class MeController : ControllerBase
     private readonly IMapper mapper;
     private readonly UserManager<User> userManager;
     private readonly IEmailFromTemplateService emailFromTemplateService;
+    private readonly IdentityConfig identityConfig;
 
-    public MeController(IMapper mapper, UserManager<User> userManager, IEmailFromTemplateService emailFromTemplateService)
+    public MeController(
+        IMapper mapper,
+        UserManager<User> userManager,
+        IEmailFromTemplateService emailFromTemplateService,
+        IOptions<IdentityConfig> identityOptions)
     {
         this.mapper = mapper;
         this.userManager = userManager;
         this.emailFromTemplateService = emailFromTemplateService;
+        identityConfig = identityOptions.Value;
     }
 
     [HttpGet("me")]
@@ -57,7 +65,7 @@ public class MeController : ControllerBase
         string? password = value.Password;
         if (value.GeneratePassword)
         {
-            password = PasswordHelper.GenerateStrongPassword();
+            password = PasswordHelper.GenerateStrongPassword(identityConfig);
         }
 
         if (!string.IsNullOrEmpty(password))

@@ -177,6 +177,12 @@ public static class IdentityHelper
     {
         var identityConfig = builder.Configuration.GetSection("Identity").Get<IdentityConfig>();
 
+        // Register IdentityConfig in DI container
+        if (identityConfig != null)
+        {
+            builder.Services.Configure<IdentityConfig>(builder.Configuration.GetSection("Identity"));
+        }
+
         builder.Services.AddIdentity<User, IdentityRole>(options =>
         {
             // Lockout settings
@@ -185,6 +191,14 @@ public static class IdentityHelper
                 options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(identityConfig.LockoutTime);
                 options.Lockout.MaxFailedAccessAttempts = identityConfig.MaxFailedAccessAttempts;
                 options.Lockout.AllowedForNewUsers = true;
+
+                // Password requirements
+                options.Password.RequireDigit = identityConfig.RequireDigit;
+                options.Password.RequireUppercase = identityConfig.RequireUppercase;
+                options.Password.RequireLowercase = identityConfig.RequireLowercase;
+                options.Password.RequireNonAlphanumeric = identityConfig.RequireNonAlphanumeric;
+                options.Password.RequiredLength = identityConfig.RequiredLength;
+                options.Password.RequiredUniqueChars = identityConfig.RequiredUniqueChars;
             }
         })
         .AddEntityFrameworkStores<PgDbContext>()

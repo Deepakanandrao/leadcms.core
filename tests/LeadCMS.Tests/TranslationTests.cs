@@ -21,7 +21,7 @@ public class TranslationTests : BaseTestAutoLogin
         var contentId = GetIdFromUrl(contentUrl);
 
         // Act
-        var response = await GetRequest($"/api/content/{contentId}/translation-draft/fr-FR?transformer=keepOriginal");
+        var response = await GetRequest($"/api/content/{contentId}/translation-draft/fr?transformer=keepOriginal");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -30,7 +30,7 @@ public class TranslationTests : BaseTestAutoLogin
         var translationDraft = JsonHelper.Deserialize<ContentDetailsDto>(responseContent);
 
         translationDraft.Should().NotBeNull();
-        translationDraft!.Language.Should().Be("fr-FR");
+        translationDraft!.Language.Should().Be("fr");
         translationDraft.Title.Should().Be(content.Title);
         translationDraft.Description.Should().Be(content.Description);
         translationDraft.Body.Should().Be(content.Body);
@@ -41,7 +41,7 @@ public class TranslationTests : BaseTestAutoLogin
     public async Task GetTranslationDraft_Content_EntityNotFound_ReturnsNotFound()
     {
         // Act
-        var response = await GetRequest("/api/content/99999/translation-draft/es-ES?transformer=emptyCopy");
+        var response = await GetRequest("/api/content/99999/translation-draft/es?transformer=emptyCopy");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -56,7 +56,7 @@ public class TranslationTests : BaseTestAutoLogin
         var emailGroupId = GetIdFromUrl(emailGroupUrl);
 
         // Act
-        var response = await GetRequest($"/api/email-groups/{emailGroupId}/translation-draft/de-DE?transformer=emptyCopy");
+        var response = await GetRequest($"/api/email-groups/{emailGroupId}/translation-draft/de?transformer=emptyCopy");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -65,7 +65,7 @@ public class TranslationTests : BaseTestAutoLogin
         var translationDraft = JsonHelper.Deserialize<EmailGroupDetailsDto>(responseContent);
 
         translationDraft.Should().NotBeNull();
-        translationDraft!.Language.Should().Be("de-DE");
+        translationDraft!.Language.Should().Be("de");
         translationDraft.Id.Should().Be(0); // New entity
     }
 
@@ -78,14 +78,14 @@ public class TranslationTests : BaseTestAutoLogin
         var contentId = GetIdFromUrl(contentUrl);
 
         // Act
-        var response = await GetTest($"/api/content/{contentId}/translation-draft/es-ES?transformer=emptyCopy");
+        var response = await GetTest($"/api/content/{contentId}/translation-draft/es?transformer=emptyCopy");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var translationDraft = await GetTest<ContentDetailsDto>($"/api/content/{contentId}/translation-draft/es-ES?transformer=emptyCopy");
+        var translationDraft = await GetTest<ContentDetailsDto>($"/api/content/{contentId}/translation-draft/es?transformer=emptyCopy");
 
         translationDraft.Should().NotBeNull();
-        translationDraft!.Language.Should().Be("es-ES");
+        translationDraft!.Language.Should().Be("es");
         translationDraft.TranslationKey.Should().NotBeNullOrEmpty();
         translationDraft.Title.Should().BeEmpty();
         translationDraft.Description.Should().BeEmpty();
@@ -102,18 +102,18 @@ public class TranslationTests : BaseTestAutoLogin
         var originalId = GetIdFromUrl(originalUrl);
 
         // First, call the translation draft endpoint to generate a TranslationKey for the original content
-        var firstDraft = await GetTest<ContentDetailsDto>($"/api/content/{originalId}/translation-draft/de-DE?transformer=emptyCopy");
+        var firstDraft = await GetTest<ContentDetailsDto>($"/api/content/{originalId}/translation-draft/de?transformer=emptyCopy");
 
         // Create a manual translation using the same TranslationKey and language
         var translationContent = new TestContent();
-        translationContent.Language = "de-DE";
+        translationContent.Language = "de";
         translationContent.Slug = "test-slug-de";
         translationContent.TranslationKey = firstDraft!.TranslationKey;
 
         await PostTest("/api/content", translationContent);
 
         // Act - Try to get translation draft again for the same language
-        var response = await GetRequest($"/api/content/{originalId}/translation-draft/de-DE?transformer=emptyCopy");
+        var response = await GetRequest($"/api/content/{originalId}/translation-draft/de?transformer=emptyCopy");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
@@ -125,7 +125,7 @@ public class TranslationTests : BaseTestAutoLogin
         problemDetails.Extensions.Should().ContainKey("entityType");
         problemDetails.Extensions.Should().ContainKey("entityId");
         problemDetails.Extensions.Should().ContainKey("language");
-        problemDetails.Extensions["language"]!.ToString().Should().Be("de-DE");
+        problemDetails.Extensions["language"]!.ToString().Should().Be("de");
     }
 
     [Fact]
@@ -142,11 +142,11 @@ public class TranslationTests : BaseTestAutoLogin
         var templateId = GetIdFromUrl(templateUrl);
 
         // Act
-        var translationDraft = await GetTest<EmailTemplateDetailsDto>($"/api/email-templates/{templateId}/translation-draft/pt-BR?transformer=emptyCopy");
+        var translationDraft = await GetTest<EmailTemplateDetailsDto>($"/api/email-templates/{templateId}/translation-draft/pt?transformer=emptyCopy");
 
         // Assert
         translationDraft.Should().NotBeNull();
-        translationDraft!.Language.Should().Be("pt-BR");
+        translationDraft!.Language.Should().Be("pt");
         translationDraft.TranslationKey.Should().NotBeNullOrEmpty();
         translationDraft.Name.Should().BeEmpty();
         translationDraft.Subject.Should().BeEmpty();
@@ -163,11 +163,11 @@ public class TranslationTests : BaseTestAutoLogin
         var emailGroupId = GetIdFromUrl(emailGroupUrl);
 
         // Act
-        var translationDraft = await GetTest<EmailGroupDetailsDto>($"/api/email-groups/{emailGroupId}/translation-draft/ru-RU?transformer=keepOriginal");
+        var translationDraft = await GetTest<EmailGroupDetailsDto>($"/api/email-groups/{emailGroupId}/translation-draft/ru?transformer=keepOriginal");
 
         // Assert
         translationDraft.Should().NotBeNull();
-        translationDraft!.Language.Should().Be("ru-RU");
+        translationDraft!.Language.Should().Be("ru");
         translationDraft.TranslationKey.Should().NotBeNullOrEmpty();
         translationDraft.Name.Should().Be(emailGroup.Name);
         translationDraft.Id.Should().Be(0); // New entity
@@ -192,11 +192,11 @@ public class TranslationTests : BaseTestAutoLogin
         var commentId = GetIdFromUrl(commentUrl);
 
         // Act
-        var translationDraft = await GetTest<CommentDetailsDto>($"/api/comments/{commentId}/translation-draft/zh-CN?transformer=emptyCopy");
+        var translationDraft = await GetTest<CommentDetailsDto>($"/api/comments/{commentId}/translation-draft/zh?transformer=emptyCopy");
 
         // Assert
         translationDraft.Should().NotBeNull();
-        translationDraft!.Language.Should().Be("zh-CN");
+        translationDraft!.Language.Should().Be("zh");
         translationDraft.TranslationKey.Should().NotBeNullOrEmpty();
         translationDraft.Body.Should().BeEmpty();
         translationDraft.AuthorName.Should().BeEmpty();
@@ -222,11 +222,11 @@ public class TranslationTests : BaseTestAutoLogin
         var commentId = GetIdFromUrl(commentUrl);
 
         // Act
-        var translationDraft = await GetTest<CommentDetailsDto>($"/api/comments/{commentId}/translation-draft/ar-SA?transformer=keepOriginal");
+        var translationDraft = await GetTest<CommentDetailsDto>($"/api/comments/{commentId}/translation-draft/ar?transformer=keepOriginal");
 
         // Assert
         translationDraft.Should().NotBeNull();
-        translationDraft!.Language.Should().Be("ar-SA");
+        translationDraft!.Language.Should().Be("ar");
         translationDraft.TranslationKey.Should().NotBeNullOrEmpty();
         translationDraft.Body.Should().Be(comment.Body);
         translationDraft.AuthorName.Should().Be(comment.AuthorName);
@@ -242,11 +242,11 @@ public class TranslationTests : BaseTestAutoLogin
         var contentId = GetIdFromUrl(contentUrl);
 
         // Act - using invalid transformer type should default to emptyCopy
-        var translationDraft = await GetTest<ContentDetailsDto>($"/api/content/{contentId}/translation-draft/it-IT");
+        var translationDraft = await GetTest<ContentDetailsDto>($"/api/content/{contentId}/translation-draft/it");
 
         // Assert
         translationDraft.Should().NotBeNull();
-        translationDraft!.Language.Should().Be("it-IT");
+        translationDraft!.Language.Should().Be("it");
         translationDraft.Title.Should().BeEmpty(); // Empty copy behavior
         translationDraft.Description.Should().BeEmpty();
         translationDraft.Body.Should().BeEmpty();
@@ -265,7 +265,7 @@ public class TranslationTests : BaseTestAutoLogin
         var contentId = GetIdFromUrl(contentUrl);
 
         // Act
-        var response = await GetRequest($"/api/content/{contentId}/translation-draft/nl-NL?transformer={transformerType}");
+        var response = await GetRequest($"/api/content/{contentId}/translation-draft/nl?transformer={transformerType}");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -274,7 +274,7 @@ public class TranslationTests : BaseTestAutoLogin
         var translationDraft = JsonHelper.Deserialize<ContentDetailsDto>(responseContent);
 
         translationDraft.Should().NotBeNull();
-        translationDraft!.Language.Should().Be("nl-NL");
+        translationDraft!.Language.Should().Be("nl");
         translationDraft.TranslationKey.Should().NotBeNullOrEmpty();
 
         // Verify behavior based on transformer type
@@ -301,15 +301,15 @@ public class TranslationTests : BaseTestAutoLogin
         var contentId = GetIdFromUrl(contentUrl);
 
         // Act
-        var draft1 = await GetTest<ContentDetailsDto>($"/api/content/{contentId}/translation-draft/fr-FR?transformer=emptyCopy");
-        var draft2 = await GetTest<ContentDetailsDto>($"/api/content/{contentId}/translation-draft/de-DE?transformer=emptyCopy");
+        var draft1 = await GetTest<ContentDetailsDto>($"/api/content/{contentId}/translation-draft/fr?transformer=emptyCopy");
+        var draft2 = await GetTest<ContentDetailsDto>($"/api/content/{contentId}/translation-draft/de?transformer=emptyCopy");
 
         // Assert
         draft1.Should().NotBeNull();
         draft2.Should().NotBeNull();
         draft1!.TranslationKey.Should().Be(draft2!.TranslationKey); // Same translation key
-        draft1.Language.Should().Be("fr-FR");
-        draft2.Language.Should().Be("de-DE");
+        draft1.Language.Should().Be("fr");
+        draft2.Language.Should().Be("de");
     }
 
     [Fact]
@@ -321,15 +321,15 @@ public class TranslationTests : BaseTestAutoLogin
         var contentId = GetIdFromUrl(contentUrl);
 
         // Act
-        var draft1 = await GetTest<ContentDetailsDto>($"/api/content/{contentId}/translation-draft/sv-SE?transformer=emptyCopy");
-        var draft2 = await GetTest<ContentDetailsDto>($"/api/content/{contentId}/translation-draft/sv-SE?transformer=keepOriginal");
+        var draft1 = await GetTest<ContentDetailsDto>($"/api/content/{contentId}/translation-draft/sv?transformer=emptyCopy");
+        var draft2 = await GetTest<ContentDetailsDto>($"/api/content/{contentId}/translation-draft/sv?transformer=keepOriginal");
 
         // Assert
         draft1.Should().NotBeNull();
         draft2.Should().NotBeNull();
         draft1!.TranslationKey.Should().Be(draft2!.TranslationKey);
-        draft1.Language.Should().Be("sv-SE");
-        draft2.Language.Should().Be("sv-SE");
+        draft1.Language.Should().Be("sv");
+        draft2.Language.Should().Be("sv");
     }
 
     [Fact]
@@ -341,11 +341,11 @@ public class TranslationTests : BaseTestAutoLogin
         var contentId = GetIdFromUrl(contentUrl);
 
         // Act
-        var translationDraft = await GetTest<ContentDetailsDto>($"/api/content/{contentId}/translation-draft/zh-Hans-CN?transformer=emptyCopy");
+        var translationDraft = await GetTest<ContentDetailsDto>($"/api/content/{contentId}/translation-draft/zh?transformer=emptyCopy");
 
         // Assert
         translationDraft.Should().NotBeNull();
-        translationDraft!.Language.Should().Be("zh-Hans-CN");
+        translationDraft!.Language.Should().Be("zh");
         translationDraft.TranslationKey.Should().NotBeNullOrEmpty();
     }
 
@@ -364,7 +364,7 @@ public class TranslationTests : BaseTestAutoLogin
         translations.Should().NotBeNull();
         translations!.Should().HaveCount(1);
         translations![0].Id.Should().Be(contentId);
-        translations[0].Language.Should().Be("en-US"); // Default language
+        translations[0].Language.Should().Be("en"); // Default language
     }
 
     [Fact]
@@ -376,18 +376,18 @@ public class TranslationTests : BaseTestAutoLogin
         var originalId = GetIdFromUrl(originalUrl);
 
         // Create translation drafts to generate TranslationKey
-        var frenchDraft = await GetTest<ContentDetailsDto>($"/api/content/{originalId}/translation-draft/fr-FR?transformer=emptyCopy");
-        var germanDraft = await GetTest<ContentDetailsDto>($"/api/content/{originalId}/translation-draft/de-DE?transformer=emptyCopy");
+        var frenchDraft = await GetTest<ContentDetailsDto>($"/api/content/{originalId}/translation-draft/fr?transformer=emptyCopy");
+        var germanDraft = await GetTest<ContentDetailsDto>($"/api/content/{originalId}/translation-draft/de?transformer=emptyCopy");
 
         // Create actual translations by posting them
         var frenchContent = new TestContent();
-        frenchContent.Language = "fr-FR";
+        frenchContent.Language = "fr";
         frenchContent.Slug = "test-slug-fr";
         frenchContent.TranslationKey = frenchDraft!.TranslationKey;
         await PostTest("/api/content", frenchContent);
 
         var germanContent = new TestContent();
-        germanContent.Language = "de-DE";
+        germanContent.Language = "de";
         germanContent.Slug = "test-slug-de";
         germanContent.TranslationKey = germanDraft!.TranslationKey;
         await PostTest("/api/content", germanContent);
@@ -409,9 +409,9 @@ public class TranslationTests : BaseTestAutoLogin
 
         // Verify languages
         var languages = translations.Select(t => t.Language).ToList();
-        languages.Should().Contain("en-US"); // Original
-        languages.Should().Contain("fr-FR");
-        languages.Should().Contain("de-DE");
+        languages.Should().Contain("en"); // Original
+        languages.Should().Contain("fr");
+        languages.Should().Contain("de");
     }
 
     [Fact]
@@ -433,11 +433,11 @@ public class TranslationTests : BaseTestAutoLogin
         var originalId = GetIdFromUrl(originalUrl);
 
         // Create translation draft to generate TranslationKey
-        var spanishDraft = await GetTest<EmailGroupDetailsDto>($"/api/email-groups/{originalId}/translation-draft/es-ES?transformer=emptyCopy");
+        var spanishDraft = await GetTest<EmailGroupDetailsDto>($"/api/email-groups/{originalId}/translation-draft/es?transformer=emptyCopy");
 
         // Create actual translation
         var spanishEmailGroup = new TestEmailGroup();
-        spanishEmailGroup.Language = "es-ES";
+        spanishEmailGroup.Language = "es";
         spanishEmailGroup.Name = "Grupo de Email Español";
         spanishEmailGroup.TranslationKey = spanishDraft!.TranslationKey;
         await PostTest("/api/email-groups", spanishEmailGroup);
@@ -455,7 +455,7 @@ public class TranslationTests : BaseTestAutoLogin
 
         var languages = translations.Select(t => t.Language).ToList();
         languages.Should().Contain("en");
-        languages.Should().Contain("es-ES");
+        languages.Should().Contain("es");
     }
 
     [Fact]
@@ -472,7 +472,7 @@ public class TranslationTests : BaseTestAutoLogin
         var originalId = GetIdFromUrl(originalUrl);
 
         // Create translation draft to generate TranslationKey
-        var italianDraft = await GetTest<EmailTemplateDetailsDto>($"/api/email-templates/{originalId}/translation-draft/it-IT?transformer=emptyCopy");
+        var italianDraft = await GetTest<EmailTemplateDetailsDto>($"/api/email-templates/{originalId}/translation-draft/it?transformer=emptyCopy");
 
         // Create actual translation
         var italianTemplate = new TestEmailTemplate();
@@ -517,7 +517,7 @@ public class TranslationTests : BaseTestAutoLogin
         var originalId = GetIdFromUrl(originalUrl);
 
         // Create translation draft to generate TranslationKey
-        var japaneseDraft = await GetTest<CommentDetailsDto>($"/api/comments/{originalId}/translation-draft/ja-JP?transformer=emptyCopy");
+        var japaneseDraft = await GetTest<CommentDetailsDto>($"/api/comments/{originalId}/translation-draft/ja?transformer=emptyCopy");
 
         // Create actual translation
         var japaneseComment = new TestComment(string.Empty, contentId);
@@ -551,9 +551,9 @@ public class TranslationTests : BaseTestAutoLogin
         var originalId = GetIdFromUrl(originalUrl);
 
         // Create translation
-        var frenchDraft = await GetTest<ContentDetailsDto>($"/api/content/{originalId}/translation-draft/fr-FR?transformer=emptyCopy");
+        var frenchDraft = await GetTest<ContentDetailsDto>($"/api/content/{originalId}/translation-draft/fr?transformer=emptyCopy");
         var frenchContent = new TestContent();
-        frenchContent.Language = "fr-FR";
+        frenchContent.Language = "fr";
         frenchContent.Slug = "test-slug-fr";
         frenchContent.TranslationKey = frenchDraft!.TranslationKey;
         var frenchUrl = await PostTest("/api/content", frenchContent);
@@ -571,8 +571,8 @@ public class TranslationTests : BaseTestAutoLogin
         translations.Should().AllSatisfy(t => t.TranslationKey.Should().Be(translationKey));
 
         var languages = translations.Select(t => t.Language).ToList();
-        languages.Should().Contain("en-US");
-        languages.Should().Contain("fr-FR");
+        languages.Should().Contain("en");
+        languages.Should().Contain("fr");
     }
 
     [Fact]
@@ -590,7 +590,7 @@ public class TranslationTests : BaseTestAutoLogin
         translations.Should().NotBeNull();
         translations!.Should().HaveCount(1);
         translations![0].Id.Should().Be(contentId);
-        translations[0].Language.Should().Be("en-US");
+        translations[0].Language.Should().Be("en");
         translations[0].TranslationKey.Should().BeNullOrEmpty(); // No translation key generated yet
     }
 
@@ -610,11 +610,11 @@ public class TranslationTests : BaseTestAutoLogin
     }
 
     [Theory]
-    [InlineData("ko-KR")] // Korean - not supported
-    [InlineData("hi-IN")] // Hindi - not supported
-    [InlineData("th-TH")] // Thai - not supported
-    [InlineData("pl-PL")] // Polish - not supported
-    [InlineData("tr-TR")] // Turkish - not supported
+    [InlineData("ko")] // Korean - not supported
+    [InlineData("hi")] // Hindi - not supported
+    [InlineData("th")] // Thai - not supported
+    [InlineData("pl")] // Polish - not supported
+    [InlineData("tr")] // Turkish - not supported
     public async Task GetTranslationDraft_UnsupportedLanguage_ReturnsBadRequest(string unsupportedLanguage)
     {
         // Arrange
@@ -645,7 +645,7 @@ public class TranslationTests : BaseTestAutoLogin
         var emailGroupId = GetIdFromUrl(emailGroupUrl);
 
         // Act
-        var response = await GetRequest($"/api/email-groups/{emailGroupId}/translation-draft/vi-VN?transformer=emptyCopy");
+        var response = await GetRequest($"/api/email-groups/{emailGroupId}/translation-draft/vi?transformer=emptyCopy");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -655,7 +655,7 @@ public class TranslationTests : BaseTestAutoLogin
         problemDetails.Should().NotBeNull();
         problemDetails!.Status.Should().Be(400);
         problemDetails.Extensions.Should().ContainKey("language");
-        problemDetails.Extensions["language"]!.ToString().Should().Be("vi-VN");
+        problemDetails.Extensions["language"]!.ToString().Should().Be("vi");
     }
 
     [Fact]
@@ -672,7 +672,7 @@ public class TranslationTests : BaseTestAutoLogin
         var templateId = GetIdFromUrl(templateUrl);
 
         // Act
-        var response = await GetRequest($"/api/email-templates/{templateId}/translation-draft/bn-BD?transformer=emptyCopy");
+        var response = await GetRequest($"/api/email-templates/{templateId}/translation-draft/bn?transformer=emptyCopy");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -682,7 +682,7 @@ public class TranslationTests : BaseTestAutoLogin
         problemDetails.Should().NotBeNull();
         problemDetails!.Status.Should().Be(400);
         problemDetails.Extensions.Should().ContainKey("language");
-        problemDetails.Extensions["language"]!.ToString().Should().Be("bn-BD");
+        problemDetails.Extensions["language"]!.ToString().Should().Be("bn");
     }
 
     [Fact]
@@ -704,7 +704,7 @@ public class TranslationTests : BaseTestAutoLogin
         var commentId = GetIdFromUrl(commentUrl);
 
         // Act
-        var response = await GetRequest($"/api/comments/{commentId}/translation-draft/ur-PK?transformer=emptyCopy");
+        var response = await GetRequest($"/api/comments/{commentId}/translation-draft/ur?transformer=emptyCopy");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -714,7 +714,7 @@ public class TranslationTests : BaseTestAutoLogin
         problemDetails.Should().NotBeNull();
         problemDetails!.Status.Should().Be(400);
         problemDetails.Extensions.Should().ContainKey("language");
-        problemDetails.Extensions["language"]!.ToString().Should().Be("ur-PK");
+        problemDetails.Extensions["language"]!.ToString().Should().Be("ur");
     }
 
     /// <summary>

@@ -3,18 +3,119 @@
 // </copyright>
 
 using System.Security.Cryptography;
+using LeadCMS.Configuration;
 
 namespace LeadCMS.Helpers
 {
     public static class PasswordHelper
     {
-        public static string GenerateStrongPassword(int length = 16)
+        /// <summary>
+        /// Generates a strong password based on the provided IdentityConfig requirements.
+        /// If config is null, uses default ASP.NET Identity requirements.
+        /// </summary>
+        /// <param name="config">Identity configuration specifying password requirements.</param>
+        /// <param name="length">Desired password length (minimum will be enforced from config).</param>
+        /// <returns>A password that meets all specified requirements.</returns>
+        public static string GenerateStrongPassword(IdentityConfig? config = null, int? length = null)
         {
-            const string valid = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890!@#$%^&*()-_=+";
+            // Use provided config or fall back to defaults
+            var requireDigit = config?.RequireDigit ?? true;
+            var requireUppercase = config?.RequireUppercase ?? true;
+            var requireLowercase = config?.RequireLowercase ?? true;
+            var requireNonAlphanumeric = config?.RequireNonAlphanumeric ?? true;
+            var requiredLength = Math.Max(length ?? 16, config?.RequiredLength ?? 6);
+
+            // Calculate minimum required characters
+            var requiredCharTypes = 0;
+            if (requireDigit)
+            {
+                requiredCharTypes++;
+            }
+
+            if (requireUppercase)
+            {
+                requiredCharTypes++;
+            }
+
+            if (requireLowercase)
+            {
+                requiredCharTypes++;
+            }
+
+            if (requireNonAlphanumeric)
+            {
+                requiredCharTypes++;
+            }
+
+            if (requiredLength < requiredCharTypes)
+            {
+                throw new ArgumentException($"Password length ({requiredLength}) must be at least {requiredCharTypes} to include all required character types.", nameof(length));
+            }
+
+            // Character sets
+            const string lowercase = "abcdefghijklmnopqrstuvwxyz";
+            const string uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            const string digits = "1234567890";
+            const string special = "!@#$%^&*()-_=+[]{}|;:,.<>?";
+
             using var rng = RandomNumberGenerator.Create();
-            var bytes = new byte[length];
+            var password = new List<char>();
+            var allChars = string.Empty;
+
+            // Add required character types
+            if (requireLowercase)
+            {
+                password.Add(GetRandomCharacter(lowercase, rng));
+                allChars += lowercase;
+            }
+
+            if (requireUppercase)
+            {
+                password.Add(GetRandomCharacter(uppercase, rng));
+                allChars += uppercase;
+            }
+
+            if (requireDigit)
+            {
+                password.Add(GetRandomCharacter(digits, rng));
+                allChars += digits;
+            }
+
+            if (requireNonAlphanumeric)
+            {
+                password.Add(GetRandomCharacter(special, rng));
+                allChars += special;
+            }
+
+            // If no requirements are set, use all character types
+            if (string.IsNullOrEmpty(allChars))
+            {
+                allChars = lowercase + uppercase + digits + special;
+            }
+
+            // Fill remaining length with random characters from all allowed categories
+            for (int i = password.Count; i < requiredLength; i++)
+            {
+                password.Add(GetRandomCharacter(allChars, rng));
+            }
+
+            // Shuffle the password to avoid predictable patterns
+            return new string(password.OrderBy(x => GetRandomNumber(rng)).ToArray());
+        }
+
+        private static char GetRandomCharacter(string chars, RandomNumberGenerator rng)
+        {
+            var bytes = new byte[4];
             rng.GetBytes(bytes);
-            return new string(bytes.Select(b => valid[b % valid.Length]).ToArray());
+            var randomIndex = BitConverter.ToUInt32(bytes, 0) % chars.Length;
+            return chars[(int)randomIndex];
+        }
+
+        private static int GetRandomNumber(RandomNumberGenerator rng)
+        {
+            var bytes = new byte[4];
+            rng.GetBytes(bytes);
+            return BitConverter.ToInt32(bytes, 0);
         }
     }
 }

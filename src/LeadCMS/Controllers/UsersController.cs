@@ -3,6 +3,7 @@
 // </copyright>
 
 using AutoMapper;
+using LeadCMS.Configuration;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
@@ -13,6 +14,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace LeadCMS.Controllers;
 
@@ -24,17 +26,20 @@ public class UsersController : ControllerBase
     protected readonly IMapper mapper;
     private readonly UserManager<User> userManager;
     private readonly IEmailFromTemplateService emailFromTemplateService;
+    private readonly IdentityConfig identityConfig;
 
     public UsersController(
         PgDbContext dbContext,
         IMapper mapper,
         UserManager<User> userManager,
-        IEmailFromTemplateService emailFromTemplateService)
+        IEmailFromTemplateService emailFromTemplateService,
+        IOptions<IdentityConfig> identityOptions)
     {
         this.dbContext = dbContext;
         this.mapper = mapper;
         this.userManager = userManager;
         this.emailFromTemplateService = emailFromTemplateService;
+        identityConfig = identityOptions.Value;
     }
 
     [HttpGet]
@@ -79,10 +84,13 @@ public class UsersController : ControllerBase
         // Automatically set email as verified for admin-created users
         newUser.EmailConfirmed = true;
 
+        // Set CreatedAt to current UTC time to prevent DateTime.MinValue issue
+        newUser.CreatedAt = DateTime.UtcNow;
+
         string password = userDto.Password ?? string.Empty;
         if (userDto.GeneratePassword || string.IsNullOrEmpty(password))
         {
-            password = PasswordHelper.GenerateStrongPassword();
+            password = PasswordHelper.GenerateStrongPassword(identityConfig);
         }
 
         var result = await userManager.CreateAsync(newUser, password);
@@ -109,9 +117,10 @@ public class UsersController : ControllerBase
         }
 
         var createdUser = await userManager.FindByNameAsync(userDto.UserName);
+        var createdUserDto = mapper.Map<UserDetailsDto>(createdUser);
 
-        return CreatedAtAction(nameof(GetSpecific), new { id = createdUser!.Id }, createdUser);
-    }    
+        return CreatedAtAction(nameof(GetSpecific), new { id = createdUser!.Id }, createdUserDto);
+    }
 
     [HttpPatch("{id}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -131,7 +140,7 @@ public class UsersController : ControllerBase
         string? password = userDto.Password;
         if (userDto.GeneratePassword)
         {
-            password = PasswordHelper.GenerateStrongPassword();
+            password = PasswordHelper.GenerateStrongPassword(identityConfig);
         }
 
         if (!string.IsNullOrEmpty(password))

@@ -16,36 +16,8 @@ namespace LeadCMS.Services
 {
     public class EmailFromTemplateService : IEmailFromTemplateService
     {
-        private static readonly Dictionary<string, EmailTemplate> HardcodedTemplates = new()
-        {
-            ["Password_Reset"] = new EmailTemplate
-            {
-                Name = "Password_Reset",
-                Subject = "Password Reset",
-                BodyTemplate = "Click <a href=\"${ResetUrl}\">here</a> to reset your password.",
-                FromEmail = "no-reply@yourdomain.com",
-                FromName = "Support",
-            },
+        private readonly Dictionary<string, EmailTemplate> hardcodedTemplates;
 
-            ["Account_Created"] = new EmailTemplate
-            {
-                Name = "Account_Created",
-                Subject = "Your account has been created",
-                BodyTemplate = "Hello ${UserName},<br/>Your account has been created. Your password is: <b>${Password}</b>",
-                FromEmail = "no-reply@yourdomain.com",
-                FromName = "Support",
-            },
-
-            ["Password_Updated"] = new EmailTemplate
-            {
-                Name = "Password_Updated",
-                Subject = "Your password has been updated",
-                BodyTemplate = "Hello ${UserName},<br/>Your password has been updated. Your new password is: <b>${Password}</b>",
-                FromEmail = "no-reply@yourdomain.com",
-                FromName = "Support",
-            },
-        };   
-                
         private readonly IEmailWithLogService emailWithLogService;
         private readonly PgDbContext pgDbContext;
         private readonly IOptions<ApiSettingsConfig> apiSettingsConfig;
@@ -55,6 +27,37 @@ namespace LeadCMS.Services
             this.emailWithLogService = emailWithLogService;
             this.pgDbContext = pgDbContext;
             this.apiSettingsConfig = apiSettingsConfig;
+
+            // Initialize hardcoded templates with configuration values
+            hardcodedTemplates = new Dictionary<string, EmailTemplate>
+            {
+                ["Password_Reset"] = new EmailTemplate
+                {
+                    Name = "Password_Reset",
+                    Subject = "Password Reset",
+                    BodyTemplate = "Click <a href=\"${ResetUrl}\">here</a> to reset your password.",
+                    FromEmail = apiSettingsConfig.Value.DefaultFromEmail,
+                    FromName = apiSettingsConfig.Value.DefaultFromName,
+                },
+
+                ["Account_Created"] = new EmailTemplate
+                {
+                    Name = "Account_Created",
+                    Subject = "Your account has been created",
+                    BodyTemplate = "Hello ${UserName},<br/>Your account has been created. Your password is: <b>${Password}</b>",
+                    FromEmail = apiSettingsConfig.Value.DefaultFromEmail,
+                    FromName = apiSettingsConfig.Value.DefaultFromName,
+                },
+
+                ["Password_Updated"] = new EmailTemplate
+                {
+                    Name = "Password_Updated",
+                    Subject = "Your password has been updated",
+                    BodyTemplate = "Hello ${UserName},<br/>Your password has been updated. Your new password is: <b>${Password}</b>",
+                    FromEmail = apiSettingsConfig.Value.DefaultFromEmail,
+                    FromName = apiSettingsConfig.Value.DefaultFromName,
+                },
+            };
         }
 
         public async Task SendAsync(string templateName, string language, string[] recipients, Dictionary<string, string>? templateArguments, List<AttachmentDto>? attachments)
@@ -139,7 +142,7 @@ namespace LeadCMS.Services
             }
 
             // Try hardcoded
-            if (HardcodedTemplates.TryGetValue(name, out var hardcoded))
+            if (hardcodedTemplates.TryGetValue(name, out var hardcoded))
             {
                 return hardcoded;
             }

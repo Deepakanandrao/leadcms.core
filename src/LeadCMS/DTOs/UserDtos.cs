@@ -44,13 +44,13 @@ public class UserDetailsDto : UserBaseDto
 
     public DateTime CreatedAt { get; set; }
 
-    public DateTime LastTimeLoggedIn { get; set; }
+    public DateTime? LastTimeLoggedIn { get; set; }
 
     public string AvatarUrl { get; set; } = string.Empty;
 }
 
 public class UserBaseDto
-{ 
+{
     [Required]
     public string Email { get; set; } = string.Empty;
 

@@ -3,6 +3,7 @@
 // </copyright>
 
 using LeadCMS.Helpers;
+using LeadCMS.Tests.TestEntities;
 
 namespace LeadCMS.Tests;
 
@@ -123,7 +124,7 @@ public class DealTests : SimpleTableTests<Deal, TestDeal, DealUpdateDto, IDealSe
         pipeline.Should().NotBeNull();
         result.PipelineId = pipeline!.Id;
 
-        var userCreate = new UserCreateDto() { Email = "email@gmail.com", UserName = "User", DisplayName = "DisplayName" };
+        var userCreate = new TestUser();
         var userUrl = await PostUserTest(userCreate);
         var user = await GetTest<User>(userUrl);
         user.Should().NotBeNull();

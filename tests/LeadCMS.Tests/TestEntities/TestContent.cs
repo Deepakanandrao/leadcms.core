@@ -16,7 +16,7 @@ public class TestContent : ContentCreateDto
         Body = $"This is a sample Content{uid}";
         CoverImageUrl = $"/api/images/{Slug}/cover.png";
         CoverImageAlt = $"This is a sample Cover alt{uid}";
-        Language = "en-US";
+        Language = "en";
         Category = "Product";
         Tags = new string[] { "Tag1" };
         AllowComments = true;
