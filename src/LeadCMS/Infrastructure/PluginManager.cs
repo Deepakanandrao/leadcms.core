@@ -50,6 +50,13 @@ public static class PluginManager
     {
         var modules = new List<DynamicModuleDto>();
         var pluginsDirectory = new DirectoryInfo(PluginsFolder);
+
+        // Check if plugins directory exists before trying to enumerate it
+        if (!pluginsDirectory.Exists)
+        {
+            return modules;
+        }
+
         foreach (var pluginDir in pluginsDirectory.GetDirectories())
         {
             var configFile = pluginDir.GetFiles("dynamic-modules.json").FirstOrDefault();
@@ -67,10 +74,10 @@ public static class PluginManager
                 }
             }
         }
-        
+
         return modules;
     }
-    
+
     private static void LoadPlugins(DirectoryInfo pluginsDirectory, ConfigurationManager configurationManager)
     {
         var enabledPlugins = configurationManager.GetSection("Plugins").Get<string[]>();

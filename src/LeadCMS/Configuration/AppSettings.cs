@@ -235,3 +235,16 @@ public class IdentityConfig
 
     public int RequiredUniqueChars { get; set; } = 1;
 }
+
+public class ContentConfig
+{
+    /// <summary>
+    /// Gets or sets the maximum length for Content Title field. Default value of 60 characters is SEO-optimized for page titles.
+    /// </summary>
+    public int MaxTitleLength { get; set; } = 60;
+
+    /// <summary>
+    /// Gets or sets the maximum length for Content Description field. Default value of 155 characters is SEO-optimized for meta descriptions.
+    /// </summary>
+    public int MaxDescriptionLength { get; set; } = 155;
+}

@@ -118,6 +118,7 @@ public class Program
         ConfigureMaxRequestBodySize(builder);
         ConfigureEmailVerification(builder);
         ConfigureAccountDetails(builder);
+        ConfigureContent(builder);
         ConfigureIdentity(builder);
 
         builder.Services.AddAutoMapper(x =>
@@ -426,6 +427,18 @@ public class Program
         }
 
         builder.Services.Configure<AccountDetailsApiConfig>(accountDetailsApiConfig);
+    }
+
+    private static void ConfigureContent(WebApplicationBuilder builder)
+    {
+        var contentConfig = builder.Configuration.GetSection("Content");
+
+        if (contentConfig == null)
+        {
+            throw new MissingConfigurationException("Content Validation configuration is mandatory.");
+        }
+
+        builder.Services.Configure<ContentConfig>(contentConfig);
     }
 
     private static void ConfigureApiSettings(WebApplicationBuilder builder)

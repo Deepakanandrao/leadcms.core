@@ -11,9 +11,11 @@ namespace LeadCMS.DTOs;
 public class ContentCreateDto
 {
     [Required]
+    [ContentTitleLength]
     public string Title { get; set; } = string.Empty;
 
     [Required]
+    [ContentDescriptionLength]
     public string Description { get; set; } = string.Empty;
 
     [Required]
@@ -54,9 +56,11 @@ public class ContentCreateDto
 public class ContentUpdateDto
 {
     [MinLength(1)]
+    [ContentTitleLength]
     public string? Title { get; set; }
 
     [MinLength(1)]
+    [ContentDescriptionLength]
     public string? Description { get; set; }
 
     [MinLength(1)]

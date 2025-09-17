@@ -4,6 +4,7 @@
 
 using System.Globalization;
 using LeadCMS.Configuration;
+using LeadCMS.Constants;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Infrastructure;
@@ -110,14 +111,21 @@ public class ConfigController : ControllerBase
             .ToList();
 
         // Only return these two settings, with user override if user is known
-        var hardcodedSettingKeys = new[] { "PreviewUrlTemplate", "LivePreviewUrlTemplate" };
+        var publicSettingKeys = new[]
+        {
+            SettingKeys.PreviewUrlTemplate,
+            SettingKeys.LivePreviewUrlTemplate,
+            SettingKeys.MaxTitleLength,
+            SettingKeys.MaxDescriptionLength,
+        };
+
         string? userId = null;
         if (User?.Identity?.IsAuthenticated == true)
         {
             userId = await httpContextHelper.GetCurrentUserIdAsync();
         }
 
-        var settings = await settingService.GetSettingsByKeysAsync(hardcodedSettingKeys, userId);
+        var settings = await settingService.GetSettingsByKeysAsync(publicSettingKeys, userId);
 
         // Get DefaultLanguage from ApiSettings section
         var apiSettingsSection = configuration.GetSection("ApiSettings");
@@ -127,6 +135,8 @@ public class ConfigController : ControllerBase
 
         // Get all capabilities from registered providers
         var capabilities = capabilityService.GetAllCapabilities();
+
+        EnrichWithEffectiveContentValidationIfNeededAsync(settings);
 
         var configDto = new ConfigDto
         {
@@ -144,6 +154,28 @@ public class ConfigController : ControllerBase
         };
 
         return Ok(configDto);
+    }
+
+    /// <summary>
+    /// Gets effective content validation settings by merging runtime settings with configuration defaults (if runtime settings are missing).
+    /// Runtime settings (from database) take precedence over configuration values.
+    /// </summary>
+    private void EnrichWithEffectiveContentValidationIfNeededAsync(Dictionary<string, string> settings)
+    {
+        var defaultContentConfig = configuration.GetSection("Content").Get<ContentConfig>() ?? new ContentConfig();
+
+        // Override with runtime settings if available
+        if (!settings.TryGetValue(SettingKeys.MaxTitleLength, out var titleLengthSetting) ||
+            !int.TryParse(titleLengthSetting, out var titleLength) || titleLength == 0)
+        {
+            settings[SettingKeys.MaxTitleLength] = defaultContentConfig.MaxTitleLength.ToString();
+        }
+
+        if (!settings.TryGetValue(SettingKeys.MaxDescriptionLength, out var descriptionLengthSetting) ||
+            !int.TryParse(descriptionLengthSetting, out var descriptionLength) || descriptionLength == 0)
+        {
+            settings[SettingKeys.MaxDescriptionLength] = defaultContentConfig.MaxDescriptionLength.ToString();
+        }
     }
 }
 
