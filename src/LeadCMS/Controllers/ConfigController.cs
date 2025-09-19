@@ -110,7 +110,7 @@ public class ConfigController : ControllerBase
             })
             .ToList();
 
-        // Only return these two settings, with user override if user is known
+        // Only return these settings, with user override if user is known
         var publicSettingKeys = new[]
         {
             SettingKeys.PreviewUrlTemplate,
@@ -119,6 +119,12 @@ public class ConfigController : ControllerBase
             SettingKeys.MaxTitleLength,
             SettingKeys.MinDescriptionLength,
             SettingKeys.MaxDescriptionLength,
+            SettingKeys.RequireDigit,
+            SettingKeys.RequireUppercase,
+            SettingKeys.RequireLowercase,
+            SettingKeys.RequireNonAlphanumeric,
+            SettingKeys.RequiredLength,
+            SettingKeys.RequiredUniqueChars,
         };
 
         string? userId = null;
@@ -139,6 +145,7 @@ public class ConfigController : ControllerBase
         var capabilities = capabilityService.GetAllCapabilities();
 
         EnrichWithEffectiveContentValidationIfNeededAsync(settings);
+        EnrichWithEffectiveIdentitySettingsIfNeededAsync(settings);
 
         var configDto = new ConfigDto
         {
@@ -193,6 +200,54 @@ public class ConfigController : ControllerBase
             !int.TryParse(descriptionLengthSetting, out var descriptionLength) || descriptionLength == 0)
         {
             settings[SettingKeys.MaxDescriptionLength] = defaultContentConfig.MaxDescriptionLength.ToString();
+        }
+    }
+
+    /// <summary>
+    /// Gets effective Identity settings by merging runtime settings with configuration defaults (if runtime settings are missing).
+    /// Runtime settings (from database) take precedence over configuration values.
+    /// Excludes LockoutTime and MaxFailedAccessAttempts as requested.
+    /// </summary>
+    private void EnrichWithEffectiveIdentitySettingsIfNeededAsync(Dictionary<string, string?> settings)
+    {
+        var defaultIdentityConfig = configuration.GetSection("Identity").Get<IdentityConfig>() ?? new IdentityConfig();
+
+        if (!settings.TryGetValue(SettingKeys.RequireDigit, out var requireDigitSetting) ||
+            string.IsNullOrEmpty(requireDigitSetting))
+        {
+            settings[SettingKeys.RequireDigit] = defaultIdentityConfig.RequireDigit.ToString().ToLower();
+        }
+
+        if (!settings.TryGetValue(SettingKeys.RequireUppercase, out var requireUppercaseSetting) ||
+            string.IsNullOrEmpty(requireUppercaseSetting))
+        {
+            settings[SettingKeys.RequireUppercase] = defaultIdentityConfig.RequireUppercase.ToString().ToLower();
+        }
+
+        if (!settings.TryGetValue(SettingKeys.RequireLowercase, out var requireLowercaseSetting) ||
+            string.IsNullOrEmpty(requireLowercaseSetting))
+        {
+            settings[SettingKeys.RequireLowercase] = defaultIdentityConfig.RequireLowercase.ToString().ToLower();
+        }
+
+        if (!settings.TryGetValue(SettingKeys.RequireNonAlphanumeric, out var requireNonAlphanumericSetting) ||
+            string.IsNullOrEmpty(requireNonAlphanumericSetting))
+        {
+            settings[SettingKeys.RequireNonAlphanumeric] = defaultIdentityConfig.RequireNonAlphanumeric.ToString().ToLower();
+        }
+
+        if (!settings.TryGetValue(SettingKeys.RequiredLength, out var requiredLengthSetting) ||
+            string.IsNullOrEmpty(requiredLengthSetting) ||
+            !int.TryParse(requiredLengthSetting, out var requiredLength) || requiredLength <= 0)
+        {
+            settings[SettingKeys.RequiredLength] = defaultIdentityConfig.RequiredLength.ToString();
+        }
+
+        if (!settings.TryGetValue(SettingKeys.RequiredUniqueChars, out var requiredUniqueCharsSetting) ||
+            string.IsNullOrEmpty(requiredUniqueCharsSetting) ||
+            !int.TryParse(requiredUniqueCharsSetting, out var requiredUniqueChars) || requiredUniqueChars <= 0)
+        {
+            settings[SettingKeys.RequiredUniqueChars] = defaultIdentityConfig.RequiredUniqueChars.ToString();
         }
     }
 }

@@ -21,4 +21,17 @@ public static class SettingKeys
     public const string MinDescriptionLength = "Content.MinDescriptionLength";
 
     public const string MaxDescriptionLength = "Content.MaxDescriptionLength";
+
+    // Identity password policy settings
+    public const string RequireDigit = "Identity.RequireDigit";
+
+    public const string RequireUppercase = "Identity.RequireUppercase";
+
+    public const string RequireLowercase = "Identity.RequireLowercase";
+
+    public const string RequireNonAlphanumeric = "Identity.RequireNonAlphanumeric";
+
+    public const string RequiredLength = "Identity.RequiredLength";
+
+    public const string RequiredUniqueChars = "Identity.RequiredUniqueChars";
 }

@@ -23,4 +23,27 @@ public class ConfigTests : BaseTest
         Assert.Equal("20", configDto.Settings[SettingKeys.MinDescriptionLength]);
         Assert.Equal("155", configDto.Settings[SettingKeys.MaxDescriptionLength]);
     }
+
+    [Fact]
+    public async Task GetConfig_ReturnsIdentitySettings()
+    {
+        // Arrange
+        // Act
+        var configDto = await GetTest<ConfigDto>("/api/config", HttpStatusCode.OK);
+
+        Assert.NotNull(configDto);
+        Assert.NotNull(configDto.Settings);
+
+        // Verify Identity settings are present and match appsettings.json values
+        Assert.Equal("true", configDto.Settings[SettingKeys.RequireDigit]);
+        Assert.Equal("true", configDto.Settings[SettingKeys.RequireUppercase]);
+        Assert.Equal("true", configDto.Settings[SettingKeys.RequireLowercase]);
+        Assert.Equal("true", configDto.Settings[SettingKeys.RequireNonAlphanumeric]);
+        Assert.Equal("6", configDto.Settings[SettingKeys.RequiredLength]);
+        Assert.Equal("1", configDto.Settings[SettingKeys.RequiredUniqueChars]);
+
+        // Verify excluded settings are NOT present
+        Assert.False(configDto.Settings.ContainsKey("Identity.LockoutTime"));
+        Assert.False(configDto.Settings.ContainsKey("Identity.MaxFailedAccessAttempts"));
+    }
 }
