@@ -115,7 +115,9 @@ public class ConfigController : ControllerBase
         {
             SettingKeys.PreviewUrlTemplate,
             SettingKeys.LivePreviewUrlTemplate,
+            SettingKeys.MinTitleLength,
             SettingKeys.MaxTitleLength,
+            SettingKeys.MinDescriptionLength,
             SettingKeys.MaxDescriptionLength,
         };
 
@@ -160,18 +162,34 @@ public class ConfigController : ControllerBase
     /// Gets effective content validation settings by merging runtime settings with configuration defaults (if runtime settings are missing).
     /// Runtime settings (from database) take precedence over configuration values.
     /// </summary>
-    private void EnrichWithEffectiveContentValidationIfNeededAsync(Dictionary<string, string> settings)
+    private void EnrichWithEffectiveContentValidationIfNeededAsync(Dictionary<string, string?> settings)
     {
         var defaultContentConfig = configuration.GetSection("Content").Get<ContentConfig>() ?? new ContentConfig();
 
+        if (!settings.TryGetValue(SettingKeys.MinTitleLength, out var minTitleLengthSetting) ||
+            string.IsNullOrEmpty(minTitleLengthSetting) ||
+            !int.TryParse(minTitleLengthSetting, out var minTitleLength) || minTitleLength == 0)
+        {
+            settings[SettingKeys.MinTitleLength] = defaultContentConfig.MinTitleLength.ToString();
+        }
+
         // Override with runtime settings if available
         if (!settings.TryGetValue(SettingKeys.MaxTitleLength, out var titleLengthSetting) ||
+            string.IsNullOrEmpty(titleLengthSetting) ||
             !int.TryParse(titleLengthSetting, out var titleLength) || titleLength == 0)
         {
             settings[SettingKeys.MaxTitleLength] = defaultContentConfig.MaxTitleLength.ToString();
         }
 
+        if (!settings.TryGetValue(SettingKeys.MinDescriptionLength, out var minDescriptionLengthSetting) ||
+            string.IsNullOrEmpty(minDescriptionLengthSetting) ||
+            !int.TryParse(minDescriptionLengthSetting, out var minDescriptionLength) || minDescriptionLength == 0)
+        {
+            settings[SettingKeys.MinDescriptionLength] = defaultContentConfig.MinDescriptionLength.ToString();
+        }
+
         if (!settings.TryGetValue(SettingKeys.MaxDescriptionLength, out var descriptionLengthSetting) ||
+            string.IsNullOrEmpty(descriptionLengthSetting) ||
             !int.TryParse(descriptionLengthSetting, out var descriptionLength) || descriptionLength == 0)
         {
             settings[SettingKeys.MaxDescriptionLength] = defaultContentConfig.MaxDescriptionLength.ToString();
@@ -187,7 +205,7 @@ public class ConfigDto
 
     public List<LanguageDto> Languages { get; set; } = new List<LanguageDto>();
 
-    public Dictionary<string, string> Settings { get; set; } = new Dictionary<string, string>();
+    public Dictionary<string, string?> Settings { get; set; } = new Dictionary<string, string?>();
 
     public string DefaultLanguage { get; set; } = "en";
 

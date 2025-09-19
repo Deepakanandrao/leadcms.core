@@ -98,7 +98,7 @@ public class SettingsController : BaseController<Setting, SettingCreateDto, Sett
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<SettingDetailsDto>> SetSystemSetting(
         string key,
-        [FromQuery] string value)
+        [FromQuery] string? value)
     {
         await settingService.SetSystemSettingAsync(key, value);
 
@@ -148,7 +148,7 @@ public class SettingsController : BaseController<Setting, SettingCreateDto, Sett
     public async Task<ActionResult<Dictionary<string, SettingValueDto>>> GetUserSettings()
     {
         var user = await UserHelper.GetCurrentUserOrThrowAsync(userManager, User);
-        
+
         var systemSettings = await dbContext.Settings!
             .Where(s => s.UserId == null)
             .ToListAsync();
@@ -197,7 +197,7 @@ public class SettingsController : BaseController<Setting, SettingCreateDto, Sett
     public async Task<ActionResult<SettingValueDto>> GetUserSetting(string key)
     {
         var user = await UserHelper.GetCurrentUserOrThrowAsync(userManager, User);
-        
+
         // First try user-level setting
         var userSetting = await dbContext.Settings!
             .Where(s => s.Key == key && s.UserId == user.Id)
@@ -244,10 +244,10 @@ public class SettingsController : BaseController<Setting, SettingCreateDto, Sett
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<SettingDetailsDto>> SetUserSetting(
         string key,
-        [FromQuery] string value)
+        [FromQuery] string? value)
     {
         var user = await UserHelper.GetCurrentUserOrThrowAsync(userManager, User);
-        
+
         await settingService.SetUserSettingAsync(key, value, user.Id);
 
         var setting = await dbContext.Settings!
@@ -271,7 +271,7 @@ public class SettingsController : BaseController<Setting, SettingCreateDto, Sett
     public async Task<ActionResult> DeleteUserSetting(string key)
     {
         var user = await UserHelper.GetCurrentUserOrThrowAsync(userManager, User);
-        
+
         var setting = await dbContext.Settings!
             .Where(s => s.Key == key && s.UserId == user.Id)
             .FirstOrDefaultAsync();
@@ -296,7 +296,7 @@ public class SettingsController : BaseController<Setting, SettingCreateDto, Sett
     public async Task<ActionResult<List<SettingDetailsDto>>> GetUserOverrides()
     {
         var user = await UserHelper.GetCurrentUserOrThrowAsync(userManager, User);
-        
+
         var settings = await dbContext.Settings!
             .Where(s => s.UserId == user.Id)
             .ToListAsync();

@@ -10,17 +10,17 @@ public interface ISettingService
 
     Task<string?> GetSystemSettingAsync(string key);
 
-    Task SetUserSettingAsync(string key, string value, string userId);
+    Task SetUserSettingAsync(string key, string? value, string userId);
 
-    Task SetSystemSettingAsync(string key, string value);
+    Task SetSystemSettingAsync(string key, string? value);
 
     Task DeleteUserSettingAsync(string key, string userId);
 
     Task DeleteSystemSettingAsync(string key);
 
-    Task<Dictionary<string, string>> GetEffectiveUserSettingsAsync(string userId);
+    Task<Dictionary<string, string?>> GetEffectiveUserSettingsAsync(string userId);
 
-    Task<Dictionary<string, string>> GetSystemSettingsAsync();
+    Task<Dictionary<string, string?>> GetSystemSettingsAsync();
 
-    Task<Dictionary<string, string>> GetSettingsByKeysAsync(IEnumerable<string> keys, string? userId = null);
+    Task<Dictionary<string, string?>> GetSettingsByKeysAsync(IEnumerable<string> keys, string? userId = null);
 }

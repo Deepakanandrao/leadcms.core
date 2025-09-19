@@ -8,61 +8,87 @@ using LeadCMS.Constants;
 using LeadCMS.Interfaces;
 using Microsoft.Extensions.Options;
 
-namespace LeadCMS.DataAnnotations
+namespace LeadCMS.DataAnnotations;
+
+/// <summary>
+/// Validates the minimum and maximum length of content description based on configured limits.
+/// Checks runtime settings first, then falls back to configuration defaults.
+/// Uses SEO-optimized default of 155 characters for max and 1 for min if no configuration is available.
+/// </summary>
+public class ContentDescriptionLengthAttribute : ValidationAttribute
 {
     /// <summary>
-    /// Validates the maximum length of content description based on configured limits.
-    /// Checks runtime settings first, then falls back to configuration defaults.
-    /// Uses SEO-optimized default of 155 characters if no configuration is available.
+    /// Validates that the description does not exceed the configured maximum length and meets the minimum length.
     /// </summary>
-    public class ContentDescriptionLengthAttribute : ValidationAttribute
+    /// <param name="value">The value to validate.</param>
+    /// <param name="validationContext">The validation context.</param>
+    /// <returns>Validation result.</returns>
+    protected override ValidationResult IsValid(object? value, ValidationContext validationContext)
     {
-        /// <summary>
-        /// Validates that the description does not exceed the configured maximum length.
-        /// </summary>
-        /// <param name="value">The value to validate.</param>
-        /// <param name="validationContext">The validation context.</param>
-        /// <returns>Validation result.</returns>
-        protected override ValidationResult IsValid(object? value, ValidationContext validationContext)
+        if (value is not string description)
         {
-            if (value is not string description)
-            {
-                return ValidationResult.Success!;
-            }
-
-            var maxLength = GetMaxLength(validationContext);
-
-            if (description.Length > maxLength)
-            {
-                return new ValidationResult($"Description cannot exceed {maxLength} characters for SEO optimization.");
-            }
-
             return ValidationResult.Success!;
         }
 
-        private int GetMaxLength(ValidationContext validationContext)
+        var (minLength, maxLength) = GetMinMaxLength(validationContext);
+
+        if (description.Length < minLength)
         {
-            // Try to get runtime setting first
-            var settingService = validationContext.GetService(typeof(ISettingService)) as ISettingService;
-            if (settingService != null)
+            return new ValidationResult($"Description must be at least {minLength} characters.");
+        }
+
+        if (description.Length > maxLength)
+        {
+            return new ValidationResult($"Description cannot exceed {maxLength} characters for SEO optimization.");
+        }
+
+        return ValidationResult.Success!;
+    }
+
+    private (int minLength, int maxLength) GetMinMaxLength(ValidationContext validationContext)
+    {
+        int minLength = 1; // Default min length
+        int maxLength = 155; // SEO-optimized default max length
+
+        // Try to get runtime setting first
+        var settingService = validationContext.GetService(typeof(ISettingService)) as ISettingService;
+        if (settingService != null)
+        {
+            try
             {
-                try
+                var runtimeMax = settingService.GetSystemSettingAsync(SettingKeys.MaxDescriptionLength).GetAwaiter().GetResult();
+                if (!string.IsNullOrEmpty(runtimeMax) && int.TryParse(runtimeMax, out var runtimeMaxLength) && runtimeMaxLength > 0)
                 {
-                    var runtimeSetting = settingService.GetSystemSettingAsync(SettingKeys.MaxDescriptionLength).GetAwaiter().GetResult();
-                    if (!string.IsNullOrEmpty(runtimeSetting) && int.TryParse(runtimeSetting, out var runtimeLength) && runtimeLength > 0)
-                    {
-                        return runtimeLength;
-                    }
+                    maxLength = runtimeMaxLength;
                 }
-                catch
+
+                var runtimeMin = settingService.GetSystemSettingAsync(SettingKeys.MinDescriptionLength).GetAwaiter().GetResult();
+                if (!string.IsNullOrEmpty(runtimeMin) && int.TryParse(runtimeMin, out var runtimeMinLength) && runtimeMinLength > 0)
                 {
-                    // Fall back to configuration if runtime setting fails
+                    minLength = runtimeMinLength;
                 }
             }
-
-            // Fall back to configuration
-            var configuration = validationContext.GetService(typeof(IOptions<ContentConfig>)) as IOptions<ContentConfig>;
-            return configuration?.Value?.MaxDescriptionLength ?? 155; // SEO-optimized default
+            catch
+            {
+                // Fall back to configuration if runtime setting fails
+            }
         }
+
+        // Fall back to configuration
+        var configuration = validationContext.GetService(typeof(IOptions<ContentConfig>)) as IOptions<ContentConfig>;
+        if (configuration?.Value != null)
+        {
+            if (configuration.Value.MaxDescriptionLength > 0)
+            {
+                maxLength = configuration.Value.MaxDescriptionLength;
+            }
+
+            if (configuration.Value.MinDescriptionLength > 0)
+            {
+                minLength = configuration.Value.MinDescriptionLength;
+            }
+        }
+
+        return (minLength, maxLength);
     }
 }

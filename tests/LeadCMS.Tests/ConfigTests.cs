@@ -18,7 +18,9 @@ public class ConfigTests : BaseTest
 
         Assert.NotNull(configDto);
         Assert.NotNull(configDto.Settings);
+        Assert.Equal("10", configDto.Settings[SettingKeys.MinTitleLength]);
         Assert.Equal("60", configDto.Settings[SettingKeys.MaxTitleLength]);
+        Assert.Equal("20", configDto.Settings[SettingKeys.MinDescriptionLength]);
         Assert.Equal("155", configDto.Settings[SettingKeys.MaxDescriptionLength]);
     }
 }

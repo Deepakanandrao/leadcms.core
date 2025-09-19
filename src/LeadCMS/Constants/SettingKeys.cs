@@ -14,7 +14,11 @@ public static class SettingKeys
 
     public const string LivePreviewUrlTemplate = "LivePreviewUrlTemplate";
 
+    public const string MinTitleLength = "Content.MinTitleLength";
+
     public const string MaxTitleLength = "Content.MaxTitleLength";
+
+    public const string MinDescriptionLength = "Content.MinDescriptionLength";
 
     public const string MaxDescriptionLength = "Content.MaxDescriptionLength";
 }

@@ -6,16 +6,10 @@ using System.ComponentModel.DataAnnotations;
 using LeadCMS.Configuration;
 using LeadCMS.Constants;
 using LeadCMS.Interfaces;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace LeadCMS.DataAnnotations;
 
-/// <summary>
-/// Validates the maximum length of content title based on configured limits.
-/// Checks runtime settings first, then falls back to configuration defaults.
-/// Uses SEO-optimized default of 60 characters if no configuration is available.
-/// </summary>
 public class ContentTitleLengthAttribute : ValidationAttribute
 {
     protected override ValidationResult? IsValid(object? value, ValidationContext validationContext)
@@ -25,7 +19,12 @@ public class ContentTitleLengthAttribute : ValidationAttribute
             return ValidationResult.Success;
         }
 
-        var maxLength = GetMaxLength(validationContext);
+        var (minLength, maxLength) = GetMinMaxLength(validationContext);
+
+        if (title.Length < minLength)
+        {
+            return new ValidationResult($"Title must be at least {minLength} characters. Current length: {title.Length}");
+        }
 
         if (title.Length > maxLength)
         {
@@ -35,18 +34,26 @@ public class ContentTitleLengthAttribute : ValidationAttribute
         return ValidationResult.Success;
     }
 
-    private int GetMaxLength(ValidationContext validationContext)
+    private (int minLength, int maxLength) GetMinMaxLength(ValidationContext validationContext)
     {
-        // Try to get runtime setting first
+        int minLength = 10; // Default minimum
+        int maxLength = 60; // Default maximum (SEO-optimized)
+
         var settingService = validationContext.GetService(typeof(ISettingService)) as ISettingService;
         if (settingService != null)
         {
             try
             {
-                var runtimeSetting = settingService.GetSystemSettingAsync(SettingKeys.MaxTitleLength).GetAwaiter().GetResult();
-                if (!string.IsNullOrEmpty(runtimeSetting) && int.TryParse(runtimeSetting, out var runtimeLength) && runtimeLength > 0)
+                var runtimeMax = settingService.GetSystemSettingAsync(SettingKeys.MaxTitleLength).GetAwaiter().GetResult();
+                if (!string.IsNullOrEmpty(runtimeMax) && int.TryParse(runtimeMax, out var runtimeMaxLength) && runtimeMaxLength > 0)
                 {
-                    return runtimeLength;
+                    maxLength = runtimeMaxLength;
+                }
+
+                var runtimeMin = settingService.GetSystemSettingAsync(SettingKeys.MinTitleLength).GetAwaiter().GetResult();
+                if (!string.IsNullOrEmpty(runtimeMin) && int.TryParse(runtimeMin, out var runtimeMinLength) && runtimeMinLength > 0)
+                {
+                    minLength = runtimeMinLength;
                 }
             }
             catch
@@ -55,8 +62,20 @@ public class ContentTitleLengthAttribute : ValidationAttribute
             }
         }
 
-        // Fall back to configuration
         var options = validationContext.GetService(typeof(IOptions<ContentConfig>)) as IOptions<ContentConfig>;
-        return options?.Value?.MaxTitleLength ?? 60; // SEO-optimized default
+        if (options?.Value != null)
+        {
+            if (options.Value.MaxTitleLength > 0)
+            {
+                maxLength = options.Value.MaxTitleLength;
+            }
+
+            if (options.Value.MinTitleLength > 0)
+            {
+                minLength = options.Value.MinTitleLength;
+            }
+        }
+
+        return (minLength, maxLength);
     }
 }

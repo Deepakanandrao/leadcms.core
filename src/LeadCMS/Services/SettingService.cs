@@ -43,7 +43,7 @@ public class SettingService : ISettingService
         return systemSetting?.Value;
     }
 
-    public async Task SetUserSettingAsync(string key, string value, string userId)
+    public async Task SetUserSettingAsync(string key, string? value, string userId)
     {
         var existingSetting = await dbContext.Settings!
             .Where(s => s.Key == key && s.UserId == userId)
@@ -69,7 +69,7 @@ public class SettingService : ISettingService
         await dbContext.SaveChangesAsync();
     }
 
-    public async Task SetSystemSettingAsync(string key, string value)
+    public async Task SetSystemSettingAsync(string key, string? value)
     {
         var existingSetting = await dbContext.Settings!
             .Where(s => s.Key == key && s.UserId == null)
@@ -121,7 +121,7 @@ public class SettingService : ISettingService
         }
     }
 
-    public async Task<Dictionary<string, string>> GetEffectiveUserSettingsAsync(string userId)
+    public async Task<Dictionary<string, string?>> GetEffectiveUserSettingsAsync(string userId)
     {
         // Get all system settings
         var systemSettings = await dbContext.Settings!
@@ -134,7 +134,7 @@ public class SettingService : ISettingService
             .ToDictionaryAsync(s => s.Key, s => s.Value);
 
         // Merge them, with user settings overriding system settings
-        var effectiveSettings = new Dictionary<string, string>(systemSettings);
+        var effectiveSettings = new Dictionary<string, string?>(systemSettings);
         foreach (var userSetting in userSettings)
         {
             effectiveSettings[userSetting.Key] = userSetting.Value;
@@ -143,17 +143,17 @@ public class SettingService : ISettingService
         return effectiveSettings;
     }
 
-    public async Task<Dictionary<string, string>> GetSystemSettingsAsync()
+    public async Task<Dictionary<string, string?>> GetSystemSettingsAsync()
     {
         return await dbContext.Settings!
             .Where(s => s.UserId == null)
             .ToDictionaryAsync(s => s.Key, s => s.Value);
     }
 
-    public async Task<Dictionary<string, string>> GetSettingsByKeysAsync(IEnumerable<string> keys, string? userId = null)
+    public async Task<Dictionary<string, string?>> GetSettingsByKeysAsync(IEnumerable<string> keys, string? userId = null)
     {
         var keyList = keys.ToList();
-        var result = new Dictionary<string, string>();
+        var result = new Dictionary<string, string?>();
 
         // Get system-level settings for the keys
         var systemSettings = await dbContext.Settings!
