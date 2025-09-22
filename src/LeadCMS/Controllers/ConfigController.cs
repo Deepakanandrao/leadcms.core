@@ -23,19 +23,22 @@ public class ConfigController : ControllerBase
     private readonly ISettingService settingService;
     private readonly IHttpContextHelper httpContextHelper;
     private readonly ICapabilityService capabilityService;
+    private readonly ISettingsEnrichmentService settingsEnrichmentService;
 
     public ConfigController(
         IConfiguration configuration,
         IServiceProvider serviceProvider,
         ISettingService settingService,
         IHttpContextHelper httpContextHelper,
-        ICapabilityService capabilityService)
+        ICapabilityService capabilityService,
+        ISettingsEnrichmentService settingsEnrichmentService)
     {
         this.configuration = configuration;
         this.serviceProvider = serviceProvider;
         this.settingService = settingService;
         this.httpContextHelper = httpContextHelper;
         this.capabilityService = capabilityService;
+        this.settingsEnrichmentService = settingsEnrichmentService;
     }
 
     [HttpGet]
@@ -144,8 +147,8 @@ public class ConfigController : ControllerBase
         // Get all capabilities from registered providers
         var capabilities = capabilityService.GetAllCapabilities();
 
-        await EnrichWithEffectiveContentValidationIfNeededAsync(settings);
-        await EnrichWithEffectiveIdentitySettingsIfNeededAsync(settings);
+        await settingsEnrichmentService.EnrichWithContentValidationSettingsAsync(settings);
+        await settingsEnrichmentService.EnrichWithIdentitySettingsAsync(settings);
 
         var configDto = new ConfigDto
         {
@@ -163,87 +166,6 @@ public class ConfigController : ControllerBase
         };
 
         return Ok(configDto);
-    }
-
-    /// <summary>
-    /// Gets effective content validation settings by merging runtime settings with configuration defaults (if runtime settings are missing).
-    /// Runtime settings (from database) take precedence over configuration values.
-    /// </summary>
-    private async Task EnrichWithEffectiveContentValidationIfNeededAsync(Dictionary<string, string?> settings)
-    {
-        // Get content validation settings with fallback using convention-based approach
-        var minTitleLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.MinTitleLength, 10);
-        var maxTitleLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.MaxTitleLength, 60);
-        var minDescriptionLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.MinDescriptionLength, 20);
-        var maxDescriptionLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.MaxDescriptionLength, 155);
-
-        // Update settings dictionary with fallback values where needed
-        if (!settings.ContainsKey(SettingKeys.MinTitleLength) || string.IsNullOrEmpty(settings[SettingKeys.MinTitleLength]))
-        {
-            settings[SettingKeys.MinTitleLength] = minTitleLength.ToString();
-        }
-
-        if (!settings.ContainsKey(SettingKeys.MaxTitleLength) || string.IsNullOrEmpty(settings[SettingKeys.MaxTitleLength]))
-        {
-            settings[SettingKeys.MaxTitleLength] = maxTitleLength.ToString();
-        }
-
-        if (!settings.ContainsKey(SettingKeys.MinDescriptionLength) || string.IsNullOrEmpty(settings[SettingKeys.MinDescriptionLength]))
-        {
-            settings[SettingKeys.MinDescriptionLength] = minDescriptionLength.ToString();
-        }
-
-        if (!settings.ContainsKey(SettingKeys.MaxDescriptionLength) || string.IsNullOrEmpty(settings[SettingKeys.MaxDescriptionLength]))
-        {
-            settings[SettingKeys.MaxDescriptionLength] = maxDescriptionLength.ToString();
-        }
-    }
-
-    /// <summary>
-    /// Gets effective Identity settings by merging runtime settings with configuration defaults (if runtime settings are missing).
-    /// Runtime settings (from database) take precedence over configuration values.
-    /// Excludes LockoutTime and MaxFailedAccessAttempts as requested.
-    /// </summary>
-    private async Task EnrichWithEffectiveIdentitySettingsIfNeededAsync(Dictionary<string, string?> settings)
-    {
-        // Get identity settings with fallback using convention-based approach
-        var requireDigit = await settingService.GetBoolSettingWithFallbackAsync(SettingKeys.RequireDigit, false);
-        var requireUppercase = await settingService.GetBoolSettingWithFallbackAsync(SettingKeys.RequireUppercase, false);
-        var requireLowercase = await settingService.GetBoolSettingWithFallbackAsync(SettingKeys.RequireLowercase, true);
-        var requireNonAlphanumeric = await settingService.GetBoolSettingWithFallbackAsync(SettingKeys.RequireNonAlphanumeric, false);
-        var requiredLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.RequiredLength, 6);
-        var requiredUniqueChars = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.RequiredUniqueChars, 1);
-
-        // Update settings dictionary with fallback values where needed
-        if (!settings.ContainsKey(SettingKeys.RequireDigit) || string.IsNullOrEmpty(settings[SettingKeys.RequireDigit]))
-        {
-            settings[SettingKeys.RequireDigit] = requireDigit.ToString().ToLower();
-        }
-
-        if (!settings.ContainsKey(SettingKeys.RequireUppercase) || string.IsNullOrEmpty(settings[SettingKeys.RequireUppercase]))
-        {
-            settings[SettingKeys.RequireUppercase] = requireUppercase.ToString().ToLower();
-        }
-
-        if (!settings.ContainsKey(SettingKeys.RequireLowercase) || string.IsNullOrEmpty(settings[SettingKeys.RequireLowercase]))
-        {
-            settings[SettingKeys.RequireLowercase] = requireLowercase.ToString().ToLower();
-        }
-
-        if (!settings.ContainsKey(SettingKeys.RequireNonAlphanumeric) || string.IsNullOrEmpty(settings[SettingKeys.RequireNonAlphanumeric]))
-        {
-            settings[SettingKeys.RequireNonAlphanumeric] = requireNonAlphanumeric.ToString().ToLower();
-        }
-
-        if (!settings.ContainsKey(SettingKeys.RequiredLength) || string.IsNullOrEmpty(settings[SettingKeys.RequiredLength]))
-        {
-            settings[SettingKeys.RequiredLength] = requiredLength.ToString();
-        }
-
-        if (!settings.ContainsKey(SettingKeys.RequiredUniqueChars) || string.IsNullOrEmpty(settings[SettingKeys.RequiredUniqueChars]))
-        {
-            settings[SettingKeys.RequiredUniqueChars] = requiredUniqueChars.ToString();
-        }
     }
 }
 

@@ -22,6 +22,7 @@ public class SettingsController : BaseController<Setting, SettingCreateDto, Sett
 {
     private readonly ISettingService settingService;
     private readonly UserManager<User> userManager;
+    private readonly ISettingsEnrichmentService settingsEnrichmentService;
 
     public SettingsController(
         PgDbContext dbContext,
@@ -29,17 +30,20 @@ public class SettingsController : BaseController<Setting, SettingCreateDto, Sett
         EsDbContext esDbContext,
         QueryProviderFactory<Setting> queryProviderFactory,
         ISettingService settingService,
-        UserManager<User> userManager)
+        UserManager<User> userManager,
+        ISettingsEnrichmentService settingsEnrichmentService)
         : base(dbContext, mapper, esDbContext, queryProviderFactory)
     {
         this.settingService = settingService;
         this.userManager = userManager;
+        this.settingsEnrichmentService = settingsEnrichmentService;
     }
 
     /// <summary>
-    /// Get all system-level settings (Admin only).
+    /// Get all system-level settings enriched with default values from appsettings (Admin only).
+    /// Database settings take precedence over appsettings defaults.
     /// </summary>
-    /// <returns>List of system-level settings.</returns>
+    /// <returns>List of system-level settings enriched with defaults.</returns>
     [HttpGet("system")]
     [Authorize(Roles = "Admin")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -48,11 +52,41 @@ public class SettingsController : BaseController<Setting, SettingCreateDto, Sett
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<List<SettingDetailsDto>>> GetSystemSettings()
     {
-        var settings = await dbContext.Settings!
+        // Get database settings
+        var dbSettings = await dbContext.Settings!
             .Where(s => s.UserId == null)
             .ToListAsync();
 
-        var settingDtos = mapper.Map<List<SettingDetailsDto>>(settings);
+        // Create a dictionary for easy lookup and manipulation
+        var settingsDict = dbSettings.ToDictionary(s => s.Key, s => s.Value);
+
+        // Enrich with default values using the new enrichment service
+        // This handles both missing keys and null values in the database
+        await settingsEnrichmentService.EnrichWithAllKnownSettingsAsync(settingsDict);
+
+        // Convert back to Setting entities for consistent response format
+        var enrichedSettings = settingsDict.Select(kvp =>
+        {
+            var existingDbSetting = dbSettings.FirstOrDefault(s => s.Key == kvp.Key);
+            return new Setting
+            {
+                Id = existingDbSetting?.Id ?? 0,
+                Key = kvp.Key,
+                Value = kvp.Value, // Use the enriched value from the dictionary
+                UserId = null,
+                CreatedAt = existingDbSetting?.CreatedAt ?? DateTime.UtcNow,
+                CreatedById = existingDbSetting?.CreatedById,
+                CreatedByIp = existingDbSetting?.CreatedByIp,
+                CreatedByUserAgent = existingDbSetting?.CreatedByUserAgent,
+                UpdatedAt = existingDbSetting?.UpdatedAt,
+                UpdatedById = existingDbSetting?.UpdatedById,
+                UpdatedByIp = existingDbSetting?.UpdatedByIp,
+                UpdatedByUserAgent = existingDbSetting?.UpdatedByUserAgent,
+                Source = existingDbSetting?.Source,
+            };
+        }).ToList();
+
+        var settingDtos = mapper.Map<List<SettingDetailsDto>>(enrichedSettings);
         return Ok(settingDtos);
     }
 

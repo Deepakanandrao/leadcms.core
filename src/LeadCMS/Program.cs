@@ -70,6 +70,7 @@ public class Program
         builder.Services.AddTransient<ICommentService, CommentService>();
         builder.Services.AddScoped<IVariablesService, VariablesService>();
         builder.Services.AddScoped<ISettingService, SettingService>();
+        builder.Services.AddScoped<ISettingsEnrichmentService, SettingsEnrichmentService>();
         builder.Services.AddSingleton<IpDetailsService, IpDetailsService>();
         builder.Services.AddSingleton<ILockService, LockService>();
         builder.Services.AddScoped<IEmailVerifyService, EmailVerifyService>();
