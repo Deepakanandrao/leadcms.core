@@ -33,6 +33,7 @@ public class Content : BaseEntity, ICommentable, ITranslatable
 
     public string CoverImageAlt { get; set; } = string.Empty;
 
+    [Searchable]
     [Required]
     public string Slug { get; set; } = string.Empty;
 
@@ -51,7 +52,6 @@ public class Content : BaseEntity, ICommentable, ITranslatable
     [Required]
     public string Language { get; set; } = string.Empty;
 
-    [Searchable]
     public string? TranslationKey { get; set; }
 
     [Searchable]

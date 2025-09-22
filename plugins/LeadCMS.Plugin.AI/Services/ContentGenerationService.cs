@@ -4,10 +4,12 @@
 
 using System.Text.Json;
 using AutoMapper;
+using LeadCMS.Constants;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;
+using LeadCMS.Interfaces;
 using LeadCMS.Plugin.AI.DTOs;
 using LeadCMS.Plugin.AI.Exceptions;
 using LeadCMS.Plugin.AI.Interfaces;
@@ -18,48 +20,24 @@ namespace LeadCMS.Plugin.AI.Services;
 
 public class ContentGenerationService : IContentGenerationService
 {
-    private const string EditSystemPrompt = @"You are a content editor assistant. Your task is to edit existing content based on user prompts while maintaining the original structure and improving quality.
-
-Guidelines:
-- Preserve the core meaning and structure of the original content
-- Apply the user's requested changes thoughtfully
-- Maintain appropriate tone and style
-- Ensure all content is factual and well-written
-- Keep the same format (markdown, etc.) as the original
-
-Return your response as valid JSON with these fields:
-- title: Edited article title
-- slug: URL-friendly slug (lowercase, hyphens instead of spaces)
-- description: Brief summary/meta description
-- body: Main content body (preserve markdown formatting)
-- tags: Array of relevant tags
-- category: Relevant category
-
-Example format:
-{
-  ""title"": ""Updated Article Title"",
-  ""slug"": ""updated-article-title"",
-  ""description"": ""Brief description of the updated content"",
-  ""body"": ""# Main Heading\n\nUpdated content here..."",
-  ""tags"": [""tag1"", ""tag2""],
-  ""category"": ""category1""
-}";
-
     private readonly PgDbContext dbContext;
     private readonly ITextGenerationService textGenerationService;
     private readonly IMdxComponentParserService mdxComponentParserService;
     private readonly IMapper mapper;
+    private readonly ISettingService settingService;
 
     public ContentGenerationService(
         PgDbContext dbContext,
         ITextGenerationService textGenerationService,
         IMdxComponentParserService mdxComponentParserService,
-        IMapper mapper)
+        IMapper mapper,
+        ISettingService settingService)
     {
         this.dbContext = dbContext;
         this.textGenerationService = textGenerationService;
         this.mdxComponentParserService = mdxComponentParserService;
         this.mapper = mapper;
+        this.settingService = settingService;
     }
 
     public async Task<ContentDetailsDto> GenerateContentAsync(ContentGenerationRequest request)
@@ -100,7 +78,7 @@ Example format:
         }
 
         // Step 4: Build prompts and generate content
-        var systemPrompt = BuildSystemPrompt(contentType, sampleContent, componentAnalysis);
+        var systemPrompt = await BuildSystemPromptAsync(contentType, sampleContent, componentAnalysis);
         var userPrompt = BuildUserPrompt(request.Prompt, request.Language);
 
         var textRequest = new TextGenerationRequest
@@ -115,6 +93,13 @@ Example format:
 
             // Parse the generated JSON content
             var generatedContent = ParseGeneratedContent(response.GeneratedText);
+
+            // Validate content length constraints
+            var isValidLength = await ValidateContentLengthAsync(generatedContent.Title, generatedContent.Description);
+            if (!isValidLength)
+            {
+                Log.Warning("Generated content does not meet length constraints, but proceeding with generation");
+            }
 
             // Create a Content entity with the generated data
             var contentEntity = new Content
@@ -149,7 +134,7 @@ Example format:
 
     public async Task<ContentDetailsDto> GenerateContentEditAsync(ContentEditRequest request)
     {
-        var systemPrompt = BuildEditSystemPrompt();
+        var systemPrompt = await BuildEditSystemPromptAsync();
         var userPrompt = BuildEditUserPrompt(request, request.Prompt);
 
         var textRequest = new TextGenerationRequest
@@ -165,11 +150,21 @@ Example format:
             // Parse the generated JSON content
             var contentData = JsonSerializer.Deserialize<JsonElement>(response.GeneratedText);
 
+            var title = contentData.TryGetProperty("title", out var titleProp) ? (titleProp.GetString() ?? request.Title ?? string.Empty) : (request.Title ?? string.Empty);
+            var description = contentData.TryGetProperty("description", out var descProp) ? (descProp.GetString() ?? request.Description ?? string.Empty) : (request.Description ?? string.Empty);
+
+            // Validate content length constraints
+            var isValidLength = await ValidateContentLengthAsync(title, description);
+            if (!isValidLength)
+            {
+                Log.Warning("Edited content does not meet length constraints, but proceeding with edit");
+            }
+
             return new ContentDetailsDto
             {
-                Title = contentData.TryGetProperty("title", out var titleProp) ? (titleProp.GetString() ?? request.Title ?? string.Empty) : (request.Title ?? string.Empty),
+                Title = title,
                 Slug = contentData.TryGetProperty("slug", out var slugProp) ? (slugProp.GetString() ?? request.Slug ?? string.Empty) : (request.Slug ?? string.Empty),
-                Description = contentData.TryGetProperty("description", out var descProp) ? (descProp.GetString() ?? request.Description ?? string.Empty) : (request.Description ?? string.Empty),
+                Description = description,
                 Body = contentData.TryGetProperty("body", out var bodyProp) ? (bodyProp.GetString() ?? request.Body ?? string.Empty) : (request.Body ?? string.Empty),
                 Tags = contentData.TryGetProperty("tags", out var tagsProp) ? GetStringArrayProperty(contentData, "tags") : (request.Tags ?? Array.Empty<string>()),
                 Category = contentData.TryGetProperty("category", out var categoryProp) ? (categoryProp.GetString() ?? request.Category ?? string.Empty) : (request.Category ?? string.Empty),
@@ -214,8 +209,11 @@ Example format:
         return sampleContent;
     }
 
-    private string BuildSystemPrompt(ContentType contentType, Content sampleContent, MdxComponentAnalysisDto? componentAnalysis)
+    private async Task<string> BuildSystemPromptAsync(ContentType contentType, Content sampleContent, MdxComponentAnalysisDto? componentAnalysis)
     {
+        // Get content length constraints from settings/configuration
+        var (minTitleLength, maxTitleLength, minDescriptionLength, maxDescriptionLength) = await GetContentLengthConstraintsAsync();
+
         var prompt = $@"You are an expert content creator generating new content for a CMS. Generate a new {contentType.Uid} content record based on the sample and user requirements.
 
 SAMPLE CONTENT STRUCTURE:
@@ -248,10 +246,14 @@ REQUIREMENTS:
 5. Keep the same author, category structure, and tagging style as the sample
 6. If using MDX format, you may include the available components listed above
 
+CONTENT LENGTH REQUIREMENTS:
+- Title: Must be between {minTitleLength} and {maxTitleLength} characters (SEO optimized)
+- Description: Must be between {minDescriptionLength} and {maxDescriptionLength} characters (SEO optimized for meta descriptions)
+
 REQUIRED JSON STRUCTURE:
 {{
-  ""title"": ""Generated title"",
-  ""description"": ""Generated description"",
+  ""title"": ""Generated title ({minTitleLength}-{maxTitleLength} characters)"",
+  ""description"": ""Generated description ({minDescriptionLength}-{maxDescriptionLength} characters)"",
   ""body"": ""Generated body content in {contentType.Format} format"",
   ""slug"": ""url-friendly-slug"",
   ""author"": ""Author name"",
@@ -261,6 +263,56 @@ REQUIRED JSON STRUCTURE:
 }}";
 
         return prompt;
+    }
+
+    private async Task<(int minTitleLength, int maxTitleLength, int minDescriptionLength, int maxDescriptionLength)> GetContentLengthConstraintsAsync()
+    {
+        // Use the new convention-based method calls
+        var minTitleLength = await settingService.GetIntSettingWithFallbackAsync(
+            SettingKeys.MinTitleLength,
+            10); // Default minimum
+
+        var maxTitleLength = await settingService.GetIntSettingWithFallbackAsync(
+            SettingKeys.MaxTitleLength,
+            60); // Default maximum
+
+        var minDescriptionLength = await settingService.GetIntSettingWithFallbackAsync(
+            SettingKeys.MinDescriptionLength,
+            20); // Default minimum
+
+        var maxDescriptionLength = await settingService.GetIntSettingWithFallbackAsync(
+            SettingKeys.MaxDescriptionLength,
+            155); // Default maximum
+
+        return (minTitleLength, maxTitleLength, minDescriptionLength, maxDescriptionLength);
+    }
+
+    private async Task<bool> ValidateContentLengthAsync(string title, string description)
+    {
+        var (minTitleLength, maxTitleLength, minDescriptionLength, maxDescriptionLength) = await GetContentLengthConstraintsAsync();
+
+        bool titleValid = title.Length >= minTitleLength && title.Length <= maxTitleLength;
+        bool descriptionValid = description.Length >= minDescriptionLength && description.Length <= maxDescriptionLength;
+
+        if (!titleValid)
+        {
+            Log.Warning(
+                "Generated title length {TitleLength} is outside valid range {MinTitle}-{MaxTitle}",
+                title.Length,
+                minTitleLength,
+                maxTitleLength);
+        }
+
+        if (!descriptionValid)
+        {
+            Log.Warning(
+                "Generated description length {DescriptionLength} is outside valid range {MinDescription}-{MaxDescription}",
+                description.Length,
+                minDescriptionLength,
+                maxDescriptionLength);
+        }
+
+        return titleValid && descriptionValid;
     }
 
     private string FormatComponentInfo(MdxComponentDto component)
@@ -338,9 +390,41 @@ Remember to return only the JSON structure as specified in the system prompt.";
         return result.ToArray();
     }
 
-    private string BuildEditSystemPrompt()
+    private async Task<string> BuildEditSystemPromptAsync()
     {
-        return EditSystemPrompt;
+        // Get content length constraints from settings/configuration
+        var (minTitleLength, maxTitleLength, minDescriptionLength, maxDescriptionLength) = await GetContentLengthConstraintsAsync();
+
+        return $@"You are a content editor assistant. Your task is to edit existing content based on user prompts while maintaining the original structure and improving quality.
+
+Guidelines:
+- Preserve the core meaning and structure of the original content
+- Apply the user's requested changes thoughtfully
+- Maintain appropriate tone and style
+- Ensure all content is factual and well-written
+- Keep the same format (markdown, etc.) as the original
+
+CONTENT LENGTH REQUIREMENTS:
+- Title: Must be between {minTitleLength} and {maxTitleLength} characters (SEO optimized)
+- Description: Must be between {minDescriptionLength} and {maxDescriptionLength} characters (SEO optimized for meta descriptions)
+
+Return your response as valid JSON with these fields:
+- title: Edited article title ({minTitleLength}-{maxTitleLength} characters)
+- slug: URL-friendly slug (lowercase, hyphens instead of spaces)
+- description: Brief summary/meta description ({minDescriptionLength}-{maxDescriptionLength} characters)
+- body: Main content body (preserve markdown formatting)
+- tags: Array of relevant tags
+- category: Relevant category
+
+Example format:
+{{
+  ""title"": ""Updated Article Title"",
+  ""slug"": ""updated-article-title"",
+  ""description"": ""Brief description of the updated content"",
+  ""body"": ""# Main Heading\n\nUpdated content here..."",
+  ""tags"": [""tag1"", ""tag2""],
+  ""category"": ""category1""
+}}";
     }
 
     private string BuildEditUserPrompt(ContentEditRequest contentData, string userPrompt)

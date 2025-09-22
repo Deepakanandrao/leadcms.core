@@ -3,10 +3,8 @@
 // </copyright>
 
 using System.ComponentModel.DataAnnotations;
-using LeadCMS.Configuration;
 using LeadCMS.Constants;
 using LeadCMS.Interfaces;
-using Microsoft.Extensions.Options;
 
 namespace LeadCMS.DataAnnotations;
 
@@ -47,45 +45,26 @@ public class ContentDescriptionLengthAttribute : ValidationAttribute
 
     private (int minLength, int maxLength) GetMinMaxLength(ValidationContext validationContext)
     {
-        int minLength = 1; // Default min length
+        int minLength = 20; // Default min length
         int maxLength = 155; // SEO-optimized default max length
 
-        // Try to get runtime setting first
         var settingService = validationContext.GetService(typeof(ISettingService)) as ISettingService;
         if (settingService != null)
         {
             try
             {
-                var runtimeMax = settingService.GetSystemSettingAsync(SettingKeys.MaxDescriptionLength).GetAwaiter().GetResult();
-                if (!string.IsNullOrEmpty(runtimeMax) && int.TryParse(runtimeMax, out var runtimeMaxLength) && runtimeMaxLength > 0)
-                {
-                    maxLength = runtimeMaxLength;
-                }
+                // Use the new convention-based method calls
+                minLength = settingService.GetIntSettingWithFallbackAsync(
+                    SettingKeys.MinDescriptionLength,
+                    minLength).GetAwaiter().GetResult();
 
-                var runtimeMin = settingService.GetSystemSettingAsync(SettingKeys.MinDescriptionLength).GetAwaiter().GetResult();
-                if (!string.IsNullOrEmpty(runtimeMin) && int.TryParse(runtimeMin, out var runtimeMinLength) && runtimeMinLength > 0)
-                {
-                    minLength = runtimeMinLength;
-                }
+                maxLength = settingService.GetIntSettingWithFallbackAsync(
+                    SettingKeys.MaxDescriptionLength,
+                    maxLength).GetAwaiter().GetResult();
             }
             catch
             {
-                // Fall back to configuration if runtime setting fails
-            }
-        }
-
-        // Fall back to configuration
-        var configuration = validationContext.GetService(typeof(IOptions<ContentConfig>)) as IOptions<ContentConfig>;
-        if (configuration?.Value != null)
-        {
-            if (configuration.Value.MaxDescriptionLength > 0)
-            {
-                maxLength = configuration.Value.MaxDescriptionLength;
-            }
-
-            if (configuration.Value.MinDescriptionLength > 0)
-            {
-                minLength = configuration.Value.MinDescriptionLength;
+                // Fall back to defaults if anything fails
             }
         }
 

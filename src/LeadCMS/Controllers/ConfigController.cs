@@ -144,8 +144,8 @@ public class ConfigController : ControllerBase
         // Get all capabilities from registered providers
         var capabilities = capabilityService.GetAllCapabilities();
 
-        EnrichWithEffectiveContentValidationIfNeededAsync(settings);
-        EnrichWithEffectiveIdentitySettingsIfNeededAsync(settings);
+        await EnrichWithEffectiveContentValidationIfNeededAsync(settings);
+        await EnrichWithEffectiveIdentitySettingsIfNeededAsync(settings);
 
         var configDto = new ConfigDto
         {
@@ -169,37 +169,33 @@ public class ConfigController : ControllerBase
     /// Gets effective content validation settings by merging runtime settings with configuration defaults (if runtime settings are missing).
     /// Runtime settings (from database) take precedence over configuration values.
     /// </summary>
-    private void EnrichWithEffectiveContentValidationIfNeededAsync(Dictionary<string, string?> settings)
+    private async Task EnrichWithEffectiveContentValidationIfNeededAsync(Dictionary<string, string?> settings)
     {
-        var defaultContentConfig = configuration.GetSection("Content").Get<ContentConfig>() ?? new ContentConfig();
+        // Get content validation settings with fallback using convention-based approach
+        var minTitleLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.MinTitleLength, 10);
+        var maxTitleLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.MaxTitleLength, 60);
+        var minDescriptionLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.MinDescriptionLength, 20);
+        var maxDescriptionLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.MaxDescriptionLength, 155);
 
-        if (!settings.TryGetValue(SettingKeys.MinTitleLength, out var minTitleLengthSetting) ||
-            string.IsNullOrEmpty(minTitleLengthSetting) ||
-            !int.TryParse(minTitleLengthSetting, out var minTitleLength) || minTitleLength == 0)
+        // Update settings dictionary with fallback values where needed
+        if (!settings.ContainsKey(SettingKeys.MinTitleLength) || string.IsNullOrEmpty(settings[SettingKeys.MinTitleLength]))
         {
-            settings[SettingKeys.MinTitleLength] = defaultContentConfig.MinTitleLength.ToString();
+            settings[SettingKeys.MinTitleLength] = minTitleLength.ToString();
         }
 
-        // Override with runtime settings if available
-        if (!settings.TryGetValue(SettingKeys.MaxTitleLength, out var titleLengthSetting) ||
-            string.IsNullOrEmpty(titleLengthSetting) ||
-            !int.TryParse(titleLengthSetting, out var titleLength) || titleLength == 0)
+        if (!settings.ContainsKey(SettingKeys.MaxTitleLength) || string.IsNullOrEmpty(settings[SettingKeys.MaxTitleLength]))
         {
-            settings[SettingKeys.MaxTitleLength] = defaultContentConfig.MaxTitleLength.ToString();
+            settings[SettingKeys.MaxTitleLength] = maxTitleLength.ToString();
         }
 
-        if (!settings.TryGetValue(SettingKeys.MinDescriptionLength, out var minDescriptionLengthSetting) ||
-            string.IsNullOrEmpty(minDescriptionLengthSetting) ||
-            !int.TryParse(minDescriptionLengthSetting, out var minDescriptionLength) || minDescriptionLength == 0)
+        if (!settings.ContainsKey(SettingKeys.MinDescriptionLength) || string.IsNullOrEmpty(settings[SettingKeys.MinDescriptionLength]))
         {
-            settings[SettingKeys.MinDescriptionLength] = defaultContentConfig.MinDescriptionLength.ToString();
+            settings[SettingKeys.MinDescriptionLength] = minDescriptionLength.ToString();
         }
 
-        if (!settings.TryGetValue(SettingKeys.MaxDescriptionLength, out var descriptionLengthSetting) ||
-            string.IsNullOrEmpty(descriptionLengthSetting) ||
-            !int.TryParse(descriptionLengthSetting, out var descriptionLength) || descriptionLength == 0)
+        if (!settings.ContainsKey(SettingKeys.MaxDescriptionLength) || string.IsNullOrEmpty(settings[SettingKeys.MaxDescriptionLength]))
         {
-            settings[SettingKeys.MaxDescriptionLength] = defaultContentConfig.MaxDescriptionLength.ToString();
+            settings[SettingKeys.MaxDescriptionLength] = maxDescriptionLength.ToString();
         }
     }
 
@@ -208,46 +204,45 @@ public class ConfigController : ControllerBase
     /// Runtime settings (from database) take precedence over configuration values.
     /// Excludes LockoutTime and MaxFailedAccessAttempts as requested.
     /// </summary>
-    private void EnrichWithEffectiveIdentitySettingsIfNeededAsync(Dictionary<string, string?> settings)
+    private async Task EnrichWithEffectiveIdentitySettingsIfNeededAsync(Dictionary<string, string?> settings)
     {
-        var defaultIdentityConfig = configuration.GetSection("Identity").Get<IdentityConfig>() ?? new IdentityConfig();
+        // Get identity settings with fallback using convention-based approach
+        var requireDigit = await settingService.GetBoolSettingWithFallbackAsync(SettingKeys.RequireDigit, false);
+        var requireUppercase = await settingService.GetBoolSettingWithFallbackAsync(SettingKeys.RequireUppercase, false);
+        var requireLowercase = await settingService.GetBoolSettingWithFallbackAsync(SettingKeys.RequireLowercase, true);
+        var requireNonAlphanumeric = await settingService.GetBoolSettingWithFallbackAsync(SettingKeys.RequireNonAlphanumeric, false);
+        var requiredLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.RequiredLength, 6);
+        var requiredUniqueChars = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.RequiredUniqueChars, 1);
 
-        if (!settings.TryGetValue(SettingKeys.RequireDigit, out var requireDigitSetting) ||
-            string.IsNullOrEmpty(requireDigitSetting))
+        // Update settings dictionary with fallback values where needed
+        if (!settings.ContainsKey(SettingKeys.RequireDigit) || string.IsNullOrEmpty(settings[SettingKeys.RequireDigit]))
         {
-            settings[SettingKeys.RequireDigit] = defaultIdentityConfig.RequireDigit.ToString().ToLower();
+            settings[SettingKeys.RequireDigit] = requireDigit.ToString().ToLower();
         }
 
-        if (!settings.TryGetValue(SettingKeys.RequireUppercase, out var requireUppercaseSetting) ||
-            string.IsNullOrEmpty(requireUppercaseSetting))
+        if (!settings.ContainsKey(SettingKeys.RequireUppercase) || string.IsNullOrEmpty(settings[SettingKeys.RequireUppercase]))
         {
-            settings[SettingKeys.RequireUppercase] = defaultIdentityConfig.RequireUppercase.ToString().ToLower();
+            settings[SettingKeys.RequireUppercase] = requireUppercase.ToString().ToLower();
         }
 
-        if (!settings.TryGetValue(SettingKeys.RequireLowercase, out var requireLowercaseSetting) ||
-            string.IsNullOrEmpty(requireLowercaseSetting))
+        if (!settings.ContainsKey(SettingKeys.RequireLowercase) || string.IsNullOrEmpty(settings[SettingKeys.RequireLowercase]))
         {
-            settings[SettingKeys.RequireLowercase] = defaultIdentityConfig.RequireLowercase.ToString().ToLower();
+            settings[SettingKeys.RequireLowercase] = requireLowercase.ToString().ToLower();
         }
 
-        if (!settings.TryGetValue(SettingKeys.RequireNonAlphanumeric, out var requireNonAlphanumericSetting) ||
-            string.IsNullOrEmpty(requireNonAlphanumericSetting))
+        if (!settings.ContainsKey(SettingKeys.RequireNonAlphanumeric) || string.IsNullOrEmpty(settings[SettingKeys.RequireNonAlphanumeric]))
         {
-            settings[SettingKeys.RequireNonAlphanumeric] = defaultIdentityConfig.RequireNonAlphanumeric.ToString().ToLower();
+            settings[SettingKeys.RequireNonAlphanumeric] = requireNonAlphanumeric.ToString().ToLower();
         }
 
-        if (!settings.TryGetValue(SettingKeys.RequiredLength, out var requiredLengthSetting) ||
-            string.IsNullOrEmpty(requiredLengthSetting) ||
-            !int.TryParse(requiredLengthSetting, out var requiredLength) || requiredLength <= 0)
+        if (!settings.ContainsKey(SettingKeys.RequiredLength) || string.IsNullOrEmpty(settings[SettingKeys.RequiredLength]))
         {
-            settings[SettingKeys.RequiredLength] = defaultIdentityConfig.RequiredLength.ToString();
+            settings[SettingKeys.RequiredLength] = requiredLength.ToString();
         }
 
-        if (!settings.TryGetValue(SettingKeys.RequiredUniqueChars, out var requiredUniqueCharsSetting) ||
-            string.IsNullOrEmpty(requiredUniqueCharsSetting) ||
-            !int.TryParse(requiredUniqueCharsSetting, out var requiredUniqueChars) || requiredUniqueChars <= 0)
+        if (!settings.ContainsKey(SettingKeys.RequiredUniqueChars) || string.IsNullOrEmpty(settings[SettingKeys.RequiredUniqueChars]))
         {
-            settings[SettingKeys.RequiredUniqueChars] = defaultIdentityConfig.RequiredUniqueChars.ToString();
+            settings[SettingKeys.RequiredUniqueChars] = requiredUniqueChars.ToString();
         }
     }
 }

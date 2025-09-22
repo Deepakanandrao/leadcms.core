@@ -47,6 +47,65 @@ public class ContentTests : SimpleTableTests<Content, TestContent, ContentUpdate
         data.Should().NotBeEmpty();
     }
 
+    [Fact]
+    public async Task PutContentWithNullValues_ShouldReplaceCompleteEntity()
+    {
+        // First create an item with non-null values
+        var publishedContent = new TestContent
+        {
+            PublishedAt = DateTime.UtcNow,
+        };
+
+        var contentPath = await PostTest(itemsUrl, publishedContent, HttpStatusCode.Created);
+
+        // Get the created item to verify initial values
+        var getResponse = await GetTest<ContentDetailsDto>(contentPath, HttpStatusCode.OK);
+        getResponse.Should().NotBeNull();
+        getResponse!.Category.Should().NotBeNullOrEmpty();
+        getResponse.Source.Should().BeNull(); // Source should be null initially
+        getResponse.PublishedAt.Should().NotBeNull();
+
+        // Now create a PUT request with null values for optional fields
+        var putDto = new ContentCreateDto
+        {
+            Title = "Updated Title",
+            Description = "Updated Description with min 20 charters",
+            Body = "Updated Body",
+            Slug = getResponse.Slug, // Keep the same slug
+            Type = getResponse.Type, // Keep the same type
+            Author = "Updated Author",
+            Language = getResponse.Language, // Keep the same language
+            CoverImageUrl = string.Empty,
+            CoverImageAlt = string.Empty,
+            TranslationKey = null, // Set to null
+            Category = string.Empty, // Set to empty string (which should be saved as empty)
+            Tags = Array.Empty<string>(),
+            AllowComments = false,
+            Source = null, // Set to null
+            PublishedAt = null, // Set to null
+        };
+
+        // Execute PUT request
+        var putResponse = await Request(HttpMethod.Put, $"{itemsUrl}/{getResponse.Id}", putDto);
+        putResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var putContent = await putResponse.Content.ReadAsStringAsync();
+        var updatedItem = JsonHelper.Deserialize<ContentDetailsDto>(putContent);
+
+        // Verify that all values were replaced, including nulls
+        updatedItem.Should().NotBeNull();
+        updatedItem!.Title.Should().Be("Updated Title");
+        updatedItem.Description.Should().Be("Updated Description with min 20 charters");
+        updatedItem.Body.Should().Be("Updated Body");
+        updatedItem.Author.Should().Be("Updated Author");
+        updatedItem.Category.Should().Be(string.Empty); // Should be empty string, not the original category
+        updatedItem.TranslationKey.Should().BeNull(); // Should be null
+        updatedItem.Source.Should().BeNull(); // Should be null
+        updatedItem.PublishedAt.Should().BeNull(); // Should be null
+        updatedItem.AllowComments.Should().BeFalse();
+        updatedItem.Tags.Should().BeEmpty();
+    }
+
     protected override ContentUpdateDto UpdateItem(TestContent to)
     {
         var from = new ContentUpdateDto();

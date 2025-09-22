@@ -6,16 +6,19 @@ using LeadCMS.Data;
 using LeadCMS.Entities;
 using LeadCMS.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace LeadCMS.Services;
 
 public class SettingService : ISettingService
 {
     private readonly PgDbContext dbContext;
+    private readonly IConfiguration configuration;
 
-    public SettingService(PgDbContext dbContext)
+    public SettingService(PgDbContext dbContext, IConfiguration configuration)
     {
         this.dbContext = dbContext;
+        this.configuration = configuration;
     }
 
     public async Task<string?> GetUserSettingAsync(string key, string userId)
@@ -143,13 +146,6 @@ public class SettingService : ISettingService
         return effectiveSettings;
     }
 
-    public async Task<Dictionary<string, string?>> GetSystemSettingsAsync()
-    {
-        return await dbContext.Settings!
-            .Where(s => s.UserId == null)
-            .ToDictionaryAsync(s => s.Key, s => s.Value);
-    }
-
     public async Task<Dictionary<string, string?>> GetSettingsByKeysAsync(IEnumerable<string> keys, string? userId = null)
     {
         var keyList = keys.ToList();
@@ -179,5 +175,65 @@ public class SettingService : ISettingService
         }
 
         return result;
+    }
+
+    public async Task<string?> GetSettingWithFallbackAsync(string key, string configurationPath, string? userId = null)
+    {
+        // First try to get the setting from database (user-level first, then system-level)
+        string? databaseValue = null;
+        if (!string.IsNullOrEmpty(userId))
+        {
+            databaseValue = await GetUserSettingAsync(key, userId);
+        }
+        else
+        {
+            databaseValue = await GetSystemSettingAsync(key);
+        }
+
+        // If found in database, return it
+        if (!string.IsNullOrEmpty(databaseValue))
+        {
+            return databaseValue;
+        }
+
+        // Fall back to configuration
+        var configValue = configuration[configurationPath];
+        return configValue;
+    }
+
+    public async Task<int> GetIntSettingWithFallbackAsync(string key, string configurationPath, int defaultValue = 0, string? userId = null)
+    {
+        var stringValue = await GetSettingWithFallbackAsync(key, configurationPath, userId);
+
+        if (!string.IsNullOrEmpty(stringValue) && int.TryParse(stringValue, out var intValue) && intValue > 0)
+        {
+            return intValue;
+        }
+
+        return defaultValue;
+    }
+
+    public async Task<int> GetIntSettingWithFallbackAsync(string settingKey, int defaultValue = 0, string? userId = null)
+    {
+        var configurationPath = Constants.ConfigurationPaths.GetConfigurationPath(settingKey);
+        return await GetIntSettingWithFallbackAsync(settingKey, configurationPath, defaultValue, userId);
+    }
+
+    public async Task<bool> GetBoolSettingWithFallbackAsync(string key, string configurationPath, bool defaultValue = false, string? userId = null)
+    {
+        var stringValue = await GetSettingWithFallbackAsync(key, configurationPath, userId);
+
+        if (!string.IsNullOrEmpty(stringValue) && bool.TryParse(stringValue, out var boolValue))
+        {
+            return boolValue;
+        }
+
+        return defaultValue;
+    }
+
+    public async Task<bool> GetBoolSettingWithFallbackAsync(string settingKey, bool defaultValue = false, string? userId = null)
+    {
+        var configurationPath = Constants.ConfigurationPaths.GetConfigurationPath(settingKey);
+        return await GetBoolSettingWithFallbackAsync(settingKey, configurationPath, defaultValue, userId);
     }
 }

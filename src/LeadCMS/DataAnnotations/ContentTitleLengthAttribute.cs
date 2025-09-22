@@ -3,10 +3,8 @@
 // </copyright>
 
 using System.ComponentModel.DataAnnotations;
-using LeadCMS.Configuration;
 using LeadCMS.Constants;
 using LeadCMS.Interfaces;
-using Microsoft.Extensions.Options;
 
 namespace LeadCMS.DataAnnotations;
 
@@ -44,35 +42,18 @@ public class ContentTitleLengthAttribute : ValidationAttribute
         {
             try
             {
-                var runtimeMax = settingService.GetSystemSettingAsync(SettingKeys.MaxTitleLength).GetAwaiter().GetResult();
-                if (!string.IsNullOrEmpty(runtimeMax) && int.TryParse(runtimeMax, out var runtimeMaxLength) && runtimeMaxLength > 0)
-                {
-                    maxLength = runtimeMaxLength;
-                }
+                // Use the new convention-based method calls
+                minLength = settingService.GetIntSettingWithFallbackAsync(
+                    SettingKeys.MinTitleLength,
+                    minLength).GetAwaiter().GetResult();
 
-                var runtimeMin = settingService.GetSystemSettingAsync(SettingKeys.MinTitleLength).GetAwaiter().GetResult();
-                if (!string.IsNullOrEmpty(runtimeMin) && int.TryParse(runtimeMin, out var runtimeMinLength) && runtimeMinLength > 0)
-                {
-                    minLength = runtimeMinLength;
-                }
+                maxLength = settingService.GetIntSettingWithFallbackAsync(
+                    SettingKeys.MaxTitleLength,
+                    maxLength).GetAwaiter().GetResult();
             }
             catch
             {
-                // Fall back to configuration if runtime setting fails
-            }
-        }
-
-        var options = validationContext.GetService(typeof(IOptions<ContentConfig>)) as IOptions<ContentConfig>;
-        if (options?.Value != null)
-        {
-            if (options.Value.MaxTitleLength > 0)
-            {
-                maxLength = options.Value.MaxTitleLength;
-            }
-
-            if (options.Value.MinTitleLength > 0)
-            {
-                minLength = options.Value.MinTitleLength;
+                // Fall back to defaults if anything fails
             }
         }
 

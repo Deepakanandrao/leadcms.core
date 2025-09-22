@@ -35,3 +35,11 @@ public static class SettingKeys
 
     public const string RequiredUniqueChars = "Identity.RequiredUniqueChars";
 }
+
+public static class ConfigurationPaths
+{
+    public static string GetConfigurationPath(string settingKey)
+    {
+        return settingKey.Replace(".", ":");
+    }
+}

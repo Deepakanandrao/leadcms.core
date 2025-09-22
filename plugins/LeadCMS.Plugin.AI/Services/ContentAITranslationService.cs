@@ -4,11 +4,13 @@
 
 using System.Text.Json;
 using AutoMapper;
+using LeadCMS.Constants;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Enums;
 using LeadCMS.Helpers;
+using LeadCMS.Interfaces;
 using LeadCMS.Plugin.AI.DTOs;
 using LeadCMS.Plugin.AI.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -23,19 +25,22 @@ public class ContentAITranslationService : IContentAITranslationService
     private readonly ITranslationService translationService;
     private readonly ITextGenerationService textGenerationService;
     private readonly ILanguageValidationService languageValidationService;
+    private readonly ISettingService settingService;
 
     public ContentAITranslationService(
         PgDbContext dbContext,
         IMapper mapper,
         ITranslationService translationService,
         ITextGenerationService textGenerationService,
-        ILanguageValidationService languageValidationService)
+        ILanguageValidationService languageValidationService,
+        ISettingService settingService)
     {
         this.dbContext = dbContext;
         this.mapper = mapper;
         this.translationService = translationService;
         this.textGenerationService = textGenerationService;
         this.languageValidationService = languageValidationService;
+        this.settingService = settingService;
     }
 
     public async Task<ContentDetailsDto> CreateAITranslationDraftAsync(int contentId, string targetLanguage)
@@ -66,6 +71,13 @@ public class ContentAITranslationService : IContentAITranslationService
         originalDraft.CoverImageAlt = translatedMetadata.CoverImageAlt;
         originalDraft.Tags = translatedMetadata.Tags;
         originalDraft.Body = translatedBody;
+
+        // Validate content length constraints
+        var isValidLength = await ValidateContentLengthAsync(originalDraft.Title, originalDraft.Description);
+        if (!isValidLength)
+        {
+            Log.Warning("Translated content does not meet length constraints, but proceeding with translation");
+        }
 
         // Update source to indicate AI translation
         originalDraft.Source = $"AI translated from {contentId}";
@@ -116,6 +128,9 @@ public class ContentAITranslationService : IContentAITranslationService
 
     private async Task<ContentTranslationMetadata> TranslateMetadataAsync(Content content, string targetLanguage)
     {
+        // Get content length constraints from settings/configuration
+        var (minTitleLength, maxTitleLength, minDescriptionLength, maxDescriptionLength) = await GetContentLengthConstraintsAsync();
+
         // Create metadata object for translation
         var metadata = new ContentTranslationMetadata
         {
@@ -138,7 +153,13 @@ IMPORTANT RULES:
 3. Keep the JSON property names unchanged
 4. For arrays like 'tags', translate each element
 5. If a field is empty or null, keep it as is
-6. Ensure the output is valid, parseable JSON";
+6. Ensure the output is valid, parseable JSON
+
+CONTENT LENGTH REQUIREMENTS:
+- Title: Must be between {minTitleLength} and {maxTitleLength} characters (SEO optimized)
+- Description: Must be between {minDescriptionLength} and {maxDescriptionLength} characters (SEO optimized for meta descriptions)
+
+The translated content must respect these length constraints while maintaining the meaning and quality of the original text.";
 
         var request = new TextGenerationRequest
         {
@@ -253,5 +274,43 @@ IMPORTANT RULES:
             Log.Error(ex, "Failed to translate {Format} body content to {Language}, falling back to original", formatType, targetLanguage);
             return body; // Fallback to original if translation fails
         }
+    }
+
+    private async Task<(int minTitleLength, int maxTitleLength, int minDescriptionLength, int maxDescriptionLength)> GetContentLengthConstraintsAsync()
+    {
+        var minTitleLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.MinTitleLength, 10);
+        var maxTitleLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.MaxTitleLength, 60);
+        var minDescriptionLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.MinDescriptionLength, 20);
+        var maxDescriptionLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.MaxDescriptionLength, 155);
+
+        return (minTitleLength, maxTitleLength, minDescriptionLength, maxDescriptionLength);
+    }
+
+    private async Task<bool> ValidateContentLengthAsync(string title, string description)
+    {
+        var (minTitleLength, maxTitleLength, minDescriptionLength, maxDescriptionLength) = await GetContentLengthConstraintsAsync();
+
+        bool titleValid = title.Length >= minTitleLength && title.Length <= maxTitleLength;
+        bool descriptionValid = description.Length >= minDescriptionLength && description.Length <= maxDescriptionLength;
+
+        if (!titleValid)
+        {
+            Log.Warning(
+                "Translated title length {TitleLength} is outside valid range {MinTitle}-{MaxTitle}",
+                title.Length,
+                minTitleLength,
+                maxTitleLength);
+        }
+
+        if (!descriptionValid)
+        {
+            Log.Warning(
+                "Translated description length {DescriptionLength} is outside valid range {MinDescription}-{MaxDescription}",
+                description.Length,
+                minDescriptionLength,
+                maxDescriptionLength);
+        }
+
+        return titleValid && descriptionValid;
     }
 }
