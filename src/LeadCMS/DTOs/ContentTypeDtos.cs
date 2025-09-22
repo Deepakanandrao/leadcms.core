@@ -39,6 +39,8 @@ public class ContentTypeDetailsDto : ContentTypeCreateDto
     public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }
+
+    public int ContentCount { get; set; }
 }
 
 public class ContentTypeImportDto : BaseImportDto
