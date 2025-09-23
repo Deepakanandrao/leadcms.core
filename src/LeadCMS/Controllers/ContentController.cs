@@ -515,22 +515,15 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
             .Distinct()
             .ToList();
 
-        // If no translation keys, set translations as null for all items and return
-        if (!translationKeys.Any())
+        // Get all translations for the translation keys (if any exist)
+        var allTranslations = new List<dynamic>();
+        if (translationKeys.Any())
         {
-            foreach (var content in contentList)
-            {
-                content.Translations = null;
-            }
-
-            return;
+            allTranslations = (await dbSet
+                .Where(c => translationKeys.Contains(c.TranslationKey!))
+                .Select(c => new { c.Id, c.Language, c.TranslationKey })
+                .ToListAsync()).Cast<dynamic>().ToList();
         }
-
-        // Get all translations for the translation keys
-        var allTranslations = await dbSet
-            .Where(c => translationKeys.Contains(c.TranslationKey!))
-            .Select(c => new { c.Id, c.Language, c.TranslationKey })
-            .ToListAsync();
 
         // Group translations by translation key (filter out null keys)
         var translationsByKey = allTranslations
@@ -549,13 +542,19 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
                 translations[language] = null;
             }
 
-            // If content has a translation key, populate with actual translation IDs
+            // Set the content's own ID for its language
+            if (!string.IsNullOrEmpty(content.Language))
+            {
+                translations[content.Language] = content.Id;
+            }
+
+            // If content has a translation key, populate with actual translation IDs from other languages
             if (!string.IsNullOrEmpty(content.TranslationKey) &&
                 translationsByKey.TryGetValue(content.TranslationKey, out var contentTranslations))
             {
                 foreach (var translation in contentTranslations)
                 {
-                    // Use the language code as key (might need conversion from full locale to short code)
+                    // Use the language code as key, overwriting the content's own language mapping if needed
                     if (translation.Language != null)
                     {
                         translations[translation.Language] = translation.Id;

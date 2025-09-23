@@ -16,9 +16,9 @@
     <Company>WavePoint Co. Ltd.</Company>
     <Product>LeadCMS</Product>
     <Copyright>@ 2022 WavePoint Co. Ltd.</Copyright>
-    <PackageProjectUrl>https://github.com/peterliapin/LeadCMS-backend</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/LeadCMS/leadcms.core.git</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <RepositoryUrl>https://github.com/peterliapin/LeadCMS-backend</RepositoryUrl>
+    <RepositoryUrl>https://github.com/LeadCMS/leadcms.core.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>sales, commerce, backend</PackageTags>
     <PackageReleaseNotes>Initial Release</PackageReleaseNotes>
