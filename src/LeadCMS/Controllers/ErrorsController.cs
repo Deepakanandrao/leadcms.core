@@ -108,6 +108,12 @@ public class ErrorsController : Controller
                     StatusCodes.Status401Unauthorized,
                     unauthorizedException.Message);
                 break;
+            case UnauthorizedAccessException unauthorizedAccessException:
+                problemDetails = ProblemDetailsFactory.CreateProblemDetails(
+                    HttpContext,
+                    StatusCodes.Status401Unauthorized,
+                    unauthorizedAccessException.Message);
+                break;
             case TranslationConflictException translationConflictException:
                 problemDetails = ProblemDetailsFactory.CreateProblemDetails(
                     HttpContext,
