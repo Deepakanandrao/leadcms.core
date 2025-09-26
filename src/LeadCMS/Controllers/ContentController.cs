@@ -159,6 +159,51 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         return Ok(categories);
     }
 
+    [HttpGet("categories/{contentType}")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<string[]>> GetCategoriesByContentType(string contentType, [FromQuery] string? language = null)
+    {
+        var query = dbSet.Where(c => c.Type == contentType);
+
+        if (!string.IsNullOrEmpty(language))
+        {
+            query = query.Where(c => c.Language == language);
+        }
+
+        var categories = (await query.Select(c => c.Category).ToArrayAsync())
+            .Distinct()
+            .Where(str => !string.IsNullOrEmpty(str))
+            .ToArray();
+
+        return Ok(categories);
+    }
+
+    [HttpGet("tags/{contentType}")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<string[]>> GetTagsByContentType(string contentType, [FromQuery] string? language = null)
+    {
+        var query = dbSet.Where(c => c.Type == contentType);
+
+        if (!string.IsNullOrEmpty(language))
+        {
+            query = query.Where(c => c.Language == language);
+        }
+
+        var tags = (await query.Select(c => c.Tags).ToArrayAsync())
+            .SelectMany(z => z)
+            .Distinct()
+            .Where(str => !string.IsNullOrEmpty(str))
+            .ToArray();
+
+        return Ok(tags);
+    }
+
     [HttpGet("{id}/comments")]
     [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
