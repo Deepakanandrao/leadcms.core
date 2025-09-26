@@ -91,6 +91,7 @@ public class Program
         builder.Services.AddSingleton<IMediaResolver, MediaResolver>();
         builder.Services.AddScoped<IRedirectService, RedirectService>();
         builder.Services.AddScoped<IMdxComponentParserService, MdxComponentParserService>();
+        builder.Services.AddScoped<IChangeLogService, ChangeLogService>();
 
         // Add capabilities service for plugin extensibility
         builder.Services.AddSingleton<ICapabilityService, CapabilityService>();

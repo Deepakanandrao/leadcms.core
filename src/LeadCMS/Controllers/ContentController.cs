@@ -4,6 +4,7 @@
 
 using AutoMapper;
 using LeadCMS.Attributes;
+using LeadCMS.Configuration;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
@@ -14,6 +15,7 @@ using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace LeadCMS.Controllers;
 
@@ -28,8 +30,23 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
     private readonly ILogger<ContentController> logger;
     private readonly IMdxComponentParserService mdxComponentParserService;
     private readonly ILanguageValidationService languageValidationService;
+    private readonly IChangeLogService changeLogService;
+    private readonly IOptions<ApiSettingsConfig> apiSettingsConfig;
 
-    public ContentController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Content> queryProviderFactory, CommentableControllerExtension commentableControllerExtension, ITranslationService translationService, IMediaResolver mediaResolver, IHttpContextHelper httpContextHelper, ILogger<ContentController> logger, IMdxComponentParserService mdxComponentParserService, ILanguageValidationService languageValidationService)
+    public ContentController(
+        PgDbContext dbContext,
+        IMapper mapper,
+        EsDbContext esDbContext,
+        QueryProviderFactory<Content> queryProviderFactory,
+        CommentableControllerExtension commentableControllerExtension,
+        ITranslationService translationService,
+        IMediaResolver mediaResolver,
+        IHttpContextHelper httpContextHelper,
+        ILogger<ContentController> logger,
+        IMdxComponentParserService mdxComponentParserService,
+        ILanguageValidationService languageValidationService,
+        IChangeLogService changeLogService,
+        IOptions<ApiSettingsConfig> apiSettingsConfig)
         : base(dbContext, mapper, esDbContext, queryProviderFactory)
     {
         this.commentableControllerExtension = commentableControllerExtension;
@@ -39,6 +56,8 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         this.logger = logger;
         this.mdxComponentParserService = mdxComponentParserService;
         this.languageValidationService = languageValidationService;
+        this.changeLogService = changeLogService;
+        this.apiSettingsConfig = apiSettingsConfig;
     }
 
     [HttpGet]
@@ -369,6 +388,89 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         var translationDtos = mapper.Map<List<ContentDetailsDto>>(translations);
 
         return Ok(translationDtos);
+    }
+
+    /// <summary>
+    /// Get change log records for a specific content item.
+    /// Supports standard query parameters for filtering, sorting, and pagination like other endpoints.
+    /// Query format: /api/content/{id}/change-log?filter[limit]=10&amp;filter[skip]=0&amp;filter[order]=CreatedAt&amp;filter[where][eq][EntityState]=Modified.
+    /// </summary>
+    /// <param name="id">The ID of the content item to get change logs for.</param>
+    /// <param name="query">Query string with filter parameters (same format as other endpoints).</param>
+    /// <returns>Paginated list of change log records with parsed content data.</returns>
+    [HttpGet("{id}/change-log")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<List<ChangeLogDetailsDto<ContentUpdateDto>>>> GetChangeLog(int id, [FromQuery] string? query)
+    {
+        // Validate that the content exists using the standard pattern
+        await FindOrThrowNotFound(id);
+
+        // Parse query commands manually to create a custom query provider
+        var queryCommands = QueryStringParser.Parse(Request.QueryString.HasValue ?
+            System.Web.HttpUtility.UrlDecode(Request.QueryString.ToString()) : string.Empty);
+
+        var queryBuilder = new QueryModelBuilder<ChangeLog>(
+            queryCommands,
+            apiSettingsConfig.Value.MaxListSize,
+            dbContext);        // Create a pre-filtered base query for this specific content item
+        var baseQuery = dbContext.Set<ChangeLog>().AsQueryable()
+            .Where(cl => cl.ObjectType == "Content" && cl.ObjectId == id);
+
+        // Create the DBQueryProvider with the pre-filtered base query
+        var dbQueryProvider = new DBQueryProvider<ChangeLog>(baseQuery, queryBuilder);
+
+        // Now get the result which should apply ordering, pagination correctly
+        var queryResult = await dbQueryProvider.GetResult();
+        var changeLogs = queryResult.Records ?? new List<ChangeLog>();
+        var totalCount = queryResult.TotalCount;
+
+        // Extract all user IDs and batch resolve display names
+        var allUserIds = new List<string?>();
+        var userIdMap = new Dictionary<int, (string? createdById, string? updatedById)>();
+
+        foreach (var cl in changeLogs)
+        {
+            var createdById = changeLogService.ExtractCreatedById(cl.Data);
+            var updatedById = changeLogService.ExtractUpdatedById(cl.Data);
+
+            userIdMap[cl.Id] = (createdById, updatedById);
+            allUserIds.Add(createdById);
+            allUserIds.Add(updatedById);
+        }
+
+        // Batch resolve all user display names in a single operation
+        var userDisplayNames = await changeLogService.BatchResolveUserDisplayNamesAsync(allUserIds);
+
+        // Transform ChangeLog entities to DTOs with parsed data and extracted audit fields
+        var changeLogDtos = changeLogs.Select(cl =>
+        {
+            var (createdById, updatedById) = userIdMap[cl.Id];
+
+            return new ChangeLogDetailsDto<ContentUpdateDto>
+            {
+                Id = cl.Id,
+                ObjectType = cl.ObjectType,
+                ObjectId = cl.ObjectId,
+                EntityState = cl.EntityState,
+                Data = changeLogService.SafeParseData<ContentUpdateDto>(cl.Data),
+                CreatedAt = cl.CreatedAt,
+                Source = cl.Source,
+                CreatedById = createdById,
+                UpdatedById = updatedById,
+                CreatedBy = createdById != null && userDisplayNames.TryGetValue(createdById, out var createdByName) ? createdByName : null,
+                UpdatedBy = updatedById != null && userDisplayNames.TryGetValue(updatedById, out var updatedByName) ? updatedByName : null,
+            };
+        }).ToList();
+
+        // Add pagination headers like other endpoints
+        Response.Headers.Append(ResponseHeaderNames.TotalCount, totalCount.ToString());
+        Response.Headers.Append(ResponseHeaderNames.AccessControlExposeHeader, ResponseHeaderNames.TotalCount);
+
+        return Ok(changeLogDtos);
     }
 
     [HttpGet("mdx-components/{contentType}")]
