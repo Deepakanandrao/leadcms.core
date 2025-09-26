@@ -10,9 +10,10 @@ using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Enums;
 using LeadCMS.Helpers;
-using LeadCMS.Interfaces;
 using LeadCMS.Plugin.AI.DTOs;
 using LeadCMS.Plugin.AI.Interfaces;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
@@ -26,6 +27,8 @@ public class ContentAITranslationService : IContentAITranslationService
     private readonly ITextGenerationService textGenerationService;
     private readonly ILanguageValidationService languageValidationService;
     private readonly ISettingService settingService;
+    private readonly UserManager<User> userManager;
+    private readonly IHttpContextAccessor httpContextAccessor;
 
     public ContentAITranslationService(
         PgDbContext dbContext,
@@ -33,7 +36,9 @@ public class ContentAITranslationService : IContentAITranslationService
         ITranslationService translationService,
         ITextGenerationService textGenerationService,
         ILanguageValidationService languageValidationService,
-        ISettingService settingService)
+        ISettingService settingService,
+        UserManager<User> userManager,
+        IHttpContextAccessor httpContextAccessor)
     {
         this.dbContext = dbContext;
         this.mapper = mapper;
@@ -41,6 +46,8 @@ public class ContentAITranslationService : IContentAITranslationService
         this.textGenerationService = textGenerationService;
         this.languageValidationService = languageValidationService;
         this.settingService = settingService;
+        this.userManager = userManager;
+        this.httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<ContentDetailsDto> CreateAITranslationDraftAsync(int contentId, string targetLanguage)
@@ -63,10 +70,14 @@ public class ContentAITranslationService : IContentAITranslationService
         // Translate body content
         var translatedBody = await TranslateBodyAsync(originalDraft.Body, targetLanguage, contentType?.Format);
 
+        // Get current user's display name for AI-translated drafts
+        var currentUser = await UserHelper.GetCurrentUserAsync(userManager, httpContextAccessor?.HttpContext?.User);
+        var authorName = currentUser?.DisplayName ?? translatedMetadata.Author;
+
         // Apply translations to the draft
         originalDraft.Title = translatedMetadata.Title;
         originalDraft.Description = translatedMetadata.Description;
-        originalDraft.Author = translatedMetadata.Author;
+        originalDraft.Author = authorName;
         originalDraft.Category = translatedMetadata.Category;
         originalDraft.CoverImageAlt = translatedMetadata.CoverImageAlt;
         originalDraft.Tags = translatedMetadata.Tags;

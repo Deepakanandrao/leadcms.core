@@ -9,10 +9,11 @@ using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;
-using LeadCMS.Interfaces;
 using LeadCMS.Plugin.AI.DTOs;
 using LeadCMS.Plugin.AI.Exceptions;
 using LeadCMS.Plugin.AI.Interfaces;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
@@ -25,19 +26,25 @@ public class ContentGenerationService : IContentGenerationService
     private readonly IMdxComponentParserService mdxComponentParserService;
     private readonly IMapper mapper;
     private readonly ISettingService settingService;
+    private readonly UserManager<User> userManager;
+    private readonly IHttpContextAccessor httpContextAccessor;
 
     public ContentGenerationService(
         PgDbContext dbContext,
         ITextGenerationService textGenerationService,
         IMdxComponentParserService mdxComponentParserService,
         IMapper mapper,
-        ISettingService settingService)
+        ISettingService settingService,
+        UserManager<User> userManager,
+        IHttpContextAccessor httpContextAccessor)
     {
         this.dbContext = dbContext;
         this.textGenerationService = textGenerationService;
         this.mdxComponentParserService = mdxComponentParserService;
         this.mapper = mapper;
         this.settingService = settingService;
+        this.userManager = userManager;
+        this.httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<ContentDetailsDto> GenerateContentAsync(ContentGenerationRequest request)
@@ -101,6 +108,10 @@ public class ContentGenerationService : IContentGenerationService
                 Log.Warning("Generated content does not meet length constraints, but proceeding with generation");
             }
 
+            // Get current user's display name for AI-generated drafts
+            var currentUser = await UserHelper.GetCurrentUserAsync(userManager, httpContextAccessor?.HttpContext?.User);
+            var authorName = currentUser?.DisplayName ?? generatedContent.Author ?? sampleContent.Author;
+
             // Create a Content entity with the generated data
             var contentEntity = new Content
             {
@@ -108,7 +119,7 @@ public class ContentGenerationService : IContentGenerationService
                 Description = generatedContent.Description,
                 Body = generatedContent.Body,
                 Slug = generatedContent.Slug,
-                Author = generatedContent.Author ?? sampleContent.Author,
+                Author = authorName,
                 Language = request.Language,
                 Category = generatedContent.Category ?? sampleContent.Category,
                 Tags = generatedContent.Tags ?? sampleContent.Tags,
@@ -209,10 +220,27 @@ public class ContentGenerationService : IContentGenerationService
         return sampleContent;
     }
 
+    private async Task<List<string>> AnalyzeSlugPatternsAsync(string contentType, int maxExamples = 5)
+    {
+        // Get existing slug patterns for the same content type
+        var existingSlugs = await dbContext.Content!
+            .Where(c => c.Type == contentType)
+            .OrderByDescending(c => c.CreatedAt)
+            .Take(maxExamples)
+            .Select(c => c.Slug)
+            .Where(s => !string.IsNullOrEmpty(s))
+            .ToListAsync();
+
+        return existingSlugs;
+    }
+
     private async Task<string> BuildSystemPromptAsync(ContentType contentType, Content sampleContent, MdxComponentAnalysisDto? componentAnalysis)
     {
         // Get content length constraints from settings/configuration
         var (minTitleLength, maxTitleLength, minDescriptionLength, maxDescriptionLength) = await GetContentLengthConstraintsAsync();
+
+        // Analyze slug patterns from existing content of the same type
+        var existingSlugPatterns = await AnalyzeSlugPatternsAsync(contentType.Uid);
 
         var prompt = $@"You are an expert content creator generating new content for a CMS. Generate a new {contentType.Uid} content record based on the sample and user requirements.
 
@@ -236,13 +264,26 @@ This content type supports the following MDX components. You can use these in th
 {string.Join("\n", componentAnalysis.Components.Select(c => FormatComponentInfo(c)))}";
         }
 
+        // Add slug pattern guidance if we have examples
+        var slugPatternGuidance = string.Empty;
+        if (existingSlugPatterns.Any())
+        {
+            slugPatternGuidance = $@"
+
+SLUG PATTERN EXAMPLES:
+Existing {contentType.Uid} content uses these slug patterns - follow the same convention:
+{string.Join("\n", existingSlugPatterns.Select(slug => $"- {slug}"))}";
+        }
+
+        prompt += slugPatternGuidance;
+
         prompt += $@"
 
 REQUIREMENTS:
 1. Return ONLY valid JSON with the exact structure shown below
 2. Generate original, high-quality content that matches the style and format of the sample
 3. Ensure the body content is in {contentType.Format} format
-4. Generate an appropriate slug (URL-friendly, lowercase, hyphen-separated)
+4. Generate a slug that follows the same pattern as existing {contentType.Uid} content shown above (URL-friendly, lowercase, hyphen-separated)
 5. Keep the same author, category structure, and tagging style as the sample
 6. If using MDX format, you may include the available components listed above
 
