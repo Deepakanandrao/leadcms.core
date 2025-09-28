@@ -51,3 +51,14 @@ public class SettingValueDto
 
     public bool IsUserLevel { get; set; }
 }
+
+public class SettingImportDto : BaseImportDto
+{
+    [Required]
+    [MaxLength(255)]
+    public string Key { get; set; } = string.Empty;
+
+    public string? Value { get; set; }
+
+    public string? UserId { get; set; }
+}

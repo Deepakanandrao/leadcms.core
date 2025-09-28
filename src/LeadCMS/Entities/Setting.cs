@@ -5,11 +5,13 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using LeadCMS.DataAnnotations;
+using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Entities;
 
 [Table("setting")]
 [SupportsChangeLog]
+[Index(nameof(Key), nameof(UserId), IsUnique = true)]
 public class Setting : BaseEntity
 {
     [Required]

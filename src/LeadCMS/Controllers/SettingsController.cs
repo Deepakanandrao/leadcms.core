@@ -18,7 +18,7 @@ namespace LeadCMS.Controllers;
 
 [Authorize]
 [Route("api/[controller]")]
-public class SettingsController : BaseController<Setting, SettingCreateDto, SettingUpdateDto, SettingDetailsDto>
+public class SettingsController : BaseControllerWithImport<Setting, SettingCreateDto, SettingUpdateDto, SettingDetailsDto, SettingImportDto>
 {
     private readonly ISettingService settingService;
     private readonly UserManager<User> userManager;
