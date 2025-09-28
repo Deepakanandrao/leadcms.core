@@ -122,7 +122,7 @@ public class ConfigController : ControllerBase
             SettingKeys.MaxTitleLength,
             SettingKeys.MinDescriptionLength,
             SettingKeys.MaxDescriptionLength,
-            SettingKeys.EnableRealtimeValidation,
+            SettingKeys.EnableRealtimeSyntaxValidation,
             SettingKeys.RequireDigit,
             SettingKeys.RequireUppercase,
             SettingKeys.RequireLowercase,

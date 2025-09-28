@@ -35,14 +35,14 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
         var maxTitleLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.MaxTitleLength, 60, userId);
         var minDescriptionLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.MinDescriptionLength, 20, userId);
         var maxDescriptionLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.MaxDescriptionLength, 155, userId);
-        var enableRealtimeValidation = await settingService.GetBoolSettingWithFallbackAsync(SettingKeys.EnableRealtimeValidation, true, userId);
+        var enableRealtimeSyntaxValidation = await settingService.GetBoolSettingWithFallbackAsync(SettingKeys.EnableRealtimeSyntaxValidation, true, userId);
 
         // Update settings dictionary with fallback values where needed (handles null values)
         SetSettingIfNullOrEmpty(settings, SettingKeys.MinTitleLength, minTitleLength.ToString());
         SetSettingIfNullOrEmpty(settings, SettingKeys.MaxTitleLength, maxTitleLength.ToString());
         SetSettingIfNullOrEmpty(settings, SettingKeys.MinDescriptionLength, minDescriptionLength.ToString());
         SetSettingIfNullOrEmpty(settings, SettingKeys.MaxDescriptionLength, maxDescriptionLength.ToString());
-        SetSettingIfNullOrEmpty(settings, SettingKeys.EnableRealtimeValidation, enableRealtimeValidation.ToString().ToLower());
+        SetSettingIfNullOrEmpty(settings, SettingKeys.EnableRealtimeSyntaxValidation, enableRealtimeSyntaxValidation.ToString().ToLower());
     }
 
     /// <summary>
