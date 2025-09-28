@@ -22,6 +22,8 @@ public static class SettingKeys
 
     public const string MaxDescriptionLength = "Content.MaxDescriptionLength";
 
+    public const string EnableRealtimeValidation = "Content.EnableRealtimeValidation";
+
     // Identity password policy settings
     public const string RequireDigit = "Identity.RequireDigit";
 

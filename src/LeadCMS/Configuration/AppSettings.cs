@@ -257,4 +257,9 @@ public class ContentConfig
     /// Gets or sets the maximum length for Content Description field. Default value of 155 characters is SEO-optimized for meta descriptions.
     /// </summary>
     public int MaxDescriptionLength { get; set; } = 155;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether real-time MDX/JSON format validation is enabled for content records in the admin UI. Default value of true enables validation.
+    /// </summary>
+    public bool EnableRealtimeValidation { get; set; } = true;
 }
