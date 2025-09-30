@@ -21,8 +21,8 @@ public class ContactsController : BaseControllerWithImport<Contact, ContactCreat
     private readonly IContactService contactService;
     private readonly CommentableControllerExtension commentableControllerExtension;
 
-    public ContactsController(PgDbContext dbContext, IMapper mapper, IContactService contactService, EsDbContext esDbContext, QueryProviderFactory<Contact> queryProviderFactory, CommentableControllerExtension commentableControllerExtension)
-        : base(dbContext, mapper, esDbContext, queryProviderFactory)
+    public ContactsController(PgDbContext dbContext, IMapper mapper, IContactService contactService, EsDbContext esDbContext, QueryProviderFactory<Contact> queryProviderFactory, CommentableControllerExtension commentableControllerExtension, ISyncService syncService)
+        : base(dbContext, mapper, esDbContext, queryProviderFactory, syncService)
     {
         this.contactService = contactService;
         this.commentableControllerExtension = commentableControllerExtension;

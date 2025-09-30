@@ -19,8 +19,8 @@ public class DealsController : BaseController<Deal, DealCreateDto, DealUpdateDto
 {
     private readonly IDealService dealService;
 
-    public DealsController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Deal> queryProviderFactory, IDealService dealService)
-    : base(dbContext, mapper, esDbContext, queryProviderFactory)
+    public DealsController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Deal> queryProviderFactory, IDealService dealService, ISyncService syncService)
+    : base(dbContext, mapper, esDbContext, queryProviderFactory, syncService)
     {
         this.dealService = dealService;
     }

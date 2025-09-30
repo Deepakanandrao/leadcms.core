@@ -20,8 +20,15 @@ public class OrdersController : BaseControllerWithImport<Order, OrderCreateDto, 
     private readonly IOrderService orderService;
     private readonly CommentableControllerExtension commentableControllerExtension;
 
-    public OrdersController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<Order> queryProviderFactory, CommentableControllerExtension commentableControllerExtension, IOrderService orderService)
-        : base(dbContext, mapper, esDbContext, queryProviderFactory)
+    public OrdersController(
+        PgDbContext dbContext,
+        IMapper mapper,
+        EsDbContext esDbContext,
+        QueryProviderFactory<Order> queryProviderFactory,
+        CommentableControllerExtension commentableControllerExtension,
+        IOrderService orderService,
+        ISyncService syncService)
+        : base(dbContext, mapper, esDbContext, queryProviderFactory, syncService)
     {
         this.commentableControllerExtension = commentableControllerExtension;
         this.orderService = orderService;

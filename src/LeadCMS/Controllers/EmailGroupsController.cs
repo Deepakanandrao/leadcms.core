@@ -20,8 +20,14 @@ public class EmailGroupsController : BaseController<EmailGroup, EmailGroupCreate
 {
     private readonly ITranslationService translationService;
 
-    public EmailGroupsController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<EmailGroup> queryProviderFactory, ITranslationService translationService)
-    : base(dbContext, mapper, esDbContext, queryProviderFactory)
+    public EmailGroupsController(
+        PgDbContext dbContext,
+        IMapper mapper,
+        EsDbContext esDbContext,
+        QueryProviderFactory<EmailGroup> queryProviderFactory,
+        ITranslationService translationService,
+        ISyncService syncService)
+    : base(dbContext, mapper, esDbContext, queryProviderFactory, syncService)
     {
         this.translationService = translationService;
     }

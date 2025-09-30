@@ -92,6 +92,7 @@ public class Program
         builder.Services.AddScoped<IRedirectService, RedirectService>();
         builder.Services.AddScoped<IMdxComponentParserService, MdxComponentParserService>();
         builder.Services.AddScoped<IChangeLogService, ChangeLogService>();
+        builder.Services.AddScoped<ISyncService, SyncService>();
 
         // Add capabilities service for plugin extensibility
         builder.Services.AddSingleton<ICapabilityService, CapabilityService>();

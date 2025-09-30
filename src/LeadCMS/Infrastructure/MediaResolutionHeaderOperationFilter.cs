@@ -20,10 +20,15 @@ public class MediaResolutionHeaderOperationFilter : IOperationFilter
             operation.Parameters = new List<OpenApiParameter>();
         }
 
-        // Only add to /api/content GET endpoints
+        // Only add to /api/content and /api/media GET endpoints (and POST/PATCH for media)
         var controllerName = context.ApiDescription.ActionDescriptor.RouteValues["controller"];
         var httpMethod = context.ApiDescription.HttpMethod;
-        if (!string.Equals(controllerName, "Content", StringComparison.OrdinalIgnoreCase) || !string.Equals(httpMethod, "GET", StringComparison.OrdinalIgnoreCase))
+
+        var isContentController = string.Equals(controllerName, "Content", StringComparison.OrdinalIgnoreCase);
+        var isMediaController = string.Equals(controllerName, "Media", StringComparison.OrdinalIgnoreCase);
+        var isGetMethod = string.Equals(httpMethod, "GET", StringComparison.OrdinalIgnoreCase);
+
+        if (!((isContentController && isGetMethod) || (isMediaController && isGetMethod)))
         {
             return;
         }

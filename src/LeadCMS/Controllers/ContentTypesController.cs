@@ -7,6 +7,7 @@ using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Infrastructure;
+using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -17,8 +18,8 @@ namespace LeadCMS.Controllers;
 [Route("api/[controller]")]
 public class ContentTypesController : BaseControllerWithImport<ContentType, ContentTypeCreateDto, ContentTypeUpdateDto, ContentTypeDetailsDto, ContentTypeImportDto>
 {
-    public ContentTypesController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<ContentType> queryProviderFactory)
-        : base(dbContext, mapper, esDbContext, queryProviderFactory)
+    public ContentTypesController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<ContentType> queryProviderFactory, ISyncService syncService)
+        : base(dbContext, mapper, esDbContext, queryProviderFactory, syncService)
     {
     }
 

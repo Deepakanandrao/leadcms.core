@@ -19,8 +19,8 @@ public class AccountsController : BaseControllerWithImport<Account, AccountCreat
 {
     private readonly CommentableControllerExtension commentableControllerExtension;
 
-    public AccountsController(PgDbContext dbContext, IMapper mapper, IDomainService domainService, EsDbContext esDbContext, QueryProviderFactory<Account> queryProviderFactory, CommentableControllerExtension commentableControllerExtension)
-        : base(dbContext, mapper, esDbContext, queryProviderFactory)
+    public AccountsController(PgDbContext dbContext, IMapper mapper, IDomainService domainService, EsDbContext esDbContext, QueryProviderFactory<Account> queryProviderFactory, CommentableControllerExtension commentableControllerExtension, ISyncService syncService)
+        : base(dbContext, mapper, esDbContext, queryProviderFactory, syncService)
     {
         this.commentableControllerExtension = commentableControllerExtension;
     }

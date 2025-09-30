@@ -11,7 +11,7 @@ public static class MediaUriTransformer
     // Regex matches /api/media/ followed by any non-whitespace, non-quote, non-parenthesis character
     private static readonly Regex MediaRegex = new Regex(@"/api/media/[^\s""')]+", RegexOptions.Compiled);
 
-    public static string Transform(string content, IMediaResolver resolver, Microsoft.AspNetCore.Http.HttpContext context, string mode)
+    public static string Transform(string content, IMediaResolver resolver, HttpContext context, string mode)
     {
         if (string.IsNullOrEmpty(content))
         {

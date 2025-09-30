@@ -9,6 +9,7 @@ using LeadCMS.DataAnnotations;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Infrastructure;
+using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -23,8 +24,8 @@ public class BaseControllerWithImport<T, TC, TU, TD, TI> : BaseController<T, TC,
 {
     protected AdditionalImportChecker additionalImportChecker = new AdditionalImportChecker();
 
-    public BaseControllerWithImport(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<T> queryProviderFactory)
-        : base(dbContext, mapper, esDbContext, queryProviderFactory)
+    public BaseControllerWithImport(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<T> queryProviderFactory, ISyncService syncService)
+        : base(dbContext, mapper, esDbContext, queryProviderFactory, syncService)
     {
     }
 

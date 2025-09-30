@@ -20,8 +20,8 @@ public class EmailTemplatesController : BaseController<EmailTemplate, EmailTempl
 {
     private readonly ITranslationService translationService;
 
-    public EmailTemplatesController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<EmailTemplate> queryProviderFactory, ITranslationService translationService)
-    : base(dbContext, mapper, esDbContext, queryProviderFactory)
+    public EmailTemplatesController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<EmailTemplate> queryProviderFactory, ITranslationService translationService, ISyncService syncService)
+        : base(dbContext, mapper, esDbContext, queryProviderFactory, syncService)
     {
         this.translationService = translationService;
     }

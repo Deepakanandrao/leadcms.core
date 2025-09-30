@@ -31,8 +31,9 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
         QueryProviderFactory<Setting> queryProviderFactory,
         ISettingService settingService,
         UserManager<User> userManager,
-        ISettingsEnrichmentService settingsEnrichmentService)
-        : base(dbContext, mapper, esDbContext, queryProviderFactory)
+        ISettingsEnrichmentService settingsEnrichmentService,
+        ISyncService syncService)
+        : base(dbContext, mapper, esDbContext, queryProviderFactory, syncService)
     {
         this.settingService = settingService;
         this.userManager = userManager;

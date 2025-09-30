@@ -199,6 +199,11 @@ public class AutoMapperProfiles : Profile
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<SettingImportDto, Setting>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+
+        // Media mappings
+        CreateMap<Media, MediaDetailsDto>()
+            .ForMember(dest => dest.Location, opt => opt.Ignore()) // Location is computed at controller level
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
     }
 
     private static bool PropertyNeedsMapping(object source, object target, object sourceValue, object targetValue)

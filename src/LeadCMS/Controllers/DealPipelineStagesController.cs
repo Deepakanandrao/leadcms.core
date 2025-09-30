@@ -7,6 +7,7 @@ using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Infrastructure;
+using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -16,8 +17,8 @@ namespace LeadCMS.Controllers;
 [Route("api/[controller]")]
 public class DealPipelineStagesController : BaseController<DealPipelineStage, DealPipelineStageCreateDto, DealPipelineStageUpdateDto, DealPipelineStageDetailsDto>
 {
-    public DealPipelineStagesController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<DealPipelineStage> queryProviderFactory)
-    : base(dbContext, mapper, esDbContext, queryProviderFactory)
+    public DealPipelineStagesController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<DealPipelineStage> queryProviderFactory, ISyncService syncService)
+    : base(dbContext, mapper, esDbContext, queryProviderFactory, syncService)
     {
     }
 

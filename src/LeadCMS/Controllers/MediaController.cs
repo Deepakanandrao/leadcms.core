@@ -5,11 +5,13 @@
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Text.RegularExpressions;
+using AutoMapper;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
+using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -22,13 +24,28 @@ public class MediaController : ControllerBase
 {
     private readonly PgDbContext pgDbContext;
     private readonly QueryProviderFactory<Media> queryProviderFactory;
+    private readonly ISyncService syncService;
+    private readonly IMapper mapper;
+    private readonly IMediaResolver mediaResolver;
 
-    public MediaController(PgDbContext pgDbContext, QueryProviderFactory<Media> queryProviderFactory)
+    public MediaController(
+        PgDbContext pgDbContext,
+        QueryProviderFactory<Media> queryProviderFactory,
+        ISyncService syncService,
+        IMapper mapper,
+        IMediaResolver mediaResolver)
     {
         this.pgDbContext = pgDbContext;
         this.queryProviderFactory = queryProviderFactory;
+        this.syncService = syncService;
+        this.mapper = mapper;
+        this.mediaResolver = mediaResolver;
     }
 
+    /// <summary>
+    /// Uploads a new media file or updates an existing one.
+    /// Supports X-Media-Resolution header or mediaResolution query parameter: "absolute" for full URLs, otherwise returns relative paths.
+    /// </summary>
     [HttpPost]
     [ProducesResponseType(typeof(MediaDetailsDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -96,7 +113,7 @@ public class MediaController : ControllerBase
             MimeType = uploadedMedia.MimeType,
             CreatedAt = uploadedMedia.CreatedAt,
             UpdatedAt = uploadedMedia.UpdatedAt,
-            Location = Path.Combine(HttpContext.Request.Path, uploadedMedia.ScopeUid, uploadedMedia.Name).Replace("\\", "/"),
+            Location = CalculateMediaLocation(uploadedMedia.ScopeUid, uploadedMedia.Name),
         };
 
         return CreatedAtAction(nameof(Get), new { scopeUid = uploadedMedia.ScopeUid, fileName = uploadedMedia.Name }, fileData);
@@ -149,7 +166,7 @@ public class MediaController : ControllerBase
         {
             return new FileContentResult(uploadedImageData.Data, uploadedImageData.MimeType);
         }
-        
+
         // For other types, keep default (attachment)
         return File(uploadedImageData.Data, uploadedImageData.MimeType, fname);
     }
@@ -180,6 +197,10 @@ public class MediaController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// Retrieves a list of media files, optionally including folder structure.
+    /// Supports X-Media-Resolution header or mediaResolution query parameter: "absolute" for full URLs, otherwise returns relative paths.
+    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(List<MediaDetailsDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
@@ -209,7 +230,7 @@ public class MediaController : ControllerBase
                 MimeType = m.MimeType,
                 CreatedAt = m.CreatedAt,
                 UpdatedAt = m.UpdatedAt,
-                Location = Path.Combine(HttpContext.Request.Path, m.ScopeUid, m.Name).Replace("\\", "/"),
+                Location = CalculateMediaLocation(m.ScopeUid, m.Name),
             }).ToList();
 
             return Ok(mapped);
@@ -348,7 +369,7 @@ public class MediaController : ControllerBase
                 MimeType = m.MimeType,
                 CreatedAt = m.CreatedAt,
                 UpdatedAt = m.UpdatedAt,
-                Location = Path.Combine(HttpContext.Request.Path, m.ScopeUid, m.Name).Replace("\\", "/"),
+                Location = CalculateMediaLocation(m.ScopeUid, m.Name),
             });
 
             var resultList = folderDtos.Concat(fileDtos).ToList();
@@ -356,6 +377,10 @@ public class MediaController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Updates an existing media file's content or metadata.
+    /// Supports X-Media-Resolution header or mediaResolution query parameter: "absolute" for full URLs, otherwise returns relative paths.
+    /// </summary>
     [HttpPatch]
     [ProducesResponseType(typeof(MediaDetailsDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -365,9 +390,9 @@ public class MediaController : ControllerBase
     public async Task<ActionResult<MediaDetailsDto>> Patch([FromForm] MediaUpdateDto mediaUpdateDto)
     {
         // Find existing media record by scope UID and file name
-        var existingMedia = await pgDbContext.Media!.FirstOrDefaultAsync(m => 
+        var existingMedia = await pgDbContext.Media!.FirstOrDefaultAsync(m =>
             m.ScopeUid == mediaUpdateDto.ScopeUid.Trim() && m.Name == mediaUpdateDto.FileName.Trim());
-        
+
         if (existingMedia == null)
         {
             throw new EntityNotFoundException(nameof(Media), $"{mediaUpdateDto.ScopeUid}/{mediaUpdateDto.FileName}");
@@ -426,9 +451,53 @@ public class MediaController : ControllerBase
             MimeType = existingMedia.MimeType,
             CreatedAt = existingMedia.CreatedAt,
             UpdatedAt = existingMedia.UpdatedAt,
-            Location = Path.Combine("/api/media", existingMedia.ScopeUid, existingMedia.Name).Replace("\\", "/"),
+            Location = CalculateMediaLocation(existingMedia.ScopeUid, existingMedia.Name),
         };
 
         return Ok(updatedMediaDto);
+    }
+
+    /// <summary>
+    /// Synchronizes media data based on the sync token for incremental updates.
+    /// Supports X-Media-Resolution header or mediaResolution query parameter: "absolute" for full URLs, otherwise returns relative paths.
+    /// </summary>
+    [HttpGet("sync")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> Sync([FromQuery] string? syncToken = null, [FromQuery] string? query = null)
+    {
+        var result = await syncService.SyncAsync<Media, MediaDetailsDto>(queryProviderFactory, mapper, syncToken, query);
+
+        // Calculate Location for each MediaDetailsDto if we have items in the result
+        if (result is OkObjectResult okResult && okResult.Value != null)
+        {
+            var resultData = okResult.Value;
+            var itemsProperty = resultData.GetType().GetProperty("items");
+            if (itemsProperty?.GetValue(resultData) is List<MediaDetailsDto> items)
+            {
+                foreach (var item in items)
+                {
+                    item.Location = CalculateMediaLocation(item.ScopeUid, item.Name);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Calculates the media location URL using the media resolver with resolution mode from headers/query parameters.
+    /// </summary>
+    /// <param name="scopeUid">The scope UID for the media file.</param>
+    /// <param name="fileName">The name of the media file.</param>
+    /// <returns>The resolved media location URL.</returns>
+    private string CalculateMediaLocation(string scopeUid, string fileName)
+    {
+        var relativePath = Path.Combine("/api/media", scopeUid ?? string.Empty, fileName ?? string.Empty).Replace("\\", "/");
+        return mediaResolver.Resolve(relativePath, HttpContext, MediaResolutionHelper.GetResolutionMode(HttpContext));
     }
 }

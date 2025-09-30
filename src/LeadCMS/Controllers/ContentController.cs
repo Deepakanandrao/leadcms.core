@@ -46,8 +46,9 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         IMdxComponentParserService mdxComponentParserService,
         ILanguageValidationService languageValidationService,
         IChangeLogService changeLogService,
-        IOptions<ApiSettingsConfig> apiSettingsConfig)
-        : base(dbContext, mapper, esDbContext, queryProviderFactory)
+        IOptions<ApiSettingsConfig> apiSettingsConfig,
+        ISyncService syncService)
+        : base(dbContext, mapper, esDbContext, queryProviderFactory, syncService)
     {
         this.commentableControllerExtension = commentableControllerExtension;
         this.translationService = translationService;

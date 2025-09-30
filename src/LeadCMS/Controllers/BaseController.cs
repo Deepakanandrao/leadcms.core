@@ -9,6 +9,7 @@ using LeadCMS.Data;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
+using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -24,14 +25,16 @@ namespace LeadCMS.Controllers
         protected readonly PgDbContext dbContext;
         protected readonly IMapper mapper;
         protected readonly QueryProviderFactory<T> queryProviderFactory;
+        protected readonly ISyncService syncService;
 
-        public BaseController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<T> queryProviderFactory)
+        public BaseController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<T> queryProviderFactory, ISyncService syncService)
         {
             this.dbContext = dbContext;
             this.mapper = mapper;
 
             dbSet = dbContext.Set<T>();
             this.queryProviderFactory = queryProviderFactory;
+            this.syncService = syncService;
         }
 
         // GET api/{entity}s/5
@@ -117,7 +120,7 @@ namespace LeadCMS.Controllers
             }
 
             var res = mapper.Map<List<TD>>(result.Records);
-            RemoveSecondLevelObjects(res);
+            DtoCleanupHelper.RemoveSecondLevelObjects(res);
             return Ok(res);
         }
 
@@ -150,7 +153,7 @@ namespace LeadCMS.Controllers
             }
 
             var res = mapper.Map<List<TD>>(result.Records);
-            RemoveSecondLevelObjects(res);
+            DtoCleanupHelper.RemoveSecondLevelObjects(res);
             return Ok(res);
         }
 
@@ -162,93 +165,7 @@ namespace LeadCMS.Controllers
         [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
         public virtual async Task<IActionResult> Sync([FromQuery] string? syncToken = null, [FromQuery] string? query = null)
         {
-            var now = DateTime.UtcNow;
-            DateTime lastSyncTime = DateTime.MinValue;
-
-            if (!string.IsNullOrEmpty(syncToken))
-            {
-                if (!SyncTokenHelper.TryDecodeSyncToken(syncToken, out lastSyncTime))
-                {
-                    throw new QueryException("syncToken", "Malformed sync token.");
-                }
-
-                if (lastSyncTime > now)
-                {
-                    throw new QueryException("syncToken", "Sync token is from the future.");
-                }
-            }
-
-            var qp = queryProviderFactory.BuildQueryProvider();
-            var dbQueryProvider = qp as DBQueryProvider<T>;
-            IQueryable<T> queryable = dbQueryProvider != null ? dbQueryProvider.BuiltQuery : dbSet.AsNoTracking();
-
-            // EF Core cannot translate interface casts, so fetch and filter in memory
-            // TODO: Optimize this if possible
-            var allEntities = await queryable.ToListAsync();
-            var changedEntities = allEntities.Where(e =>
-                (e is IHasUpdatedAt updated && updated.UpdatedAt != null && updated.UpdatedAt > lastSyncTime) ||
-                (e is IHasCreatedAt created && created.CreatedAt > lastSyncTime))
-                .ToList();
-
-            var items = mapper.Map<List<TD>>(changedEntities);
-            RemoveSecondLevelObjects(items);
-
-            // Get deletions from ChangeLog
-            var objectType = typeof(T).Name;
-            var deletedQuery = dbContext.ChangeLogs!.AsNoTracking()
-                .Where(cl => cl.ObjectType == objectType && cl.EntityState == EntityState.Deleted && cl.CreatedAt > lastSyncTime);
-            var deletedIds = await deletedQuery.Select(cl => cl.ObjectId).Distinct().ToListAsync();
-
-            // Determine nextSyncToken (max updated_at/created_at/deleted)
-            DateTime? maxTime = null;
-            if (changedEntities.Any())
-            {
-                List<DateTime?> allTimes = new List<DateTime?>();
-                foreach (var e in changedEntities)
-                {
-                    DateTime? t = null;
-                    if (e is IHasUpdatedAt updated && updated.UpdatedAt != null)
-                    {
-                        t = updated.UpdatedAt;
-                    }
-                    else if (e is IHasCreatedAt created)
-                    {
-                        t = created.CreatedAt;
-                    }
-
-                    allTimes.Add(t);
-                }
-
-                var maxUpdated = allTimes.Where(dt => dt != null).Max();
-                if (maxUpdated != null)
-                {
-                    maxTime = maxUpdated;
-                }
-            }
-
-            if (deletedIds.Any())
-            {
-                var maxDeleted = await deletedQuery.MaxAsync(cl => (DateTime?)cl.CreatedAt);
-                if (maxDeleted != null && (maxTime == null || maxDeleted > maxTime))
-                {
-                    maxTime = maxDeleted;
-                }
-            }
-
-            // Use lastSyncTime as nextSyncTime if no new maxTime is found
-            var nextSyncTime = maxTime ?? lastSyncTime;
-            var token = SyncTokenHelper.EncodeSyncToken(nextSyncTime);
-            Response.Headers.Append(ResponseHeaderNames.NextSyncToken, token);
-
-            Response.Headers.Append(ResponseHeaderNames.TotalCount, (dbQueryProvider?.BuiltQuery.Count() ?? items.Count).ToString());
-            Response.Headers.Append(ResponseHeaderNames.AccessControlExposeHeader, ResponseHeaderNames.TotalCount);
-
-            if (items.Count == 0 && deletedIds.Count == 0)
-            {
-                return NoContent();
-            }
-
-            return Ok(new { items, deleted = deletedIds });
+            return await syncService.SyncAsync<T, TD>(queryProviderFactory, mapper, syncToken, query);
         }
 
         protected async Task<T> FindOrThrowNotFound(int id)
@@ -308,101 +225,6 @@ namespace LeadCMS.Controllers
         {
             // Default implementation does nothing
             await Task.CompletedTask;
-        }
-
-        private static void RemoveSecondLevelObjects(IList<TD> data)
-        {
-            var refs = SecondLevelDTOs.Data;
-
-            foreach (var item in data)
-            {
-                foreach (var r in refs)
-                {
-                    var propertyObject = r.Key.GetValue(item);
-                    if (propertyObject != null)
-                    {
-                        if (r.Key.PropertyType.GetInterface("IEnumerable") != null && r.Key.PropertyType.IsGenericType)
-                        {
-                            var e = propertyObject as IEnumerable;
-                            foreach (var obj in e!)
-                            {
-                                foreach (var p in r.Value)
-                                {
-                                    p.SetValue(obj, null);
-                                }
-                            }
-                        }
-                        else
-                        {
-                            foreach (var p in r.Value)
-                            {
-                                p.SetValue(propertyObject, null);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        private sealed class SecondLevelDTOs
-        {
-            public static readonly Dictionary<PropertyInfo, List<PropertyInfo>> Data = InitReferences();
-
-            private static Dictionary<PropertyInfo, List<PropertyInfo>> InitReferences()
-            {
-                bool IsNullableProperty(PropertyInfo pi)
-                {
-                    var context = new NullabilityInfoContext();
-                    var info = context.Create(pi);
-                    return info.WriteState == NullabilityState.Nullable;
-                }
-
-                bool IsDto(Type type)
-                {
-                    return type.IsClass && type.Namespace != null && type.Namespace!.StartsWith("LeadCMS.DTOs");
-                }
-
-                bool IsNeedToSave(PropertyInfo pi)
-                {
-                    return IsNullableProperty(pi) &&
-                        (IsDto(pi.PropertyType) || (pi.PropertyType.GetInterface("IEnumerable") != null && pi.PropertyType.IsGenericType && IsDto(pi.PropertyType.GetGenericArguments()[0])));
-                }
-
-                Type GetType(PropertyInfo pi)
-                {
-                    if (pi.PropertyType.GetInterface("IEnumerable") != null && pi.PropertyType.IsGenericType)
-                    {
-                        return pi.PropertyType.GetGenericArguments()[0];
-                    }
-                    else
-                    {
-                        return pi.PropertyType;
-                    }
-                }
-
-                var res = new Dictionary<PropertyInfo, List<PropertyInfo>>();
-                var properties = typeof(TD).GetProperties();
-                foreach (var property in properties)
-                {
-                    var pType = GetType(property);
-                    var nestedProperties = pType.GetProperties();
-                    foreach (var nestedProperty in nestedProperties.Where(np => IsNeedToSave(np)))
-                    {
-                        List<PropertyInfo> temp;
-                        if (res.TryGetValue(property, out temp!))
-                        {
-                            temp.Add(nestedProperty);
-                        }
-                        else
-                        {
-                            temp = new List<PropertyInfo>() { nestedProperty };
-                            res.Add(property, temp);
-                        }
-                    }
-                }
-
-                return res;
-            }
         }
     }
 }
