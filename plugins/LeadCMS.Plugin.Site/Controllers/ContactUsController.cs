@@ -1,6 +1,7 @@
 ﻿// <copyright file="ContactUsController.cs" company="WavePoint Co. Ltd.">
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
+using System.Diagnostics.CodeAnalysis;
 using LeadCMS.DTOs;
 using LeadCMS.Interfaces;
 using LeadCMS.Plugin.Site.Configuration;
@@ -23,7 +24,7 @@ public class ContactUsController : Controller
     private readonly IContactService contactService;
 
     public ContactUsController(
-        IEmailFromTemplateService emailService, 
+        IEmailFromTemplateService emailService,
         IConfiguration configuration,
         LeadCmsSiteDbContext dbContext,
         IContactService contactService)
@@ -56,12 +57,12 @@ public class ContactUsController : Controller
         {
             contact.FirstName = contactUsDto.FirstName;
         }
-                
+
         if (!string.IsNullOrWhiteSpace(contactUsDto.LastName))
         {
             contact.LastName = contactUsDto.LastName;
         }
-        
+
         if (!string.IsNullOrWhiteSpace(contactUsDto.Company))
         {
             contact.CompanyName = contactUsDto.Company;
@@ -90,24 +91,34 @@ public class ContactUsController : Controller
             "Acknowledgment",
             contactUsDto.Language,
             [contactUsDto.Email],
-            new Dictionary<string, string> { { "firstName", contactUsDto.FirstName } },
+            new Dictionary<string, string> { { "firstName", Encode(contactUsDto.FirstName) } },
             null);
 
         return Ok(contactUsDto);
     }
 
-    private Dictionary<string, string> GetTemplateArguments(ContactUsDto contactUsDto)
+    private static Dictionary<string, string> GetTemplateArguments(ContactUsDto contactUsDto)
     {
-        Dictionary<string, string> templateArg = new Dictionary<string, string>();
-        templateArg.Add("fromEmail", contactUsDto.Email);
-        templateArg.Add("firstName", contactUsDto.FirstName);
-        templateArg.Add("lastName", contactUsDto.LastName ?? string.Empty);
-        templateArg.Add("company", contactUsDto.Company ?? string.Empty);
-        templateArg.Add("subject", contactUsDto.Subject ?? string.Empty);
-        templateArg.Add("message", contactUsDto.Message);
+        Dictionary<string, string> templateArg = new Dictionary<string, string>
+        {
+            { "fromEmail", Encode(contactUsDto.Email) },
+            { "firstName", Encode(contactUsDto.FirstName) },
+            { "lastName", Encode(contactUsDto.LastName) ?? string.Empty },
+            { "company", Encode(contactUsDto.Company) ?? string.Empty },
+            { "subject", Encode(contactUsDto.Subject) ?? string.Empty },
+            { "message", Encode(contactUsDto.Message) },
+        };
+
+        foreach (var item in contactUsDto.ExtraData)
+        {
+            templateArg.Add($"extraData[{item.Key}]", Encode(item.Value));
+        }
 
         return templateArg;
     }
+
+    [return: NotNullIfNotNull(nameof(value))]
+    private static string? Encode(string? value) => System.Web.HttpUtility.HtmlEncode(value);
 }
 
 public static class FormFileExtensions
