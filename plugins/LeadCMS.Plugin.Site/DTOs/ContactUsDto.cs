@@ -22,6 +22,8 @@ namespace LeadCMS.Plugin.Site.DTOs
 
         public string? Subject { get; set; }
 
+        public Dictionary<string, string> ExtraData { get; set; } = new();
+
         [Required]
         public string Message { get; set; } = string.Empty;
 
