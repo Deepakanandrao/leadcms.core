@@ -24,6 +24,8 @@ public static class SettingKeys
 
     public const string EnableRealtimeSyntaxValidation = "Content.EnableRealtimeSyntaxValidation";
 
+    public const string EnableCodeEditorLineNumbers = "Content.EnableCodeEditorLineNumbers";
+
     // Identity password policy settings
     public const string RequireDigit = "Identity.RequireDigit";
 

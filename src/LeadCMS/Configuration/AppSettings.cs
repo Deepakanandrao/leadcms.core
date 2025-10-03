@@ -262,4 +262,9 @@ public class ContentConfig
     /// Gets or sets a value indicating whether real-time MDX/JSON format validation is enabled for content records in the admin UI. Default value of true enables validation.
     /// </summary>
     public bool EnableRealtimeSyntaxValidation { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether line numbers are enabled in the code editor for content records in the admin UI. Default value of true enables line numbers.
+    /// </summary>
+    public bool EnableCodeEditorLineNumbers { get; set; } = true;
 }
