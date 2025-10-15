@@ -460,3 +460,4 @@ logs/
 #.env files should never be commited
 .env
 .mono
+mailpit_auth

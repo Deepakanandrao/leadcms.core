@@ -142,6 +142,9 @@ public class CorsConfig
 public class EmailConfig : BaseServiceConfig
 {
     public bool UseSsl { get; set; }
+
+    public bool RequireAuthentication => !string.IsNullOrEmpty(UserName) && !string.IsNullOrEmpty(Password) &&
+                                         UserName != "$EMAIL__USERNAME" && Password != "$EMAIL__PASSWORD";
 }
 
 public class JwtConfig

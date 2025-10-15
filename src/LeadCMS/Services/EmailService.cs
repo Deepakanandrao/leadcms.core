@@ -39,7 +39,11 @@ public class EmailService : IEmailService
         {
             await client.ConnectAsync(config.Server, config.Port, config.UseSsl);
 
-            await client.AuthenticateAsync(new NetworkCredential(config.UserName, config.Password));
+            // Only authenticate if credentials are properly configured
+            if (config.RequireAuthentication)
+            {
+                await client.AuthenticateAsync(new NetworkCredential(config.UserName, config.Password));
+            }
 
             var message = await GenerateEmailBody(subject, fromEmail, fromName, recipients, body, attachments);
 
