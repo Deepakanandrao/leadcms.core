@@ -15,6 +15,14 @@ public enum CommentStatus
     NotApproved = 0,
     Approved = 1,
     Spam = 2,
+    Answer = 3,
+}
+
+public enum AnswerStatus
+{
+    Unanswered = 0,      // Default - needs response from internal team
+    Answered = 1,        // Has been answered by internal team
+    Closed = 2,          // Conversation closed - no response needed/allowed
 }
 
 [Table("comment")]
@@ -85,4 +93,9 @@ public class Comment : BaseEntity, ITranslatable
     [Searchable]
     [Column(TypeName = "jsonb")]
     public string[]? Tags { get; set; }
+
+    /// <summary>
+    /// Gets or sets the answer status of the comment.
+    /// </summary>
+    public AnswerStatus AnswerStatus { get; set; } = AnswerStatus.Unanswered;
 }

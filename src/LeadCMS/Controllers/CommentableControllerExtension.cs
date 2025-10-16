@@ -17,12 +17,14 @@ public class CommentableControllerExtension
 {
     private readonly IMapper mapper;
     private readonly ICommentService commentService;
+    private readonly ICommentAnswerService commentAnswerService;
     private readonly PgDbContext dbContext;
 
-    public CommentableControllerExtension(PgDbContext dbContext, IMapper mapper, ICommentService commentService)
+    public CommentableControllerExtension(PgDbContext dbContext, IMapper mapper, ICommentService commentService, ICommentAnswerService commentAnswerService)
     {
         this.mapper = mapper;
         this.commentService = commentService;
+        this.commentAnswerService = commentAnswerService;
         this.dbContext = dbContext;
     }
 
@@ -72,6 +74,10 @@ public class CommentableControllerExtension
     public async Task<ActionResult<CommentDetailsDto>> PostComment(Comment comment, ControllerBase controller)
     {
         await commentService.SaveAsync(comment);
+
+        // Update answer status for the new comment
+        var isAuthenticated = controller.User.Identity?.IsAuthenticated ?? false;
+        await commentAnswerService.UpdateAnswerStatusAsync(comment, isAuthenticated);
 
         await dbContext.SaveChangesAsync();
 

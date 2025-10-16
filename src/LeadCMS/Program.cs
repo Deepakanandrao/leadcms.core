@@ -68,6 +68,7 @@ public class Program
         builder.Services.AddTransient<IOrderItemService, OrderItemService>();
         builder.Services.AddTransient<IContactService, ContactService>();
         builder.Services.AddTransient<ICommentService, CommentService>();
+        builder.Services.AddTransient<ICommentAnswerService, CommentAnswerService>();
         builder.Services.AddScoped<IVariablesService, VariablesService>();
         builder.Services.AddScoped<ISettingService, SettingService>();
         builder.Services.AddScoped<ISettingsEnrichmentService, SettingsEnrichmentService>();

@@ -59,8 +59,33 @@ public class CommentCreateDto : CommentCreateBaseDto
 
 public class CommentUpdateDto
 {
-    [Required]
-    public string Body { get; set; } = string.Empty;
+    private string? authorEmail;
+
+    public string? Body { get; set; }
+
+    public string? AuthorName { get; set; }
+
+    [EmailAddress]
+    public string? AuthorEmail
+    {
+        get
+        {
+            return authorEmail;
+        }
+
+        set
+        {
+            authorEmail = string.IsNullOrEmpty(value) ? null : value.ToLower();
+        }
+    }
+
+    public string? Language { get; set; }
+
+    public CommentStatus? Status { get; set; }
+
+    public string? TranslationKey { get; set; }
+
+    public string[]? Tags { get; set; }
 }
 
 public class AnonymousCommentDetailsDto
@@ -107,6 +132,10 @@ public class CommentDetailsDto : AnonymousCommentDetailsDto
     public ContactDetailsDto? Contact { get; set; }
 
     public string[]? Tags { get; set; }
+
+    public CommentStatus Status { get; set; } = CommentStatus.NotApproved;
+
+    public AnswerStatus AnswerStatus { get; set; } = AnswerStatus.Unanswered;
 }
 
 public class CommentImportDto : BaseImportDto
@@ -136,7 +165,7 @@ public class CommentImportDto : BaseImportDto
     }
 
     [Optional]
-    public string Body { get; set; } = string.Empty;
+    public string? Body { get; set; }
 
     [Optional]
     public CommentStatus? Status { get; set; }
@@ -148,10 +177,10 @@ public class CommentImportDto : BaseImportDto
     public string? TranslationKey { get; set; }
 
     [Optional]
-    public int CommentableId { get; set; }
+    public int? CommentableId { get; set; }
 
     [Optional]
-    public string CommentableType { get; set; } = string.Empty;
+    public string? CommentableType { get; set; }
 
     [Optional]
     public int? ParentId { get; set; }
@@ -165,4 +194,14 @@ public class CommentImportDto : BaseImportDto
 
     [Optional]
     public string[]? Tags { get; set; }
+
+    [Optional]
+    public AnswerStatus? AnswerStatus { get; set; }
+}
+
+public class CommentsWithStatisticsDto
+{
+    public List<CommentDetailsDto> Comments { get; set; } = new List<CommentDetailsDto>();
+
+    public Dictionary<string, long> Statistics { get; set; } = new Dictionary<string, long>();
 }

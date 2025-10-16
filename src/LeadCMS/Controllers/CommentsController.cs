@@ -50,6 +50,34 @@ public class CommentsController : BaseControllerWithImport<Comment, CommentCreat
         return commentableControllerExtension.ReturnComments(items, this);
     }
 
+    [HttpGet("with-statistics")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<CommentsWithStatisticsDto>> GetWithStatistics([FromQuery] string? query)
+    {
+        // Get the comments using the base method
+        var returnedItems = (await base.Get(query)).Result;
+        var items = (List<CommentDetailsDto>)((ObjectResult)returnedItems!).Value!;
+
+        // Get statistics for all comment statuses and answer statuses using query without status filter
+        var allStatistics = await GetCommentStatisticsWithQuery();
+
+        // Process items through commentable extension
+        var processedResult = commentableControllerExtension.ReturnComments(items, this);
+
+        // Handle authenticated users only
+        var processedItems = (List<CommentDetailsDto>)((ObjectResult)processedResult.Result!).Value!;
+
+        var result = new CommentsWithStatisticsDto
+        {
+            Comments = processedItems,
+            Statistics = allStatistics,
+        };
+
+        return Ok(result);
+    }
+
     // GET api/{entity}s/5
     [HttpGet("{id}")]
     [AllowAnonymous]
@@ -121,7 +149,7 @@ public class CommentsController : BaseControllerWithImport<Comment, CommentCreat
 
         if (User.Identity != null && User.Identity.IsAuthenticated)
         {
-            comment.Status = CommentStatus.Approved;
+            comment.Status = CommentStatus.Answer;
         }
         else
         {
@@ -168,6 +196,121 @@ public class CommentsController : BaseControllerWithImport<Comment, CommentCreat
         return assembly!.GetTypes().Where(t => t.IsClass && typeof(ICommentable).IsAssignableFrom(t)).ToDictionary(t => ICommentable.GetCommentableType(t), t => t);
     }
 
+    private async Task<Dictionary<string, long>> GetCommentStatisticsWithQuery()
+    {
+        var statistics = new Dictionary<string, long>();
+
+        // Initialize all comment statuses with 0 count
+        foreach (CommentStatus status in Enum.GetValues<CommentStatus>())
+        {
+            statistics[status.ToString()] = 0;
+        }
+
+        // Initialize all answer statuses with 0 count
+        foreach (AnswerStatus answerStatus in Enum.GetValues<AnswerStatus>())
+        {
+            statistics[answerStatus.ToString()] = 0;
+        }
+
+        // Get individual counts for each CommentStatus
+        foreach (CommentStatus status in Enum.GetValues<CommentStatus>())
+        {
+            var count = await GetCountForCommentStatus(status);
+            statistics[status.ToString()] = count;
+        }
+
+        // Get individual counts for each AnswerStatus
+        foreach (AnswerStatus answerStatus in Enum.GetValues<AnswerStatus>())
+        {
+            var count = await GetCountForAnswerStatus(answerStatus);
+            statistics[answerStatus.ToString()] = count;
+        }
+
+        return statistics;
+    }
+
+    private async Task<long> GetCountForCommentStatus(CommentStatus status)
+    {
+        // Parse existing query commands
+        var queryString = HttpContext.Request.QueryString.HasValue
+            ? System.Web.HttpUtility.UrlDecode(HttpContext.Request.QueryString.ToString())
+            : string.Empty;
+
+        var queryCommands = string.IsNullOrEmpty(queryString)
+            ? new List<QueryCommand>()
+            : QueryStringParser.Parse(queryString).ToList();
+
+        // Remove any existing status filters
+        queryCommands.RemoveAll(cmd =>
+            cmd.Type == FilterType.Where &&
+            cmd.Props.Length > 0 &&
+            cmd.Props[0].Equals("status", StringComparison.OrdinalIgnoreCase));
+
+        // Remove any existing answer status filters to avoid conflicts
+        queryCommands.RemoveAll(cmd =>
+            cmd.Type == FilterType.Where &&
+            cmd.Props.Length > 0 &&
+            cmd.Props[0].Equals("answerStatus", StringComparison.OrdinalIgnoreCase));
+
+        // Add the specific status filter
+        queryCommands.Add(new QueryCommand
+        {
+            Type = FilterType.Where,
+            Props = new[] { "status" },
+            Value = status.ToString(),
+            Source = $"filter[where][status]={status}",
+        });
+
+        // Use a high limit to get total count, not paged results
+        var queryBuilder = new QueryModelBuilder<Comment>(queryCommands, int.MaxValue, dbContext);
+        var dbSet = dbContext.Set<Comment>();
+        var queryProvider = new DBQueryProvider<Comment>(dbSet!.AsQueryable<Comment>(), queryBuilder);
+
+        var result = await queryProvider.GetResult();
+        return result.TotalCount;
+    }
+
+    private async Task<long> GetCountForAnswerStatus(AnswerStatus answerStatus)
+    {
+        // Parse existing query commands
+        var queryString = HttpContext.Request.QueryString.HasValue
+            ? System.Web.HttpUtility.UrlDecode(HttpContext.Request.QueryString.ToString())
+            : string.Empty;
+
+        var queryCommands = string.IsNullOrEmpty(queryString)
+            ? new List<QueryCommand>()
+            : QueryStringParser.Parse(queryString).ToList();
+
+        // Remove any existing comment status filters to avoid conflicts
+        queryCommands.RemoveAll(cmd =>
+            cmd.Type == FilterType.Where &&
+            cmd.Props.Length > 0 &&
+            cmd.Props[0].Equals("status", StringComparison.OrdinalIgnoreCase));
+
+        // Remove any existing answer status filters
+        queryCommands.RemoveAll(cmd =>
+            cmd.Type == FilterType.Where &&
+            cmd.Props.Length > 0 &&
+            cmd.Props[0].Equals("answerStatus", StringComparison.OrdinalIgnoreCase));
+
+        // Add the specific answer status filter
+        queryCommands.Add(new QueryCommand
+        {
+            Type = FilterType.Where,
+            Props = new[] { "answerStatus" },
+            Value = answerStatus.ToString(),
+            Source = $"filter[where][answerStatus]={answerStatus}",
+        });
+
+        // Use a high limit to get total count, not paged results
+        var queryBuilder = new QueryModelBuilder<Comment>(queryCommands, int.MaxValue, dbContext);
+        var dbSet = dbContext.Set<Comment>();
+        var queryProvider = new DBQueryProvider<Comment>(dbSet!.AsQueryable<Comment>(), queryBuilder);
+
+        var result = await queryProvider.GetResult();
+        return result.TotalCount;
+    }
+
     private sealed class CommentsImportChecker : AdditionalImportChecker
     {
         private readonly PgDbContext dbContext;
@@ -184,8 +327,14 @@ public class CommentsController : BaseControllerWithImport<Comment, CommentCreat
             this.importRecords = importRecords;
             foreach (var commentableType in CommentableTypes)
             {
-                var importRecordIds = importRecords.Where(r => r.CommentableType == commentableType.Key).Select(ir => ir.CommentableId).ToHashSet();
-                var existedIds = dbContext.SetDbEntity(commentableType.Value).Where(c => importRecordIds.Contains(((BaseEntityWithId)c).Id)).Select(c => ((BaseEntityWithId)c).Id).ToList();
+                var importRecordIds = importRecords
+                    .Where(r => r.CommentableType == commentableType.Key && r.CommentableId.HasValue)
+                    .Select(ir => ir.CommentableId!.Value)
+                    .ToHashSet();
+                var existedIds = dbContext.SetDbEntity(commentableType.Value)
+                    .Where(c => importRecordIds.Contains(((BaseEntityWithId)c).Id))
+                    .Select(c => ((BaseEntityWithId)c).Id)
+                    .ToList();
                 existedCommentableIds.Add(commentableType.Key, existedIds);
             }
         }
@@ -198,10 +347,29 @@ public class CommentsController : BaseControllerWithImport<Comment, CommentCreat
             }
 
             var importRecord = importRecords[index];
-            if (!existedCommentableIds[importRecord.CommentableType].Contains(importRecord.CommentableId))
+
+            // For new records (id = 0), CommentableType and CommentableId must be set
+            if (importRecord.Id.GetValueOrDefault(0) == 0)
             {
-                result.AddError(index, $"Commentable entity of type {importRecord.CommentableType} with id = {importRecord.CommentableId} cannot be found");
-                return false;
+                if (string.IsNullOrEmpty(importRecord.CommentableType))
+                {
+                    result.AddError(index, "CommentableType is required when creating new comments");
+                    return false;
+                }
+
+                if (!importRecord.CommentableId.HasValue || importRecord.CommentableId.Value == 0)
+                {
+                    result.AddError(index, "CommentableId is required when creating new comments");
+                    return false;
+                }
+
+                // Check if the referenced commentable entity exists
+                if (!existedCommentableIds.ContainsKey(importRecord.CommentableType) ||
+                    !existedCommentableIds[importRecord.CommentableType].Contains(importRecord.CommentableId.Value))
+                {
+                    result.AddError(index, $"Commentable entity of type {importRecord.CommentableType} with id = {importRecord.CommentableId} cannot be found");
+                    return false;
+                }
             }
 
             return true;

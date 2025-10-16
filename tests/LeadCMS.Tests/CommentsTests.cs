@@ -20,6 +20,168 @@ public class CommentsTests : TableWithFKTests<Comment, TestComment, CommentUpdat
     }
 
     [Fact]
+    public async Task GetCommentsWithStatistics()
+    {
+        // Arrange - create some test data with different statuses
+        await CreateFKItemsWithUid();
+
+        // Create a comment that will be NotApproved by default (anonymous user)
+        var testComment1 = new TestComment(string.Empty, 1);
+        await PostTest(itemsUrl, testComment1);
+
+        // Create an approved comment (authenticated user would set status to Approved, simulating by direct DB)
+        var testComment2 = new TestComment(string.Empty, 1);
+        var comment2Url = await PostTest(itemsUrl, testComment2);
+        var comment2 = await GetTest<Comment>(comment2Url);
+        comment2!.Status = CommentStatus.Approved;
+        App.GetDbContext()!.Comments!.Update(comment2);
+
+        // Create a spam comment
+        var testComment3 = new TestComment(string.Empty, 1);
+        var comment3Url = await PostTest(itemsUrl, testComment3);
+        var comment3 = await GetTest<Comment>(comment3Url);
+        comment3!.Status = CommentStatus.Spam;
+        App.GetDbContext()!.Comments!.Update(comment3);
+
+        await App.GetDbContext()!.SaveChangesAsync();
+
+        // Act - call the GetWithStatistics endpoint
+        var result = await GetTest<CommentsWithStatisticsDto>($"{itemsUrl}/with-statistics");
+
+        // Assert - check that the response structure is correct
+        result.Should().NotBeNull();
+        result!.Comments.Should().NotBeNull();
+        result.Statistics.Should().NotBeNull();
+
+        // Verify statistics counts using dictionary
+        result.Statistics["NotApproved"].Should().Be(1);
+        result.Statistics["Approved"].Should().Be(1);
+        result.Statistics["Spam"].Should().Be(1);
+
+        // Verify that comments are included in the response
+        result.Comments.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public async Task GetCommentsWithStatisticsAnonymous()
+    {
+        // Arrange - create some test data with different statuses
+        await CreateFKItemsWithUid();
+
+        // Create a comment that will be NotApproved by default (anonymous user)
+        var testComment1 = new TestComment(string.Empty, 1);
+        await PostTest(itemsUrl, testComment1);
+
+        // Create an approved comment
+        var testComment2 = new TestComment(string.Empty, 1);
+        var comment2Url = await PostTest(itemsUrl, testComment2);
+        var comment2 = await GetTest<Comment>(comment2Url);
+        comment2!.Status = CommentStatus.Approved;
+        App.GetDbContext()!.Comments!.Update(comment2);
+
+        await App.GetDbContext()!.SaveChangesAsync();
+
+        // Act - call the GetWithStatistics endpoint as anonymous user
+        Logout();
+        var result = await GetTest<CommentsWithStatisticsDto>($"{itemsUrl}/with-statistics");
+
+        // Assert - check that the anonymous response structure is correct
+        result.Should().NotBeNull();
+        result!.Comments.Should().NotBeNull();
+        result.Statistics.Should().NotBeNull();
+
+        // Verify statistics counts using dictionary
+        result.Statistics["NotApproved"].Should().Be(1);
+        result.Statistics["Approved"].Should().Be(1);
+        result.Statistics["Spam"].Should().Be(0);
+
+        // Verify that comments are included in the response (anonymous version)
+        result.Comments.Should().HaveCount(2);
+
+        // Verify that sensitive data is not exposed in anonymous response
+        result.Comments.Should().AllSatisfy(c =>
+        {
+            c.Should().BeOfType<AnonymousCommentDetailsDto>();
+            // Anonymous comments should not have email or contact info exposed
+        });
+    }
+
+    [Fact]
+    public async Task GetCommentsWithStatisticsRespectFilters()
+    {
+        // Arrange - create test data with different statuses and content
+        await CreateFKItemsWithUid();
+
+        // Create comments for different commentable entities
+        var testComment1 = new TestComment("test1", 1) { Body = "First comment" };
+        await PostTest(itemsUrl, testComment1);
+
+        var testComment2 = new TestComment("test2", 2) { Body = "Second comment" };
+        var comment2Url = await PostTest(itemsUrl, testComment2);
+        var comment2 = await GetTest<Comment>(comment2Url);
+        comment2!.Status = CommentStatus.Approved;
+        App.GetDbContext()!.Comments!.Update(comment2);
+
+        var testComment3 = new TestComment("test3", 1) { Body = "Third comment" };
+        var comment3Url = await PostTest(itemsUrl, testComment3);
+        var comment3 = await GetTest<Comment>(comment3Url);
+        comment3!.Status = CommentStatus.Spam;
+        App.GetDbContext()!.Comments!.Update(comment3);
+
+        await App.GetDbContext()!.SaveChangesAsync();
+
+        // Act - call with filter for specific commentable ID
+        var filteredResult = await GetTest<CommentsWithStatisticsDto>($"{itemsUrl}/with-statistics?commentableId=1");
+
+        // Assert - should only include statistics for comments with commentableId=1
+        filteredResult.Should().NotBeNull();
+        filteredResult!.Statistics["NotApproved"].Should().Be(1); // Only comment1
+        filteredResult.Statistics["Approved"].Should().Be(0);     // comment2 has commentableId=2
+        filteredResult.Statistics["Spam"].Should().Be(1);         // Only comment3
+
+        // Comments should also be filtered
+        filteredResult.Comments.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task GetCommentsWithStatisticsIgnoresStatusFilter()
+    {
+        // Arrange - create test data with different statuses
+        await CreateFKItemsWithUid();
+
+        // Create comments with different statuses
+        var testComment1 = new TestComment(string.Empty, 1);
+        await PostTest(itemsUrl, testComment1);
+
+        var testComment2 = new TestComment(string.Empty, 1);
+        var comment2Url = await PostTest(itemsUrl, testComment2);
+        var comment2 = await GetTest<Comment>(comment2Url);
+        comment2!.Status = CommentStatus.Approved;
+        App.GetDbContext()!.Comments!.Update(comment2);
+
+        var testComment3 = new TestComment(string.Empty, 1);
+        var comment3Url = await PostTest(itemsUrl, testComment3);
+        var comment3 = await GetTest<Comment>(comment3Url);
+        comment3!.Status = CommentStatus.Spam;
+        App.GetDbContext()!.Comments!.Update(comment3);
+
+        await App.GetDbContext()!.SaveChangesAsync();
+
+        // Act - call with status filter (should only return approved comments, but stats should show all)
+        var filteredResult = await GetTest<CommentsWithStatisticsDto>($"{itemsUrl}/with-statistics?status=Approved");
+
+        // Assert - comments should be filtered to only approved
+        filteredResult.Should().NotBeNull();
+        filteredResult!.Comments.Should().HaveCount(1);
+        filteredResult.Comments.Should().AllSatisfy(c => c.Id.Should().Be(comment2.Id));
+
+        // But statistics should show counts for ALL statuses (ignoring the status filter)
+        filteredResult.Statistics["NotApproved"].Should().Be(1); // comment1
+        filteredResult.Statistics["Approved"].Should().Be(1);    // comment2
+        filteredResult.Statistics["Spam"].Should().Be(1);        // comment3
+    }
+
+    [Fact]
     public async Task CreateAndGetItemTestAnonymous()
     {
         await CreateAndGetItem(true);
