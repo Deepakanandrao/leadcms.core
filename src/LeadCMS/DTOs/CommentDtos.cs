@@ -83,6 +83,8 @@ public class CommentUpdateDto
 
     public CommentStatus? Status { get; set; }
 
+    public AnswerStatus? AnswerStatus { get; set; }
+
     public string? TranslationKey { get; set; }
 
     public string[]? Tags { get; set; }
