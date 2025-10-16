@@ -21,9 +21,9 @@ public class ContentCreateDto
     [Required]
     public string Body { get; set; } = string.Empty;
 
-    public string CoverImageUrl { get; set; } = string.Empty;
+    public string? CoverImageUrl { get; set; } = string.Empty;
 
-    public string CoverImageAlt { get; set; } = string.Empty;
+    public string? CoverImageAlt { get; set; } = string.Empty;
 
     [Required]
     public string Slug { get; set; } = string.Empty;

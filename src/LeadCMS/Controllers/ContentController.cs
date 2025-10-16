@@ -84,7 +84,11 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
             {
                 foreach (var item in list)
                 {
-                    item.CoverImageUrl = mediaResolver.Resolve(item.CoverImageUrl, HttpContext, mode);
+                    if (!string.IsNullOrWhiteSpace(item.CoverImageUrl))
+                    {
+                        item.CoverImageUrl = mediaResolver.Resolve(item.CoverImageUrl, HttpContext, mode);
+                    }
+
                     item.Body = MediaUriTransformer.Transform(item.Body, mediaResolver, HttpContext, mode);
                 }
             }
@@ -123,7 +127,11 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
             if (mode == "absolute")
             {
                 dto.Body = MediaUriTransformer.Transform(dto.Body, mediaResolver, HttpContext, mode);
-                dto.CoverImageUrl = mediaResolver.Resolve(dto.CoverImageUrl, HttpContext, mode);
+
+                if (!string.IsNullOrWhiteSpace(dto.CoverImageUrl))
+                {
+                    dto.CoverImageUrl = mediaResolver.Resolve(dto.CoverImageUrl, HttpContext, mode);
+                }
             }
 
             if (includeTranslations)
