@@ -207,3 +207,10 @@ public class CommentsWithStatisticsDto
 
     public Dictionary<string, long> Statistics { get; set; } = new Dictionary<string, long>();
 }
+
+public class AnonymousCommentsWithStatisticsDto
+{
+    public List<AnonymousCommentDetailsDto> Comments { get; set; } = new List<AnonymousCommentDetailsDto>();
+
+    public Dictionary<string, long> Statistics { get; set; } = new Dictionary<string, long>();
+}

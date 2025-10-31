@@ -185,6 +185,55 @@ public class CommentsController : BaseControllerWithImport<Comment, CommentCreat
         return Ok(mapper.Map<List<CommentDetailsDto>>(translations));
     }
 
+    [HttpGet("sync")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public override async Task<IActionResult> Sync([FromQuery] string? syncToken = null, [FromQuery] string? query = null)
+    {
+        // Get the sync result from the base implementation
+        var baseResult = await base.Sync(syncToken, query);
+
+        // Check if the request is authenticated
+        bool isAuthenticated = User.Identity?.IsAuthenticated == true;
+
+        if (isAuthenticated)
+        {
+            // Return the full result for authenticated users
+            return baseResult;
+        }
+        else
+        {
+            // Transform the result for anonymous users
+            if (baseResult is OkObjectResult okResult && okResult.Value != null)
+            {
+                var resultData = okResult.Value;
+                var itemsProperty = resultData.GetType().GetProperty("items");
+                var deletedProperty = resultData.GetType().GetProperty("deleted");
+
+                if (itemsProperty?.GetValue(resultData) is List<CommentDetailsDto> items)
+                {
+                    // Map to anonymous DTOs
+                    var anonymousItems = items.Select(item => mapper.Map<AnonymousCommentDetailsDto>(item)).ToList();
+
+                    var anonymousResult = new
+                    {
+                        items = anonymousItems,
+                        deleted = deletedProperty?.GetValue(resultData),
+                    };
+
+                    return Ok(anonymousResult);
+                }
+            }
+
+            // Return the original result if transformation is not possible
+            return baseResult;
+        }
+    }
+
     protected override async Task SaveRangeAsync(List<Comment> comments)
     {
         await commentService.SaveRangeAsync(comments);
