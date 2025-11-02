@@ -95,6 +95,10 @@ public class Program
         builder.Services.AddScoped<IChangeLogService, ChangeLogService>();
         builder.Services.AddScoped<ISyncService, SyncService>();
 
+        // Add token and device authentication services
+        builder.Services.AddScoped<ITokenService, TokenService>();
+        builder.Services.AddScoped<IDeviceAuthService, DeviceAuthService>();
+
         // Add capabilities service for plugin extensibility
         builder.Services.AddSingleton<ICapabilityService, CapabilityService>();
 
@@ -419,6 +423,10 @@ public class Program
         }
 
         builder.Services.Configure<JwtConfig>(jwtConfig);
+
+        // Configure Azure AD options for dependency injection
+        var azureAdConfig = builder.Configuration.GetSection("AzureAd");
+        builder.Services.Configure<AzureADConfig>(azureAdConfig);
     }
 
     private static void ConfigureAccountDetails(WebApplicationBuilder builder)

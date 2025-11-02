@@ -48,6 +48,17 @@ public class ContentTests : SimpleTableTests<Content, TestContent, ContentUpdate
     }
 
     [Fact]
+    public async Task CheckAuthors()
+    {
+        await CreateItem();
+        var response = await GetTest(itemsUrl + "/authors", HttpStatusCode.OK);
+        var content = await response.Content.ReadAsStringAsync();
+        var data = JsonHelper.Deserialize<string[]>(content);
+        data.Should().NotBeNull();
+        data.Should().NotBeEmpty();
+    }
+
+    [Fact]
     public async Task PutContentWithNullValues_ShouldReplaceCompleteEntity()
     {
         // First create an item with non-null values

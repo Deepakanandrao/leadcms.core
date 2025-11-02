@@ -150,9 +150,16 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<string[]>> GetTags()
+    public async Task<ActionResult<string[]>> GetTags([FromQuery] string? language = null)
     {
-        var tags = (await dbSet.Select(c => c.Tags).ToArrayAsync()).SelectMany(z => z).Distinct().Where(str => !string.IsNullOrEmpty(str)).ToArray();
+        var query = dbSet.AsQueryable();
+
+        if (!string.IsNullOrEmpty(language))
+        {
+            query = query.Where(c => c.Language == language);
+        }
+
+        var tags = (await query.Select(c => c.Tags).ToArrayAsync()).SelectMany(z => z).Distinct().Where(str => !string.IsNullOrEmpty(str)).ToArray();
         return Ok(tags);
     }
 
@@ -161,11 +168,35 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-
-    public async Task<ActionResult<string[]>> GetCategories()
+    public async Task<ActionResult<string[]>> GetCategories([FromQuery] string? language = null)
     {
-        var categories = (await dbSet.Select(c => c.Category).ToArrayAsync()).Distinct().Where(str => !string.IsNullOrEmpty(str)).ToArray();
+        var query = dbSet.AsQueryable();
+
+        if (!string.IsNullOrEmpty(language))
+        {
+            query = query.Where(c => c.Language == language);
+        }
+
+        var categories = (await query.Select(c => c.Category).ToArrayAsync()).Distinct().Where(str => !string.IsNullOrEmpty(str)).ToArray();
         return Ok(categories);
+    }
+
+    [HttpGet("authors")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<string[]>> GetAuthors([FromQuery] string? language = null)
+    {
+        var query = dbSet.AsQueryable();
+
+        if (!string.IsNullOrEmpty(language))
+        {
+            query = query.Where(c => c.Language == language);
+        }
+
+        var authors = (await query.Select(c => c.Author).ToArrayAsync()).Distinct().Where(str => !string.IsNullOrEmpty(str)).ToArray();
+        return Ok(authors);
     }
 
     [HttpGet("categories/{contentType}")]
@@ -188,6 +219,28 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
             .ToArray();
 
         return Ok(categories);
+    }
+
+    [HttpGet("authors/{contentType}")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<string[]>> GetAuthorsByContentType(string contentType, [FromQuery] string? language = null)
+    {
+        var query = dbSet.Where(c => c.Type == contentType);
+
+        if (!string.IsNullOrEmpty(language))
+        {
+            query = query.Where(c => c.Language == language);
+        }
+
+        var authors = (await query.Select(c => c.Author).ToArrayAsync())
+            .Distinct()
+            .Where(str => !string.IsNullOrEmpty(str))
+            .ToArray();
+
+        return Ok(authors);
     }
 
     [HttpGet("tags/{contentType}")]

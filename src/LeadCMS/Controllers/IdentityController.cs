@@ -8,11 +8,14 @@ using System.Text;
 using LeadCMS.Configuration;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
+using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
+using LeadCMS.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
@@ -22,25 +25,31 @@ namespace LeadCMS.Controllers;
 [Route("api/[controller]")]
 public class IdentityController : ControllerBase
 {
-    private readonly SignInManager<User> signInManager;
-    private readonly IOptions<JwtConfig> jwtConfig;
     private readonly IOptions<AzureADConfig> azureAdConfig;
     private readonly UserManager<User> userManager;
     private readonly IEmailFromTemplateService emailFromTemplateService;
+    private readonly ITokenService tokenService;
+    private readonly IDeviceAuthService deviceAuthService;
+    private readonly IIdentityService identityService;
+    private readonly IConfiguration configuration;
 
     public IdentityController(
-        SignInManager<User> signInManager,
-        IOptions<JwtConfig> jwtConfig,
         IOptions<AzureADConfig> azureAdConfig,
         UserManager<User> userManager,
         IEmailService emailService,
-        IEmailFromTemplateService emailFromTemplateService)
+        IEmailFromTemplateService emailFromTemplateService,
+        ITokenService tokenService,
+        IDeviceAuthService deviceAuthService,
+        IIdentityService identityService,
+        IConfiguration configuration)
     {
-        this.signInManager = signInManager;
-        this.jwtConfig = jwtConfig;
         this.azureAdConfig = azureAdConfig;
         this.userManager = userManager;
         this.emailFromTemplateService = emailFromTemplateService;
+        this.tokenService = tokenService;
+        this.deviceAuthService = deviceAuthService;
+        this.identityService = identityService;
+        this.configuration = configuration;
     }
 
     [HttpGet("azure-login")]
@@ -92,62 +101,8 @@ public class IdentityController : ControllerBase
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult> Login([FromBody] LoginDto input)
     {
-        var user = await userManager.FindByEmailAsync(input.Email);
-
-        if (user == null)
-        {
-            throw new UnauthorizedException();
-        }
-
-        if (!user.EmailConfirmed)
-        {
-            throw new IdentityException("Email is not confirmed");
-        }
-
-        if (await userManager.IsLockedOutAsync(user))
-        {
-            throw new IdentityException("Account locked out");
-        }
-
-        var signResult = await signInManager.CheckPasswordSignInAsync(user, input.Password, true);
-
-        if (!signResult.Succeeded)
-        {
-            if (signResult.IsLockedOut)
-            {
-                throw new TooManyRequestsException();
-            }
-            else
-            {
-                throw new UnauthorizedException();
-            }
-        }
-
-        // Update last login time
-        user.LastTimeLoggedIn = DateTime.UtcNow;
-        await userManager.UpdateAsync(user);
-
-        var authClaims = new List<Claim>
-        {
-            new(ClaimTypes.Email, user.Email!),
-            new(ClaimTypes.Name, user.UserName!),
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-        };
-
-        var roles = await userManager.GetRolesAsync(user);
-        foreach (var role in roles)
-        {
-            authClaims.Add(new Claim(ClaimTypes.Role, role));
-        }
-
-        var token = GetToken(authClaims);
-
-        return Ok(new JWTokenDto()
-        {
-            Token = new JwtSecurityTokenHandler().WriteToken(token),
-            Expiration = token.ValidTo,
-        });
+        var token = await tokenService.LoginWithPasswordAsync(input.Email, input.Password);
+        return Ok(token);
     }
 
     [HttpPost("forgot-password")]
@@ -163,20 +118,10 @@ public class IdentityController : ControllerBase
         }
 
         var token = await userManager.GeneratePasswordResetTokenAsync(user);
-        
-        // Try to get scheme and host from Origin header first, fallback to Request.Scheme and Request.Host
-        string scheme = Request.Scheme;
-        string host = Request.Host.Value;
-        
-        if (Request.Headers.TryGetValue("Origin", out var originValue) && 
-            !string.IsNullOrEmpty(originValue) && 
-            Uri.TryCreate(originValue!, UriKind.Absolute, out var originUri))
-        {
-            scheme = originUri.Scheme;
-            host = originUri.Authority;
-        }
-        
-        var resetUrl = $"{scheme}://{host}/auth/reset-password?userId={user.Id}&token={Uri.EscapeDataString(token)}";
+
+        // Build admin URL (prefers AdminUrl config, then Origin header, then request)
+        var adminBaseUrl = AppUrlHelper.GetAdminBaseUrl(configuration, Request);
+        var resetUrl = $"{adminBaseUrl}/auth/reset-password?userId={user.Id}&token={Uri.EscapeDataString(token)}";
 
         var templateArgs = new Dictionary<string, string>
         {
@@ -251,17 +196,107 @@ public class IdentityController : ControllerBase
         return Ok();
     }
 
-    private JwtSecurityToken GetToken(List<Claim> authClaims)
+    [HttpPost("exchange-token")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<JWTokenDto>> ExchangeToken([FromBody] TokenExchangeDto input)
     {
-        var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtConfig.Value.Secret));
+        try
+        {
+            var internalToken = await tokenService.ExchangeTokenAsync(input.MicrosoftToken);
+            return Ok(internalToken);
+        }
+        catch (Exception ex) when (ex is IdentityException || ex is UnauthorizedException)
+        {
+            return Unauthorized(ex.Message);
+        }
+    }
 
-        var token = new JwtSecurityToken(
-            issuer: jwtConfig.Value.Issuer,
-            audience: jwtConfig.Value.Audience,
-            expires: DateTime.Now.AddYears(1),
-            claims: authClaims,
-            signingCredentials: new SigningCredentials(authSigningKey, SecurityAlgorithms.HmacSha256));
+    [HttpPost("device/initiate")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<DeviceAuthInitiateDto>> InitiateDeviceAuth()
+    {
+        var baseUrl = AppUrlHelper.GetAdminBaseUrl(configuration, Request);
+        var deviceAuth = await deviceAuthService.InitiateDeviceAuthAsync(baseUrl);
+        return Ok(deviceAuth);
+    }
 
-        return token;
-    }    
+    [HttpPost("device/poll")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<JWTokenDto>> PollDeviceAuth([FromBody] DeviceAuthPollDto input)
+    {
+        var result = await deviceAuthService.PollDeviceAuthAsync(input.DeviceCode);
+
+        return result.Status switch
+        {
+            DeviceAuthStatus.Completed when !string.IsNullOrEmpty(result.Token) => Ok(new JWTokenDto
+            {
+                Token = result.Token,
+                Expiration = result.TokenExpiration ?? DateTime.UtcNow.AddYears(1),
+            }),
+            DeviceAuthStatus.Pending => Accepted(new { status = "authorization_pending", message = "User has not yet authorized the device" }),
+            DeviceAuthStatus.Denied => BadRequest(new { error = "access_denied", error_description = result.ErrorDescription ?? "User denied the authorization request" }),
+            DeviceAuthStatus.Expired => BadRequest(new { error = "expired_token", error_description = "Device code has expired" }),
+            _ => BadRequest(new { error = "invalid_request", error_description = result.ErrorDescription ?? "Invalid device code or unexpected status" })
+        };
+    }
+
+    [HttpPost("device/verify")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult> VerifyDeviceAuth([FromBody] DeviceAuthVerificationDto input)
+    {
+        // Get current user claims
+        var user = await userManager.GetUserAsync(User);
+        if (user == null)
+        {
+            return Unauthorized("User not found");
+        }
+
+        var userClaims = await identityService.CreateUserClaims(user);
+
+        // Verify the user code and associate with user
+        var deviceCode = await deviceAuthService.VerifyUserCodeAsync(input.UserCode, userClaims);
+        if (deviceCode == null)
+        {
+            return BadRequest(new { error = "invalid_user_code", error_description = "Invalid or expired user code" });
+        }
+
+        // Generate token for the device auth
+        var tokenResult = await tokenService.GenerateTokenAsync(userClaims);
+
+        // Complete the device auth with the token
+        var completed = await deviceAuthService.CompleteDeviceAuthAsync(deviceCode, tokenResult.Token, tokenResult.Expiration);
+        if (!completed)
+        {
+            return BadRequest(new { error = "completion_failed", error_description = "Failed to complete device authorization" });
+        }
+
+        return Ok(new { message = "Device authorization completed successfully. You can now close this window." });
+    }
+
+    [HttpPost("device/deny")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult> DenyDeviceAuth([FromBody] DeviceAuthVerificationDto input)
+    {
+        var denied = await deviceAuthService.DenyDeviceAuthAsync(input.UserCode, "User denied authorization");
+        if (!denied)
+        {
+            return BadRequest(new { error = "invalid_user_code", error_description = "Invalid or expired user code" });
+        }
+
+        return Ok(new { message = "Device authorization denied successfully." });
+    }
 }
