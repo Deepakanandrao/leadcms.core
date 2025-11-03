@@ -86,8 +86,6 @@ public class ContentTests : SimpleTableTests<Content, TestContent, ContentUpdate
             Type = getResponse.Type, // Keep the same type
             Author = "Updated Author",
             Language = getResponse.Language, // Keep the same language
-            CoverImageUrl = string.Empty,
-            CoverImageAlt = string.Empty,
             TranslationKey = null, // Set to null
             Category = string.Empty, // Set to empty string (which should be saved as empty)
             Tags = Array.Empty<string>(),

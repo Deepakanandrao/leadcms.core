@@ -29,9 +29,9 @@ public class Content : BaseEntity, ICommentable, ITranslatable
     [Required]
     public string Body { get; set; } = string.Empty;
 
-    public string CoverImageUrl { get; set; } = string.Empty;
+    public string? CoverImageUrl { get; set; }
 
-    public string CoverImageAlt { get; set; } = string.Empty;
+    public string? CoverImageAlt { get; set; }
 
     [Searchable]
     [Required]
