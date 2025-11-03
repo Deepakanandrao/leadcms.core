@@ -14,9 +14,44 @@ on:
         type: string
 
 jobs:
-  # Job 1: Build frontend and .NET application
-  build-app:
-    name: Build Application
+  # Job 1a: Build frontend (runs in parallel with backend)
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout frontend (leadcms.admin)
+      uses: actions/checkout@v4
+      with:
+        repository: LeadCMS/leadcms.admin
+        ref: develop
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.19.0'
+        cache: 'npm'
+
+    - name: Set frontend environment variables
+      run: |
+        echo "TINYMCE_API_KEY=${{ secrets.TINYMCE_API_KEY }}" > ./.env
+        echo "VERSION=${{ github.event.inputs.version }}" >> ./.env
+
+    - name: Install frontend dependencies
+      run: npm ci
+
+    - name: Build frontend
+      run: npm run build
+
+    - name: Upload frontend build
+      uses: actions/upload-artifact@v4
+      with:
+        name: frontend-dist
+        path: dist/
+        retention-days: 1
+
+  # Job 1b: Build and test backend (runs in parallel with frontend)
+  build-backend:
+    name: Build & Test Backend
     runs-on: ubuntu-latest
     permissions:
       checks: write
@@ -24,53 +59,16 @@ jobs:
     env:
       BUILD_CONFIG: 'Release'
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         ref: 'develop'
 
-    # Checkout and build frontend from leadcms.admin (develop branch)
-    - name: Checkout frontend (leadcms.admin)
-      uses: actions/checkout@v3
-      with:
-        repository: LeadCMS/leadcms.admin
-        ref: develop
-        path: leadcms.admin
-
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20.19.0'
-        cache: 'npm'
-        cache-dependency-path: leadcms.admin/package-lock.json
-
-    - name: Set frontend environment variables
-      run: |
-        echo "TINYMCE_API_KEY=${{ secrets.TINYMCE_API_KEY }}" > ./leadcms.admin/.env
-        echo "VERSION=${{ github.event.inputs.version }}" >> ./leadcms.admin/.env
-
-    - name: Install frontend dependencies
-      working-directory: ./leadcms.admin
-      run: npm ci
-
-    - name: Build frontend
-      working-directory: ./leadcms.admin
-      run: npm run build
-
-    - name: Copy frontend build to backend wwwroot
-      run: |
-        mkdir -p ./src/LeadCMS/wwwroot
-        rm -rf ./src/LeadCMS/wwwroot/*
-        cp -r ./leadcms.admin/dist/* ./src/LeadCMS/wwwroot/
-
     - name: Setup .NET
-      uses: actions/setup-dotnet@v3
+      uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 8.0.x
-
-    - name: Setup NuGet
-      uses: nuget/setup-nuget@v1
-      with:
-        nuget-version: 'latest'
+        cache: true
+        cache-dependency-path: '**/packages.lock.json'
 
     - name: Docker Compose Setup
       if: ${{ github.event.inputs.run_tests == 'true' }}
@@ -84,7 +82,7 @@ jobs:
 
     - name: Test
       if: ${{ github.event.inputs.run_tests == 'true' }}
-      run: dotnet test --no-build --configuration $BUILD_CONFIG --logger "trx" --verbosity d --results-directory "./"
+      run: dotnet test --no-build --configuration $BUILD_CONFIG --logger "trx" --verbosity normal --results-directory "./"
 
     - name: Upload test results
       if: ${{ github.event.inputs.run_tests == 'true' }} && (success() || failure())
@@ -92,23 +90,20 @@ jobs:
       with:
         name: test-results
         path: ./*.trx
+        retention-days: 7
 
-    # Upload build artifacts for Docker build jobs
-    - name: Upload build context
+    - name: Upload NuGet packages
       uses: actions/upload-artifact@v4
       with:
-        name: build-context
-        path: |
-          ./
-          !./leadcms.admin
-          !./TestResults
+        name: nuget-packages
+        path: '**/*.nupkg'
         retention-days: 1
 
   # Job 2: Build Docker images in parallel for each platform
   build-docker:
     name: Build Docker (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
-    needs: build-app
+    needs: [build-frontend, build-backend]
     strategy:
       matrix:
         include:
@@ -118,20 +113,15 @@ jobs:
             runner: ubuntu-24.04-arm
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         ref: 'develop'
 
     - name: Download frontend build
       uses: actions/download-artifact@v4
       with:
-        name: build-context
-        path: ./temp-build
-
-    - name: Copy wwwroot from build
-      run: |
-        mkdir -p ./src/LeadCMS/wwwroot
-        cp -r ./temp-build/src/LeadCMS/wwwroot/* ./src/LeadCMS/wwwroot/ || true
+        name: frontend-dist
+        path: ./src/LeadCMS/wwwroot
 
     - name: Set up QEMU (only for cross-platform builds)
       if: matrix.platform != runner.arch
@@ -213,22 +203,22 @@ jobs:
         docker buildx imagetools inspect leadcms/core:develop
         docker buildx imagetools inspect leadcms/core:${{ github.event.inputs.version }}
 
-  # Job 4: Publish to NuGet (runs after successful Docker build)
+  # Job 4: Publish to NuGet (can run in parallel with Docker merge)
   publish-nuget:
     name: Publish to NuGet
     runs-on: ubuntu-latest
-    needs: merge-docker
+    needs: build-backend
     steps:
-    - name: Download build context
+    - name: Download NuGet packages
       uses: actions/download-artifact@v4
       with:
-        name: build-context
-        path: ./
+        name: nuget-packages
+        path: ./packages
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v3
+      uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 8.0.x
 
     - name: Publish to NuGet
-      run: dotnet nuget push **/*.nupkg --source 'https://api.nuget.org/v3/index.json' --api-key ${{secrets.NUGET_API_KEY}} --skip-duplicate
+      run: dotnet nuget push ./packages/**/*.nupkg --source 'https://api.nuget.org/v3/index.json' --api-key ${{secrets.NUGET_API_KEY}} --skip-duplicate

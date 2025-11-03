@@ -461,3 +461,4 @@ logs/
 .env
 .mono
 mailpit_auth
+*.pem
