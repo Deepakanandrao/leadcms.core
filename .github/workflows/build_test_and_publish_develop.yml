@@ -85,9 +85,6 @@ jobs:
       if: ${{ github.event.inputs.run_tests == 'true' }}
       run: dotnet test --no-build --configuration $BUILD_CONFIG --logger "trx" --verbosity d --results-directory "./"
 
-    - name: Pack
-      run: dotnet pack --configuration $BUILD_CONFIG -p:Version=${{ github.event.inputs.version }} --no-build
-
     - name: Upload test results
       if: ${{ github.event.inputs.run_tests == 'true' }} && (success() || failure())
       uses: actions/upload-artifact@v4

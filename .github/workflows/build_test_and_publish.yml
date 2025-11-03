@@ -51,9 +51,6 @@ jobs:
     - name: Test
       run: dotnet test --no-build --configuration $BUILD_CONFIG --logger "trx" --verbosity d --results-directory "./"
 
-    - name: Pack
-      run: dotnet pack --configuration $BUILD_CONFIG -p:Version=${{ steps.branch_name.outputs.value }} --no-build
-
     - name: Upload test results
       uses: actions/upload-artifact@v4
       if: success() || failure()
