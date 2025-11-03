@@ -21,7 +21,7 @@ jobs:
       version: ${{ steps.branch_name.outputs.value }}
       is_prerelease: ${{ steps.check_prerelease.outputs.is_prerelease }}
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Extract version from tag
       shell: bash
@@ -38,14 +38,17 @@ jobs:
         fi
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v3
+      uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 8.0.x
 
-    - name: Setup NuGet
-      uses: nuget/setup-nuget@v1
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
       with:
-        nuget-version: 'latest'
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
 
     - name: docker compose -f ./docker-compose/docker-compose.tests.yml up -d
       run: docker compose -f ./docker-compose/docker-compose.tests.yml up -d
@@ -87,7 +90,7 @@ jobs:
             runner: ubuntu-24.04-arm
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up QEMU (only for cross-platform builds)
       if: matrix.platform != runner.arch
