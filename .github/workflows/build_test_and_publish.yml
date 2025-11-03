@@ -79,18 +79,21 @@ jobs:
   # Job 2: Build Docker images in parallel for each platform
   build-docker:
     name: Build Docker (${{ matrix.platform }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     needs: build-app
     strategy:
       matrix:
-        platform:
-          - linux/amd64
-          - linux/arm64
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Set up QEMU
+    - name: Set up QEMU (only for cross-platform builds)
+      if: matrix.platform != runner.arch
       uses: docker/setup-qemu-action@v3
 
     - name: Set up Docker Buildx
