@@ -155,3 +155,10 @@ public class ContentImportDto : BaseImportDto
     [Optional]
     public DateTime? PublishedAt { get; set; }
 }
+
+public class ContentWithStatisticsDto
+{
+    public List<ContentDetailsDto> Content { get; set; } = new List<ContentDetailsDto>();
+
+    public Dictionary<string, long> Statistics { get; set; } = new Dictionary<string, long>();
+}

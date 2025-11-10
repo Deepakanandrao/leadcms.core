@@ -105,6 +105,54 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         return result;
     }
 
+    [HttpGet("with-statistics")]
+    [AllowAnonymous]
+    [IncludeTranslationsParameter(Description = "Include translation mappings in the response")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ContentWithStatisticsDto>> GetWithStatistics([FromQuery] string? query)
+    {
+        // Check for includeTranslations parameter manually from query string
+        var includeTranslations = Request.Query.ContainsKey("includeTranslations") &&
+                                 bool.TryParse(Request.Query["includeTranslations"], out var parsed) && parsed;
+
+        // Get the content using the base method
+        var returnedItems = (await base.Get(query)).Result;
+        var items = (List<ContentDetailsDto>)((ObjectResult)returnedItems!).Value!;
+
+        // Get statistics for all content types using query without type filter
+        var allStatistics = await GetContentTypeStatisticsWithQuery();
+
+        // Process items (resolve media URLs if needed)
+        var mode = MediaResolutionHelper.GetResolutionMode(HttpContext);
+        if (mode == "absolute")
+        {
+            foreach (var item in items)
+            {
+                if (!string.IsNullOrWhiteSpace(item.CoverImageUrl))
+                {
+                    item.CoverImageUrl = mediaResolver.Resolve(item.CoverImageUrl, HttpContext, mode);
+                }
+
+                item.Body = MediaUriTransformer.Transform(item.Body, mediaResolver, HttpContext, mode);
+            }
+        }
+
+        if (includeTranslations)
+        {
+            await PopulateTranslationsAsync(items);
+        }
+
+        var result = new ContentWithStatisticsDto
+        {
+            Content = items,
+            Statistics = allStatistics,
+        };
+
+        return Ok(result);
+    }
+
     // GET api/{entity}s/5
     [HttpGet("{id}")]
     [AllowAnonymous]
@@ -701,6 +749,66 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
             // Log the error but don't fail the main operation
             logger.LogWarning(ex, "Failed to clear MDX component cache for content type: {ContentType}", contentType);
         }
+    }
+
+    private async Task<Dictionary<string, long>> GetContentTypeStatisticsWithQuery()
+    {
+        var statistics = new Dictionary<string, long>();
+
+        // Get all content types from the database
+        var contentTypes = await dbContext.ContentTypes!
+            .Select(ct => ct.Uid)
+            .ToListAsync();
+
+        // Initialize all content types with 0 count
+        foreach (var contentType in contentTypes)
+        {
+            statistics[contentType] = 0;
+        }
+
+        // Get individual counts for each content type
+        foreach (var contentType in contentTypes)
+        {
+            var count = await GetCountForContentType(contentType);
+            statistics[contentType] = count;
+        }
+
+        return statistics;
+    }
+
+    private async Task<long> GetCountForContentType(string contentType)
+    {
+        // Parse existing query commands
+        var queryString = HttpContext.Request.QueryString.HasValue
+            ? System.Web.HttpUtility.UrlDecode(HttpContext.Request.QueryString.ToString())
+            : string.Empty;
+
+        var queryCommands = string.IsNullOrEmpty(queryString)
+            ? new List<QueryCommand>()
+            : QueryStringParser.Parse(queryString).ToList();
+
+        // Remove any existing type filters
+        queryCommands.RemoveAll(cmd =>
+            cmd.Type == FilterType.Where &&
+            cmd.Props.Length > 0 &&
+            cmd.Props[0].Equals("type", StringComparison.OrdinalIgnoreCase));
+
+        // Add the specific content type filter
+        queryCommands.Add(new QueryCommand
+        {
+            Type = FilterType.Where,
+            Props = new[] { "type" },
+            Value = contentType,
+            Source = $"filter[where][type]={contentType}",
+        });
+
+        // Use a high limit to get total count, not paged results
+        var queryBuilder = new QueryModelBuilder<Content>(queryCommands, int.MaxValue, dbContext);
+        var dbSetQuery = dbContext.Set<Content>();
+        var queryProvider = new DBQueryProvider<Content>(dbSetQuery!.AsQueryable<Content>(), queryBuilder);
+
+        var result = await queryProvider.GetResult();
+        return result.TotalCount;
     }
 
     /// <summary>
