@@ -14,7 +14,7 @@ public class ContentTranslationMetadata
 
     public string Category { get; set; } = string.Empty;
 
-    public string CoverImageAlt { get; set; } = string.Empty;
+    public string? CoverImageAlt { get; set; }
 
     public string[] Tags { get; set; } = Array.Empty<string>();
 }
