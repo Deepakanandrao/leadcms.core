@@ -47,5 +47,7 @@ namespace LeadCMS.Plugin.Site.DTOs
 
         [Required]
         public string Language { get; set; } = string.Empty;
+
+        public string RecaptchaToken { get; set; } = string.Empty;
     }
 }

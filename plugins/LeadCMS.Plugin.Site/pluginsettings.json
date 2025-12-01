@@ -3,5 +3,6 @@
   "ContactUs": {
     "To": [ "$CONTACTUS__TO__0" ]
   },
-  "SupportEmail": "support@leadcms.ai"
+  "SupportEmail": "support@leadcms.ai",
+  "RecaptchaSecretKey": "$RECAPTCHA_SECRET_KEY"
 }

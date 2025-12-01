@@ -11,6 +11,8 @@ public class PluginSettings
     public ContactUsConfig ContactUs { get; set; } = new ContactUsConfig();
 
     public string SupportEmail { get; set; } = "support@leadcms.ai";
+
+    public string RecaptchaSecretKey { get; set; } = string.Empty;
 }
 
 public class ContactUsConfig
