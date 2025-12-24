@@ -458,8 +458,11 @@ public class SegmentService : ISegmentService
         if (property.Type == typeof(string))
         {
             var nullCheck = Expression.NotEqual(property, Expression.Constant(null, typeof(string)));
+            var toLowerMethod = typeof(string).GetMethod("ToLower", Type.EmptyTypes)!;
             var method = typeof(string).GetMethod("StartsWith", new[] { typeof(string) })!;
-            var startsWithCall = Expression.Call(property, method, Expression.Constant(value?.ToString() ?? string.Empty));
+            var loweredProperty = Expression.Call(property, toLowerMethod);
+            var loweredValue = (value?.ToString() ?? string.Empty).ToLower();
+            var startsWithCall = Expression.Call(loweredProperty, method, Expression.Constant(loweredValue));
             return Expression.AndAlso(nullCheck, startsWithCall);
         }
 
@@ -471,8 +474,11 @@ public class SegmentService : ISegmentService
         if (property.Type == typeof(string))
         {
             var nullCheck = Expression.NotEqual(property, Expression.Constant(null, typeof(string)));
+            var toLowerMethod = typeof(string).GetMethod("ToLower", Type.EmptyTypes)!;
             var method = typeof(string).GetMethod("EndsWith", new[] { typeof(string) })!;
-            var endsWithCall = Expression.Call(property, method, Expression.Constant(value?.ToString() ?? string.Empty));
+            var loweredProperty = Expression.Call(property, toLowerMethod);
+            var loweredValue = (value?.ToString() ?? string.Empty).ToLower();
+            var endsWithCall = Expression.Call(loweredProperty, method, Expression.Constant(loweredValue));
             return Expression.AndAlso(nullCheck, endsWithCall);
         }
 
