@@ -191,8 +191,6 @@ public class SegmentService : ISegmentService
                 throw new InvalidOperationException($"The following contact IDs do not exist: {string.Join(", ", invalidIds)}");
             }
         }
-
-        await Task.CompletedTask;
     }
 
     private Expression<Func<Contact, bool>>? BuildRuleGroupExpression(RuleGroup ruleGroup)
@@ -301,10 +299,18 @@ public class SegmentService : ISegmentService
                     comparison = BuildLessThanOrEqualExpression(property, rule.Value);
                     break;
                 case FieldOperator.IsTrue:
-                    comparison = Expression.Equal(property, Expression.Constant(true));
+                    if (property.Type == typeof(bool) || property.Type == typeof(bool?))
+                    {
+                        comparison = Expression.Equal(property, Expression.Constant(true, property.Type));
+                    }
+
                     break;
                 case FieldOperator.IsFalse:
-                    comparison = Expression.Equal(property, Expression.Constant(false));
+                    if (property.Type == typeof(bool) || property.Type == typeof(bool?))
+                    {
+                        comparison = Expression.Equal(property, Expression.Constant(false, property.Type));
+                    }
+
                     break;
                 case FieldOperator.In:
                     comparison = BuildInExpression(property, rule.Value);
@@ -314,9 +320,9 @@ public class SegmentService : ISegmentService
                     break;
             }
         }
-        catch
+        catch (Exception)
         {
-            // If expression building fails, return null to skip this rule
+            // If expression building fails due to type mismatch or other issues, skip this rule
             return null;
         }
 
@@ -342,13 +348,14 @@ public class SegmentService : ISegmentService
                 "phone" => "Phone",
                 "companyName" => "CompanyName",
                 "jobTitle" => "JobTitle",
-                _ => fieldId
+                _ => fieldId,
             };
 
             return Expression.Property(parameter, propertyName);
         }
-        catch
+        catch (ArgumentException)
         {
+            // Property doesn't exist on Contact entity
             return null;
         }
     }
@@ -551,8 +558,19 @@ public class SegmentService : ISegmentService
 
             return Convert.ChangeType(value, targetType);
         }
-        catch
+        catch (FormatException)
         {
+            // Value format is incorrect for target type
+            return value;
+        }
+        catch (InvalidCastException)
+        {
+            // Cannot cast value to target type
+            return value;
+        }
+        catch (OverflowException)
+        {
+            // Value is too large or too small for target type
             return value;
         }
     }
