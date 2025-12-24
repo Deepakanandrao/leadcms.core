@@ -11,7 +11,6 @@ using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Controllers;
 
@@ -33,35 +32,6 @@ public class SegmentsController : BaseController<Segment, SegmentCreateDto, Segm
         this.segmentService = segmentService;
     }
 
-    [HttpGet("{id}")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public override async Task<ActionResult<SegmentDetailsDto>> GetOne(int id)
-    {
-        var segment = await dbContext.Segments!
-            .Where(s => s.Id == id)
-            .FirstOrDefaultAsync();
-
-        if (segment == null)
-        {
-            throw new EntityNotFoundException("Segment", id.ToString());
-        }
-
-        var dto = mapper.Map<SegmentDetailsDto>(segment);
-        return Ok(dto);
-    }
-
-    [HttpGet]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public override async Task<ActionResult<List<SegmentDetailsDto>>> Get([FromQuery] string? query)
-    {
-        return await base.Get(query);
-    }
-
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -71,13 +41,8 @@ public class SegmentsController : BaseController<Segment, SegmentCreateDto, Segm
     {
         var segment = mapper.Map<Segment>(value);
 
-        // Validate segment
-        await segmentService.ValidateSegmentAsync(segment);
+        await segmentService.SaveAsync(segment);
 
-        // Calculate initial contact count
-        segment.ContactCount = await segmentService.CalculateContactCountAsync(segment);
-
-        await dbSet.AddAsync(segment);
         await dbContext.SaveChangesAsync();
 
         var dto = mapper.Map<SegmentDetailsDto>(segment);
@@ -91,37 +56,16 @@ public class SegmentsController : BaseController<Segment, SegmentCreateDto, Segm
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public override async Task<ActionResult<SegmentDetailsDto>> Patch(int id, [FromBody] SegmentUpdateDto value)
     {
-        var segment = await dbContext.Segments!
-            .Where(s => s.Id == id)
-            .FirstOrDefaultAsync();
-
-        if (segment == null)
-        {
-            throw new EntityNotFoundException("Segment", id.ToString());
-        }
+        var segment = await FindOrThrowNotFound(id);
 
         mapper.Map(value, segment);
 
-        // Validate segment
-        await segmentService.ValidateSegmentAsync(segment);
-
-        // Recalculate contact count
-        segment.ContactCount = await segmentService.CalculateContactCountAsync(segment);
+        await segmentService.SaveAsync(segment);
 
         await dbContext.SaveChangesAsync();
 
         var dto = mapper.Map<SegmentDetailsDto>(segment);
         return Ok(dto);
-    }
-
-    [HttpDelete("{id}")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public override async Task<ActionResult> Delete(int id)
-    {
-        return await base.Delete(id);
     }
 
     [HttpPost("preview")]

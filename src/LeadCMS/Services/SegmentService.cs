@@ -26,19 +26,15 @@ public class SegmentService : ISegmentService
 
     public async Task<int> CalculateContactCountAsync(Segment segment)
     {
-        if (segment.Type == "static")
+        if (segment.Type == SegmentType.Static)
         {
             return segment.ContactIds?.Length ?? 0;
         }
 
-        if (segment.Type == "dynamic" && segment.Definition != null)
+        if (segment.Type == SegmentType.Dynamic && segment.Definition != null)
         {
-            var definition = System.Text.Json.JsonSerializer.Deserialize<SegmentDefinition>(segment.Definition);
-            if (definition != null)
-            {
-                var contacts = await EvaluateDynamicSegmentAsync(definition);
-                return contacts.Count;
-            }
+            var query = BuildDynamicSegmentQuery(segment.Definition);
+            return await query.CountAsync();
         }
 
         return 0;
@@ -57,7 +53,7 @@ public class SegmentService : ISegmentService
 
         List<Contact> contacts;
 
-        if (segment.Type == "static")
+        if (segment.Type == SegmentType.Static)
         {
             var contactIds = segment.ContactIds ?? Array.Empty<int>();
             var contactsQuery = dbContext.Contacts!.Where(c => contactIds.Contains(c.Id));
@@ -78,15 +74,9 @@ public class SegmentService : ISegmentService
 
             contacts = await contactsQuery.ToListAsync();
         }
-        else if (segment.Type == "dynamic" && segment.Definition != null)
+        else if (segment.Type == SegmentType.Dynamic && segment.Definition != null)
         {
-            var definition = System.Text.Json.JsonSerializer.Deserialize<SegmentDefinition>(segment.Definition);
-            if (definition == null)
-            {
-                return new List<Contact>();
-            }
-
-            contacts = await EvaluateDynamicSegmentAsync(definition, limit);
+            contacts = await EvaluateDynamicSegmentAsync(segment.Definition, limit);
 
             if (!string.IsNullOrEmpty(query))
             {
@@ -107,7 +97,9 @@ public class SegmentService : ISegmentService
 
     public async Task<SegmentPreviewResultDto> PreviewSegmentAsync(SegmentDefinition definition, int limit = 100)
     {
-        var contacts = await EvaluateDynamicSegmentAsync(definition, limit);
+        var query = BuildDynamicSegmentQuery(definition);
+        var totalCount = await query.CountAsync();
+        var contacts = await query.Take(limit).ToListAsync();
 
         var contactDtos = mapper.Map<List<ContactDetailsDto>>(contacts);
         contactDtos.ForEach(c =>
@@ -117,12 +109,78 @@ public class SegmentService : ISegmentService
 
         return new SegmentPreviewResultDto
         {
-            ContactCount = contacts.Count,
+            ContactCount = totalCount,
             Contacts = contactDtos,
         };
     }
 
     public async Task<List<Contact>> EvaluateDynamicSegmentAsync(SegmentDefinition definition, int? limit = null)
+    {
+        var query = BuildDynamicSegmentQuery(definition);
+
+        if (limit.HasValue)
+        {
+            query = query.Take(limit.Value);
+        }
+
+        return await query.ToListAsync();
+    }
+
+    public async Task ValidateSegmentAsync(Segment segment)
+    {
+        // Check for unique name
+        var existingSegment = await dbContext.Segments!
+            .Where(s => s.Name == segment.Name && s.Id != segment.Id)
+            .FirstOrDefaultAsync();
+
+        if (existingSegment != null)
+        {
+            throw new InvalidOperationException($"A segment with the name '{segment.Name}' already exists.");
+        }
+
+        // Validate dynamic segments have definition
+        if (segment.Type == SegmentType.Dynamic && segment.Definition == null)
+        {
+            throw new InvalidOperationException("Dynamic segments must have a definition with at least one include rule.");
+        }
+
+        // Validate static segments
+        if (segment.Type == SegmentType.Static && segment.ContactIds != null && segment.ContactIds.Length > 0)
+        {
+            // Validate that all contact IDs exist
+            var contactIds = segment.ContactIds;
+            var existingContactIds = await dbContext.Contacts!
+                .Where(c => contactIds.Contains(c.Id))
+                .Select(c => c.Id)
+                .ToListAsync();
+
+            var invalidIds = contactIds.Except(existingContactIds).ToArray();
+            if (invalidIds.Length > 0)
+            {
+                throw new InvalidOperationException($"The following contact IDs do not exist: {string.Join(", ", invalidIds)}");
+            }
+        }
+    }
+
+    public async Task SaveAsync(Segment segment)
+    {
+        // Validate segment
+        await ValidateSegmentAsync(segment);
+
+        // Calculate contact count
+        segment.ContactCount = await CalculateContactCountAsync(segment);
+
+        if (segment.Id > 0)
+        {
+            dbContext.Segments!.Update(segment);
+        }
+        else
+        {
+            await dbContext.Segments!.AddAsync(segment);
+        }
+    }
+
+    private IQueryable<Contact> BuildDynamicSegmentQuery(SegmentDefinition definition)
     {
         var query = dbContext.Contacts!.AsQueryable();
 
@@ -149,48 +207,7 @@ public class SegmentService : ISegmentService
             }
         }
 
-        if (limit.HasValue)
-        {
-            query = query.Take(limit.Value);
-        }
-
-        return await query.ToListAsync();
-    }
-
-    public async Task ValidateSegmentAsync(Segment segment)
-    {
-        // Check for unique name
-        var existingSegment = await dbContext.Segments!
-            .Where(s => s.Name == segment.Name && s.Id != segment.Id)
-            .FirstOrDefaultAsync();
-
-        if (existingSegment != null)
-        {
-            throw new InvalidOperationException($"A segment with the name '{segment.Name}' already exists.");
-        }
-
-        // Validate dynamic segments have definition
-        if (segment.Type == "dynamic" && string.IsNullOrEmpty(segment.Definition))
-        {
-            throw new InvalidOperationException("Dynamic segments must have a definition with at least one include rule.");
-        }
-
-        // Validate static segments
-        if (segment.Type == "static" && segment.ContactIds != null && segment.ContactIds.Length > 0)
-        {
-            // Validate that all contact IDs exist
-            var contactIds = segment.ContactIds;
-            var existingContactIds = await dbContext.Contacts!
-                .Where(c => contactIds.Contains(c.Id))
-                .Select(c => c.Id)
-                .ToListAsync();
-
-            var invalidIds = contactIds.Except(existingContactIds).ToArray();
-            if (invalidIds.Length > 0)
-            {
-                throw new InvalidOperationException($"The following contact IDs do not exist: {string.Join(", ", invalidIds)}");
-            }
-        }
+        return query;
     }
 
     private Expression<Func<Contact, bool>>? BuildRuleGroupExpression(RuleGroup ruleGroup)
@@ -362,12 +379,44 @@ public class SegmentService : ISegmentService
 
     private Expression BuildEqualsExpression(Expression property, object? value)
     {
+        if (property.Type == typeof(string))
+        {
+            var convertedValue = ConvertValue(value, typeof(string));
+            if (convertedValue == null)
+            {
+                return Expression.Equal(property, Expression.Constant(null, typeof(string)));
+            }
+
+            var toLowerMethod = typeof(string).GetMethod("ToLower", Type.EmptyTypes)!;
+            var loweredProperty = Expression.Call(property, toLowerMethod);
+            var loweredValue = convertedValue.ToString()!.ToLower();
+            var stringConstantValue = Expression.Constant(loweredValue, typeof(string));
+            var notNull = Expression.NotEqual(property, Expression.Constant(null, typeof(string)));
+            return Expression.AndAlso(notNull, Expression.Equal(loweredProperty, stringConstantValue));
+        }
+
         var constantValue = Expression.Constant(ConvertValue(value, property.Type), property.Type);
         return Expression.Equal(property, constantValue);
     }
 
     private Expression BuildNotEqualsExpression(Expression property, object? value)
     {
+        if (property.Type == typeof(string))
+        {
+            var convertedValue = ConvertValue(value, typeof(string));
+            if (convertedValue == null)
+            {
+                return Expression.NotEqual(property, Expression.Constant(null, typeof(string)));
+            }
+
+            var toLowerMethod = typeof(string).GetMethod("ToLower", Type.EmptyTypes)!;
+            var loweredProperty = Expression.Call(property, toLowerMethod);
+            var loweredValue = convertedValue.ToString()!.ToLower();
+            var stringConstantValue = Expression.Constant(loweredValue, typeof(string));
+            var notNull = Expression.NotEqual(property, Expression.Constant(null, typeof(string)));
+            return Expression.AndAlso(notNull, Expression.NotEqual(loweredProperty, stringConstantValue));
+        }
+
         var constantValue = Expression.Constant(ConvertValue(value, property.Type), property.Type);
         return Expression.NotEqual(property, constantValue);
     }
@@ -377,8 +426,11 @@ public class SegmentService : ISegmentService
         if (property.Type == typeof(string))
         {
             var nullCheck = Expression.NotEqual(property, Expression.Constant(null, typeof(string)));
+            var toLowerMethod = typeof(string).GetMethod("ToLower", Type.EmptyTypes)!;
             var method = typeof(string).GetMethod("Contains", new[] { typeof(string) })!;
-            var containsCall = Expression.Call(property, method, Expression.Constant(value?.ToString() ?? string.Empty));
+            var loweredProperty = Expression.Call(property, toLowerMethod);
+            var loweredValue = (value?.ToString() ?? string.Empty).ToLower();
+            var containsCall = Expression.Call(loweredProperty, method, Expression.Constant(loweredValue));
             return Expression.AndAlso(nullCheck, containsCall);
         }
 
@@ -390,8 +442,11 @@ public class SegmentService : ISegmentService
         if (property.Type == typeof(string))
         {
             var isNull = Expression.Equal(property, Expression.Constant(null, typeof(string)));
+            var toLowerMethod = typeof(string).GetMethod("ToLower", Type.EmptyTypes)!;
             var method = typeof(string).GetMethod("Contains", new[] { typeof(string) })!;
-            var notContainsCall = Expression.Not(Expression.Call(property, method, Expression.Constant(value?.ToString() ?? string.Empty)));
+            var loweredProperty = Expression.Call(property, toLowerMethod);
+            var loweredValue = (value?.ToString() ?? string.Empty).ToLower();
+            var notContainsCall = Expression.Not(Expression.Call(loweredProperty, method, Expression.Constant(loweredValue)));
             return Expression.OrElse(isNull, notContainsCall);
         }
 

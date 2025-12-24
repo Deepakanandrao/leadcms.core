@@ -5,12 +5,12 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using LeadCMS.DataAnnotations;
+using LeadCMS.DTOs;
 using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Entities;
 
 [Table("segment")]
-[SupportsChangeLog]
 [Index(nameof(Name), IsUnique = true)]
 public class Segment : BaseEntity
 {
@@ -23,12 +23,12 @@ public class Segment : BaseEntity
 
     [Required]
     [Searchable]
-    public string Type { get; set; } = string.Empty; // "dynamic" or "static"
+    public SegmentType Type { get; set; } = SegmentType.Dynamic;
 
     public int ContactCount { get; set; }
 
     [Column(TypeName = "jsonb")]
-    public string? Definition { get; set; } // JSON string for SegmentDefinition
+    public SegmentDefinition? Definition { get; set; }
 
     [Column(TypeName = "integer[]")]
     public int[]? ContactIds { get; set; }
@@ -36,4 +36,10 @@ public class Segment : BaseEntity
     [Searchable]
     [Column(TypeName = "text[]")]
     public string[]? Tags { get; set; }
+}
+
+public enum SegmentType
+{
+    Dynamic,
+    Static,
 }

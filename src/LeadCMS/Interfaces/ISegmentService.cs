@@ -18,4 +18,6 @@ public interface ISegmentService
     Task<List<Contact>> EvaluateDynamicSegmentAsync(SegmentDefinition definition, int? limit = null);
 
     Task ValidateSegmentAsync(Segment segment);
+
+    Task SaveAsync(Segment segment);
 }

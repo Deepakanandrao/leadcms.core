@@ -202,17 +202,12 @@ public class AutoMapperProfiles : Profile
 
         // Segment mappings
         CreateMap<SegmentCreateDto, Segment>()
-            .ForMember(dest => dest.Definition, opt => opt.MapFrom(src => SerializeDefinition(src.Definition)))
-            .ReverseMap()
-            .ForMember(dest => dest.Definition, opt => opt.MapFrom(src => DeserializeDefinition(src.Definition)));
+            .ReverseMap();
         CreateMap<SegmentUpdateDto, Segment>()
-            .ForMember(dest => dest.Definition, opt => opt.MapFrom(src => SerializeDefinition(src.Definition)))
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<Segment, SegmentUpdateDto>()
-            .ForMember(dest => dest.Definition, opt => opt.MapFrom(src => DeserializeDefinition(src.Definition)))
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<Segment, SegmentDetailsDto>()
-            .ForMember(dest => dest.Definition, opt => opt.MapFrom(src => DeserializeDefinition(src.Definition)))
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
 
         // Media mappings
@@ -224,26 +219,6 @@ public class AutoMapperProfiles : Profile
     private static bool PropertyNeedsMapping(object source, object target, object sourceValue, object targetValue)
     {
         return sourceValue != null;
-    }
-
-    private static string? SerializeDefinition(SegmentDefinition? definition)
-    {
-        if (definition == null)
-        {
-            return null;
-        }
-
-        return System.Text.Json.JsonSerializer.Serialize(definition);
-    }
-
-    private static SegmentDefinition? DeserializeDefinition(string? definition)
-    {
-        if (string.IsNullOrEmpty(definition))
-        {
-            return null;
-        }
-
-        return System.Text.Json.JsonSerializer.Deserialize<SegmentDefinition>(definition);
     }
 }
 

@@ -3,7 +3,7 @@
 // </copyright>
 
 using System.ComponentModel.DataAnnotations;
-using System.Text.Json.Serialization;
+using LeadCMS.Entities;
 
 namespace LeadCMS.DTOs;
 
@@ -17,7 +17,7 @@ public class SegmentDetailsDto
     public string? Description { get; set; }
 
     [Required]
-    public string Type { get; set; } = string.Empty; // "dynamic" or "static"
+    public SegmentType Type { get; set; } = SegmentType.Dynamic;
 
     public int ContactCount { get; set; }
 
@@ -52,7 +52,7 @@ public class SegmentCreateDto
     public string? Description { get; set; }
 
     [Required]
-    public string Type { get; set; } = string.Empty; // "dynamic" or "static"
+    public SegmentType Type { get; set; } = SegmentType.Dynamic;
 
     public SegmentDefinition? Definition { get; set; }
 
@@ -88,7 +88,6 @@ public class RuleGroup
     public string Id { get; set; } = Guid.NewGuid().ToString();
 
     [Required]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
     public RuleConnector Connector { get; set; } = RuleConnector.And;
 
     public List<SegmentRule> Rules { get; set; } = new List<SegmentRule>();
@@ -105,7 +104,7 @@ public class SegmentRule
     public string FieldId { get; set; } = string.Empty;
 
     [Required]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
+
     public FieldOperator Operator { get; set; }
 
     public object? Value { get; set; }
@@ -142,17 +141,4 @@ public class SegmentPreviewResultDto
     public int ContactCount { get; set; }
 
     public List<ContactDetailsDto> Contacts { get; set; } = new List<ContactDetailsDto>();
-}
-
-public class ContactSummaryDto
-{
-    public int Id { get; set; }
-
-    public string Email { get; set; } = string.Empty;
-
-    public string? FirstName { get; set; }
-
-    public string? LastName { get; set; }
-
-    public string AvatarUrl { get; set; } = string.Empty;
 }
