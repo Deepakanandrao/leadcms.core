@@ -94,6 +94,7 @@ public class Program
         builder.Services.AddScoped<IMdxComponentParserService, MdxComponentParserService>();
         builder.Services.AddScoped<IChangeLogService, ChangeLogService>();
         builder.Services.AddScoped<ISyncService, SyncService>();
+        builder.Services.AddScoped<ISegmentService, SegmentService>();
 
         // Add token and device authentication services
         builder.Services.AddScoped<ITokenService, TokenService>();

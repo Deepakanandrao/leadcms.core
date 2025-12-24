@@ -116,6 +116,8 @@ public class PgDbContext : IdentityDbContext<User>
 
     public virtual DbSet<Setting>? Settings { get; set; }
 
+    public virtual DbSet<Segment>? Segments { get; set; }
+
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         var result = 0;
