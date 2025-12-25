@@ -102,4 +102,19 @@ public class SegmentsController : BaseController<Segment, SegmentCreateDto, Segm
 
         return Ok(contactDtos);
     }
+
+    [HttpPost("{id}/recalculate")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<SegmentDetailsDto>> Recalculate(int id)
+    {
+        await segmentService.RecalculateContactCountAsync(id);
+
+        var segment = await FindOrThrowNotFound(id);
+        var dto = mapper.Map<SegmentDetailsDto>(segment);
+
+        return Ok(dto);
+    }
 }

@@ -180,6 +180,27 @@ public class SegmentService : ISegmentService
         }
     }
 
+    public async Task<int> RecalculateContactCountAsync(int segmentId)
+    {
+        var segment = await dbContext.Segments!
+            .Where(s => s.Id == segmentId)
+            .FirstOrDefaultAsync();
+
+        if (segment == null)
+        {
+            throw new EntityNotFoundException("Segment", segmentId.ToString());
+        }
+
+        // Calculate new contact count
+        var newContactCount = await CalculateContactCountAsync(segment);
+
+        // Update segment with new contact count
+        segment.ContactCount = newContactCount;
+        await dbContext.SaveChangesAsync();
+
+        return newContactCount;
+    }
+
     private IQueryable<Contact> BuildDynamicSegmentQuery(SegmentDefinition definition)
     {
         var query = dbContext.Contacts!.AsQueryable();

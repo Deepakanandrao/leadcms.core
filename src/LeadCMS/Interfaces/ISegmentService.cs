@@ -20,4 +20,6 @@ public interface ISegmentService
     Task ValidateSegmentAsync(Segment segment);
 
     Task SaveAsync(Segment segment);
+
+    Task<int> RecalculateContactCountAsync(int segmentId);
 }

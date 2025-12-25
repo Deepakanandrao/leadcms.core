@@ -230,6 +230,206 @@ public class SegmentsTests : BaseTestAutoLogin
         await GetTest($"{SegmentsUrl}/999/contacts", HttpStatusCode.NotFound);
     }
 
+    [Fact]
+    public async Task RecalculateSegment_DynamicSegment_ShouldUpdateContactCount()
+    {
+        // Arrange: Create initial contacts
+        await CreateContactAsync("recalc1", "recalc1@test.net", "Test", "User");
+        await CreateContactAsync("recalc2", "recalc2@test.net", "Test", "User");
+
+        // Create a dynamic segment matching emails containing "recalc"
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "email", Operator = FieldOperator.Contains, Value = "recalc" },
+                },
+            },
+        };
+
+        var segmentDto = new SegmentCreateDto
+        {
+            Name = "Recalc Test Segment",
+            Type = SegmentType.Dynamic,
+            Definition = definition,
+        };
+
+        var segmentLocation = await PostTest(SegmentsUrl, segmentDto);
+        var createdSegment = await GetTest<SegmentDetailsDto>(segmentLocation);
+
+        createdSegment.Should().NotBeNull();
+        createdSegment!.ContactCount.Should().Be(2);
+
+        // Add more contacts that match the segment
+        await CreateContactAsync("recalc3", "recalc3@test.net", "Test", "User");
+        await CreateContactAsync("recalc4", "recalc4@test.net", "Test", "User");
+
+        // Act: Recalculate segment
+        var recalculateUrl = $"{segmentLocation}/recalculate";
+        var recalculatedSegment = await PostTest<SegmentDetailsDto>(recalculateUrl, new { }, HttpStatusCode.OK);
+
+        // Assert: Contact count should be updated
+        recalculatedSegment.Should().NotBeNull();
+        recalculatedSegment!.ContactCount.Should().Be(4);
+        recalculatedSegment.Name.Should().Be(createdSegment.Name);
+        recalculatedSegment.Type.Should().Be(SegmentType.Dynamic);
+    }
+
+    [Fact]
+    public async Task RecalculateSegment_StaticSegment_ShouldKeepContactCount()
+    {
+        // Arrange: Create test contacts
+        var firstId = await CreateContactAsync("static-recalc1", "static1@test.net", "Test", "User");
+        var secondId = await CreateContactAsync("static-recalc2", "static2@test.net", "Test", "User");
+
+        // Create a static segment
+        var segmentDto = new SegmentCreateDto
+        {
+            Name = "Static Recalc Test",
+            Type = SegmentType.Static,
+            ContactIds = new[] { firstId, secondId },
+        };
+
+        var segmentLocation = await PostTest(SegmentsUrl, segmentDto);
+        var createdSegment = await GetTest<SegmentDetailsDto>(segmentLocation);
+
+        createdSegment.Should().NotBeNull();
+        createdSegment!.ContactCount.Should().Be(2);
+
+        // Add more contacts (but they shouldn't affect static segment)
+        await CreateContactAsync("static-recalc3", "static3@test.net", "Test", "User");
+
+        // Act: Recalculate segment
+        var recalculateUrl = $"{segmentLocation}/recalculate";
+        var recalculatedSegment = await PostTest<SegmentDetailsDto>(recalculateUrl, new { }, HttpStatusCode.OK);
+
+        // Assert: Contact count should remain the same
+        recalculatedSegment.Should().NotBeNull();
+        recalculatedSegment!.ContactCount.Should().Be(2);
+        recalculatedSegment.ContactIds.Should().BeEquivalentTo(new[] { firstId, secondId });
+    }
+
+    [Fact]
+    public async Task RecalculateSegment_NonExistentSegment_ShouldReturn404()
+    {
+        // Arrange
+        var nonExistentId = 999999;
+        var recalculateUrl = $"{SegmentsUrl}/{nonExistentId}/recalculate";
+
+        // Act & Assert
+        await PostTest(recalculateUrl, new { }, HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task RecalculateSegment_AfterContactsDeleted_ShouldUpdateCount()
+    {
+        // Arrange: Create contacts
+        await CreateContactAsync("delete1", "delete1@test.net", "Test", "User");
+        var deleteId = await CreateContactAsync("delete2", "delete2@test.net", "Test", "User");
+        await CreateContactAsync("delete3", "delete3@test.net", "Test", "User");
+
+        // Create segment
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "email", Operator = FieldOperator.Contains, Value = "delete" },
+                },
+            },
+        };
+
+        var segmentDto = new SegmentCreateDto
+        {
+            Name = "Delete Test Segment",
+            Type = SegmentType.Dynamic,
+            Definition = definition,
+        };
+
+        var segmentLocation = await PostTest(SegmentsUrl, segmentDto);
+        var createdSegment = await GetTest<SegmentDetailsDto>(segmentLocation);
+
+        createdSegment.Should().NotBeNull();
+        createdSegment!.ContactCount.Should().Be(3);
+
+        // Delete one contact
+        await DeleteTest($"{ContactsUrl}/{deleteId}");
+
+        // Act: Recalculate segment
+        var recalculateUrl = $"{segmentLocation}/recalculate";
+        var recalculatedSegment = await PostTest<SegmentDetailsDto>(recalculateUrl, new { }, HttpStatusCode.OK);
+
+        // Assert: Contact count should be updated
+        recalculatedSegment.Should().NotBeNull();
+        recalculatedSegment!.ContactCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task UpdateDynamicSegment_ShouldRecalculateContactCount()
+    {
+        // Arrange: Create test contacts
+        await CreateContactAsync("update1", "update1@test.net", "Test", "User");
+        await CreateContactAsync("update2", "update2@test.net", "Test", "User");
+        await CreateContactAsync("other1", "other1@test.net", "Test", "User");
+
+        // Create segment matching "update1"
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "email", Operator = FieldOperator.Contains, Value = "update1" },
+                },
+            },
+        };
+
+        var segmentDto = new SegmentCreateDto
+        {
+            Name = "Update Test Segment",
+            Type = SegmentType.Dynamic,
+            Definition = definition,
+        };
+
+        var segmentLocation = await PostTest(SegmentsUrl, segmentDto);
+        var createdSegment = await GetTest<SegmentDetailsDto>(segmentLocation);
+
+        createdSegment.Should().NotBeNull();
+        createdSegment!.ContactCount.Should().Be(1);
+
+        // Act: Update segment to match more contacts
+        var newDefinition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "email", Operator = FieldOperator.Contains, Value = "update" },
+                },
+            },
+        };
+
+        var updateDto = new SegmentUpdateDto
+        {
+            Definition = newDefinition,
+        };
+
+        var response = await PatchTest(segmentLocation, updateDto);
+        var content = await response.Content.ReadAsStringAsync();
+        var updatedSegment = JsonHelper.Deserialize<SegmentDetailsDto>(content);
+
+        // Assert: Contact count should be recalculated
+        updatedSegment.Should().NotBeNull();
+        updatedSegment!.ContactCount.Should().Be(2);
+    }
+
     private static int ExtractId(string location)
     {
         return int.Parse(location.Split("/").Last());
