@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 
@@ -14,7 +15,7 @@ public class MediaTests : BaseTestAutoLogin
     [InlineData("test2.png", 1024, true)]
     [InlineData("test3.jpeg", 1024000, false)]
     [InlineData("test4.jpeg", 1024, true)]
-    [InlineData("test5.mp4", 5024000, false)]
+    [InlineData("test5.mp4", 11000000, false)]
     [InlineData("test6.mp4", 1024, true)]
     public async Task CreateAndGetMediaTest(string fileName, int fileSize, bool shouldBePositive)
     {
@@ -137,11 +138,10 @@ public class MediaTests : BaseTestAutoLogin
             return (string.Empty, false);
         }
 
-        var json = response.Content.ReadAsStringAsync().Result;
-        if (json.Contains("location"))
+        var mediaDetails = await response.Content.ReadFromJsonAsync<MediaDetailsDto>();
+        if (mediaDetails != null && !string.IsNullOrEmpty(mediaDetails.Location))
         {
-            json = json.Split(':').Last().Replace("}", string.Empty).Replace("\"", string.Empty).Trim();
-            return (json, true);
+            return (mediaDetails.Location, true);
         }
 
         return (string.Empty, false);
