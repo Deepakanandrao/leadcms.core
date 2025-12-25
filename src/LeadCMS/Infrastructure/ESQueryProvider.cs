@@ -5,6 +5,7 @@
 using System.Reflection;
 using System.Text;
 using LeadCMS.DataAnnotations;
+using LeadCMS.Elastic;
 using LeadCMS.Entities;
 using LeadCMS.Interfaces;
 using Nest;
@@ -31,7 +32,7 @@ namespace LeadCMS.Infrastructure
             ArgumentNullException.ThrowIfNull(queryBuilder);
             ArgumentException.ThrowIfNullOrEmpty(indexPrefix);
 
-            indexName = indexPrefix + "-" + typeof(T).Name.ToLower();
+            indexName = ElasticHelper.GetIndexName(indexPrefix, typeof(T));
             this.elasticClient = elasticClient;
             this.queryBuilder = queryBuilder;
             searchableTextProperties = typeof(T).GetProperties().Where(p => p.IsDefined(typeof(SearchableAttribute), false) && p.PropertyType == typeof(string)).ToArray();

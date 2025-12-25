@@ -65,7 +65,7 @@ public abstract class ChangeLogTask : BaseTask
 
                 try
                 {
-                    ExecuteLogTask(changeLogBatch!);
+                    ExecuteLogTask(changeLogBatch!, loggedType);
 
                     UpdateChangeLogTaskLogRecord(taskLog, changeLogBatch!.Count, TaskExecutionState.Completed);
                 }
@@ -85,7 +85,7 @@ public abstract class ChangeLogTask : BaseTask
         return Task.FromResult(true);
     }
 
-    protected abstract void ExecuteLogTask(List<ChangeLog> nextBatch);
+    protected abstract void ExecuteLogTask(List<ChangeLog> nextBatch, Type loggedType);
 
     protected HashSet<Type> GetTypes(PgDbContext context)
     {

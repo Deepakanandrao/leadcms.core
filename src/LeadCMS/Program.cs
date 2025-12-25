@@ -56,7 +56,6 @@ public class Program
         ConfigureLogs(builder);
         PluginManager.Init(builder.Configuration);
 
-        builder.Configuration.AddUserSecrets(typeof(Program).Assembly);
         builder.Configuration.AddEnvironmentVariables();
 
         builder.Services.AddHttpContextAccessor();
