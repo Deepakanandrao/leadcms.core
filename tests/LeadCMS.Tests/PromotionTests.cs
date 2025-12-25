@@ -7,7 +7,7 @@ namespace LeadCMS.Tests;
 public class PromotionTests : SimpleTableTests<Promotion, TestPromotion, PromotionUpdateDto, IEntityService<Promotion>>
 {
     public PromotionTests()
-        : base("/api/promotion")
+        : base("/api/promotions")
     {
     }
 
