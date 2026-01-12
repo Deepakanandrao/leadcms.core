@@ -20,10 +20,16 @@ public class Account : BaseEntity, ICommentable
     public string Name { get; set; } = string.Empty;
 
     [Searchable]
+    public string? TIN { get; set; }
+
+    [Searchable]
     public string? CityName { get; set; }
 
     [Searchable]
     public string? State { get; set; }
+
+    [Searchable]
+    public string? Address { get; set; }
 
     [Searchable]
     public Continent? ContinentCode { get; set; }
@@ -41,6 +47,9 @@ public class Account : BaseEntity, ICommentable
 
     [Searchable]
     public double? Revenue { get; set; }
+
+    [Searchable]
+    public double? Profit { get; set; }
 
     [Searchable]
     [Column(TypeName = "jsonb")]
