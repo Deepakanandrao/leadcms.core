@@ -128,6 +128,12 @@ public class AccountDetailsDto : AccountCreateDto
 
     public DateTime? UpdatedAt { get; set; }
 
+    public int ContactCount { get; set; }
+
+    public int DealsCount { get; set; }
+
+    public int DomainsCount { get; set; }
+
     [Ignore]
     public List<ContactDetailsDto>? Contacts { get; set; }
 

@@ -62,6 +62,12 @@ public class Account : BaseEntity, ICommentable
     [Column(TypeName = "jsonb")]
     public string? Data { get; set; }
 
+    public int ContactCount { get; set; }
+
+    public int DealsCount { get; set; }
+
+    public int DomainsCount { get; set; }
+
     [JsonIgnore]
     public virtual ICollection<Contact>? Contacts { get; set; }
 
