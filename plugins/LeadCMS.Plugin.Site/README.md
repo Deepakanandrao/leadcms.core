@@ -67,9 +67,12 @@ The plugin configuration includes website settings and contact form configuratio
   "ContactUs": {
     "To": ["$CONTACTUS__TO__0"]
   },
-  "SupportEmail": "support@leadcms.ai"
+  "SupportEmail": "support@leadcms.ai",
+  "RecaptchaSecretKey": "$RECAPTCHA_SECRET_KEY"
 }
 ```
+
+Set the `RecaptchaSecretKey` to your Google reCAPTCHA secret to enable automated spam protection. If this value is left as the placeholder or blank, reCAPTCHA is not enforced.
 
 ## API Endpoints
 
@@ -113,6 +116,7 @@ The contact form endpoint processes the following data:
 - **Subject**: Message subject line
 - **TimeZoneOffset**: Visitor's time zone offset
 - **Attachment**: File attachment (documents, images, etc.)
+- **RecaptchaToken**: reCAPTCHA token (included if spam protection is enabled)
 
 ## Use Cases
 

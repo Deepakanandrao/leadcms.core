@@ -2,6 +2,8 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using LeadCMS.DTOs;
 using LeadCMS.Interfaces;
 using LeadCMS.Plugin.Site.Configuration;
@@ -22,18 +24,20 @@ public class ContactUsController : Controller
     private readonly PluginSettings? pluginSettings;
     private readonly LeadCmsSiteDbContext dbContext;
     private readonly IContactService contactService;
+    private readonly IHttpClientFactory httpClientFactory;
 
     public ContactUsController(
         IEmailFromTemplateService emailService,
         IConfiguration configuration,
         LeadCmsSiteDbContext dbContext,
-        IContactService contactService)
+        IContactService contactService,
+        IHttpClientFactory httpClientFactory)
     {
         this.emailService = emailService;
         this.dbContext = dbContext;
         this.contactService = contactService;
         this.contactService.SetDBContext(dbContext);
-
+        this.httpClientFactory = httpClientFactory;
         var settings = configuration.Get<PluginSettings>();
 
         if (settings != null)
@@ -49,6 +53,35 @@ public class ContactUsController : Controller
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult> Post([FromForm] ContactUsDto contactUsDto)
     {
+        if (!string.IsNullOrWhiteSpace(pluginSettings?.RecaptchaSecretKey) && pluginSettings.RecaptchaSecretKey != "$RECAPTCHA_SECRET_KEY")
+        {
+            if (string.IsNullOrWhiteSpace(contactUsDto.RecaptchaToken))
+            {
+                return BadRequest("Missing reCAPTCHA token.");
+            }
+
+            var client = httpClientFactory.CreateClient();
+            var postData = new FormUrlEncodedContent(
+            [
+                new KeyValuePair<string, string>("secret", pluginSettings.RecaptchaSecretKey),
+                new KeyValuePair<string, string>("response", contactUsDto.RecaptchaToken),
+                new KeyValuePair<string, string>("remoteip", HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty),
+            ]);
+            var response = await client.PostAsync("https://www.google.com/recaptcha/api/siteverify", postData);
+            if (!response.IsSuccessStatusCode)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error verifying reCAPTCHA.");
+            }
+            
+            var json = await response.Content.ReadAsStringAsync();
+
+            var recaptchaResult = JsonSerializer.Deserialize<RecaptchaVerifyResponse>(json);
+            if (recaptchaResult == null || !recaptchaResult.Success)
+            {
+                return BadRequest("Failed reCAPTCHA validation.");
+            }
+        }
+
         // Create or find contact record
         var contact = await contactService.FindOrCreate(contactUsDto.Email, contactUsDto.Language, contactUsDto.TimeZoneOffset);
 
@@ -129,4 +162,19 @@ public static class FormFileExtensions
         await formFile.CopyToAsync(memoryStream);
         return memoryStream.ToArray();
     }
+}
+
+public class RecaptchaVerifyResponse
+{
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+    
+    [JsonPropertyName("challenge_ts")]
+    public DateTime ChallengeTs { get; set; }
+
+    [JsonPropertyName("hostname")]
+    public string Hostname { get; set; } = string.Empty;
+
+    [JsonPropertyName("error-codes")]
+    public string[] ErrorCodes { get; set; } = Array.Empty<string>();
 }
