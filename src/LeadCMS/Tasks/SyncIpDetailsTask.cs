@@ -26,6 +26,9 @@ public class SyncIpDetailsTask : ChangeLogTask
         var ipList = GetDistinctIps(nextBatch);
         var newIpCollection = GetNewIps(ipList!);
 
+        int detailsRetrieved = 0;
+        int detailsNotFound = 0;
+
         foreach (var ip in newIpCollection)
         {
             if (string.IsNullOrEmpty(ip))
@@ -38,6 +41,7 @@ public class SyncIpDetailsTask : ChangeLogTask
             if (geoIpDetails == null)
             {
                 Log.Information("Ip {0} does not have any information", ip);
+                detailsNotFound++;
                 continue;
             }
 
@@ -52,6 +56,7 @@ public class SyncIpDetailsTask : ChangeLogTask
             };
 
             ipDetailsCollection.Add(ipDetails);
+            detailsRetrieved++;
         }
 
         if (ipDetailsCollection.Any())

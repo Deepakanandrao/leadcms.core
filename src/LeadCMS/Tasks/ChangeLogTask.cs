@@ -48,16 +48,20 @@ public abstract class ChangeLogTask : BaseTask
 
     public override Task<bool> Execute(TaskExecutionLog currentJob)
     {
+        int totalProcessed = 0;
+        var processedTypes = new List<string>();
+
         foreach (var loggedType in loggedTypes)
         {
             var taskAndEntity = Name + "_" + loggedType.Name;
 
             if (IsPreviousTaskInProgress(taskAndEntity))
             {
-                return Task.FromResult(true);
+                continue;
             }
 
             var changeLogBatch = GetNextOrFailedChangeLogBatch(taskAndEntity, loggedType);
+            int typeProcessed = 0;
 
             while (changeLogBatch is not null && changeLogBatch!.Any())
             {
@@ -66,6 +70,8 @@ public abstract class ChangeLogTask : BaseTask
                 try
                 {
                     ExecuteLogTask(changeLogBatch!, loggedType);
+                    typeProcessed += changeLogBatch.Count;
+                    totalProcessed += changeLogBatch.Count;
 
                     UpdateChangeLogTaskLogRecord(taskLog, changeLogBatch!.Count, TaskExecutionState.Completed);
                 }
@@ -74,13 +80,23 @@ public abstract class ChangeLogTask : BaseTask
                     Log.Error(ex, $"Error occurred when executing task {taskAndEntity}");
 
                     UpdateChangeLogTaskLogRecord(taskLog, 0, TaskExecutionState.Failed);
+                    currentJob.Result = $"Failed processing {loggedType.Name}: {ex.Message}";
 
                     return Task.FromResult(false);
                 }
 
                 changeLogBatch = GetNextOrFailedChangeLogBatch(taskAndEntity, loggedType);
             }
+
+            if (typeProcessed > 0)
+            {
+                processedTypes.Add($"{loggedType.Name}({typeProcessed})");
+            }
         }
+
+        currentJob.Result = totalProcessed > 0 
+            ? $"Processed {totalProcessed} changes across {processedTypes.Count} entity types: {string.Join(", ", processedTypes)}"
+            : "No changes to process";
 
         return Task.FromResult(true);
     }

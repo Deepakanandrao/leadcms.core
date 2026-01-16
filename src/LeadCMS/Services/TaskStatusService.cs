@@ -2,30 +2,22 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Collections.Concurrent;
+
 namespace LeadCMS.Services;
 
 public class TaskStatusService
 {
-    private readonly Dictionary<string, bool> taskStatusByName = new Dictionary<string, bool>();
+    private readonly ConcurrentDictionary<string, bool> taskStatusByName = new ConcurrentDictionary<string, bool>();
 
     public void SetInitialState(string name, bool running)
     {
-        if (!taskStatusByName.ContainsKey(name))
-        {
-            taskStatusByName[name] = running;
-        }
+        taskStatusByName.TryAdd(name, running);
     }
 
     public bool IsRunning(string name)
     {
-        if (taskStatusByName.ContainsKey(name))
-        {
-            return taskStatusByName[name];
-        }
-        else
-        {
-            return false;
-        }
+        return taskStatusByName.TryGetValue(name, out var running) && running;
     }
 
     public void SetRunning(string name, bool running)

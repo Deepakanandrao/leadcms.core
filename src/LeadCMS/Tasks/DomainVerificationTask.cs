@@ -44,6 +44,7 @@ public class DomainVerificationTask : BaseTask
         {
             bool continueToNextBatch = true;
             int lastId = 0;
+            int totalVerified = 0;
 
             while (continueToNextBatch)
             {
@@ -63,6 +64,7 @@ public class DomainVerificationTask : BaseTask
                     foreach (var domain in domainsBatch)
                     {
                         await domainService.Verify(domain);
+                        totalVerified++;
                         Thread.Sleep(new TimeSpan(0, 0, batchInterval));
                     }
 
@@ -71,13 +73,15 @@ public class DomainVerificationTask : BaseTask
                     await dbContext.SaveChangesAsync();
                 }
             }
+
+            currentJob.Result = $"Verified {totalVerified} domains";
+            return true;
         }
         catch (Exception ex)
         {
             Log.Error(ex, $"Error occurred when executing Domain Check task in task runner {currentJob.Id}");
+            currentJob.Result = $"Domain verification failed: {ex.Message}";
             return false;
         }
-
-        return true;
     }
 }

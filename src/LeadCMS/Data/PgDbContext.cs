@@ -118,6 +118,16 @@ public class PgDbContext : IdentityDbContext<User>
 
     public virtual DbSet<Segment>? Segments { get; set; }
 
+    public virtual DbSet<EnrichmentProviderConfig>? EnrichmentProviderConfigs { get; set; }
+
+    public virtual DbSet<EnrichmentWorkItem>? EnrichmentWorkItems { get; set; }
+
+    public virtual DbSet<EnrichmentProviderAttempt>? EnrichmentProviderAttempts { get; set; }
+
+    public virtual DbSet<EnrichmentAudit>? EnrichmentAudits { get; set; }
+
+    public virtual DbSet<EnrichmentQuotaUsage>? EnrichmentQuotaUsages { get; set; }
+
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         var result = 0;
@@ -274,6 +284,19 @@ public class PgDbContext : IdentityDbContext<User>
             .WithMany()
             .HasForeignKey(c => c.Type)
             .HasPrincipalKey(ct => ct.Uid);
+
+        builder.Entity<EnrichmentWorkItem>()
+            .HasOne(w => w.ProviderConfig)
+            .WithMany(p => p.WorkItems)
+            .HasForeignKey(w => w.ProviderKey)
+            .HasPrincipalKey(p => p.ProviderKey)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<EnrichmentProviderAttempt>()
+            .HasOne(a => a.WorkItem)
+            .WithMany(w => w.Attempts)
+            .HasForeignKey(a => a.WorkItemId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 
     private DateTime GetDateWithKind(DateTime date)

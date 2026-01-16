@@ -13,6 +13,12 @@ public enum TaskExecutionStatus
     Completed = 1,
 }
 
+public enum TaskExecutionTrigger
+{
+    Scheduled = 0,
+    Manual = 1,
+}
+
 [Table("task_execution_log")]
 public class TaskExecutionLog : BaseEntityWithId
 {
@@ -27,5 +33,9 @@ public class TaskExecutionLog : BaseEntityWithId
 
     public int RetryCount { get; set; } = 0;
 
-    public string? Comment { get; set; }
+    public string? Result { get; set; }
+
+    public TaskExecutionTrigger TriggeredBy { get; set; } = TaskExecutionTrigger.Scheduled;
+
+    public TimeSpan Duration { get; set; }
 }

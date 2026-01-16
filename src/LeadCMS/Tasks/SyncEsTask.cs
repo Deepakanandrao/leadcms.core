@@ -45,6 +45,9 @@ namespace LeadCMS.Tasks
             }
 
             var bulkPayload = new StringBuilder();
+            int addedCount = 0;
+            int modifiedCount = 0;
+            int deletedCount = 0;
 
             var existedIndices = GetExistedIndices();
 
@@ -71,12 +74,22 @@ namespace LeadCMS.Tasks
                     data!.Add(changeLogId, item.Id);
                     bulkPayload.AppendLine(JsonHelper.Serialize(createItem));
                     bulkPayload.AppendLine(JsonHelper.Serialize(data));
+
+                    if (entityState == EntityState.Added)
+                    {
+                        addedCount++;
+                    }
+                    else
+                    {
+                        modifiedCount++;
+                    }
                 }
 
                 if (entityState == EntityState.Deleted)
                 {
                     var deleteItem = new { delete = new { _index = indexName, _id = item.ObjectId } };
                     bulkPayload.AppendLine(JsonHelper.Serialize(deleteItem));
+                    deletedCount++;
                 }
             }
 

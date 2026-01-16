@@ -214,6 +214,10 @@ public class AutoMapperProfiles : Profile
         CreateMap<Media, MediaDetailsDto>()
             .ForMember(dest => dest.Location, opt => opt.Ignore()) // Location is computed at controller level
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+
+        // Task execution log mappings
+        CreateMap<TaskExecutionLog, TaskExecutionLogDetailsDto>()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
     }
 
     private static bool PropertyNeedsMapping(object source, object target, object sourceValue, object targetValue)

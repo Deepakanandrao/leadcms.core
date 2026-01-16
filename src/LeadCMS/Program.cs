@@ -5,6 +5,9 @@
 using LeadCMS.Configuration;
 using LeadCMS.Controllers;
 using LeadCMS.Data;
+using LeadCMS.Enrichment.Interfaces;
+using LeadCMS.Enrichment.Services;
+using LeadCMS.Enrichment.Tasks;
 using LeadCMS.Entities;
 using LeadCMS.Filters;
 using LeadCMS.Formatters.Csv;
@@ -94,6 +97,12 @@ public class Program
         builder.Services.AddScoped<IChangeLogService, ChangeLogService>();
         builder.Services.AddScoped<ISyncService, SyncService>();
         builder.Services.AddScoped<ISegmentService, SegmentService>();
+
+        // Add enrichment services
+        builder.Services.AddSingleton<IEnrichmentProviderResolver, EnrichmentProviderResolver>();
+        builder.Services.AddScoped<IEnrichmentWorkItemService, EnrichmentWorkItemService>();
+        builder.Services.AddScoped<IEnrichmentQuotaService, EnrichmentQuotaService>();
+        builder.Services.AddScoped<IEnrichmentAuditService, EnrichmentAuditService>();
 
         // Add token and device authentication services
         builder.Services.AddScoped<ITokenService, TokenService>();
@@ -591,6 +600,8 @@ public class Program
         builder.Services.AddScoped<ITask, ContactScheduledEmailTask>();
         builder.Services.AddScoped<ITask, ContactAccountTask>();
         builder.Services.AddScoped<ITask, SyncEmailLogTask>();
+        builder.Services.AddScoped<ITask, EnrichmentSchedulerTask>();
+        builder.Services.AddScoped<ITask, EnrichmentExecutorTask>();
     }
 
     private static void ConfigureCORS(WebApplicationBuilder builder)
