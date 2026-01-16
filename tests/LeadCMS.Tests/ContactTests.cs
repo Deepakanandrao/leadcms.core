@@ -3,6 +3,7 @@
 // </copyright>
 
 using System.Text.Json;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.Tests;
 
@@ -179,6 +180,97 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
         importResult.Skipped.Should().Be(2);
 
         importResult.Errors!.Count.Should().Be(2);
+    }
+
+    [Theory]
+    [InlineData("filter[where][id]=9", HttpStatusCode.OK)]
+    [InlineData("filter[where][id][eq]=9", HttpStatusCode.OK)]
+    [InlineData("filter[order]=id", HttpStatusCode.OK)]
+    [InlineData("filter[skip]=5", HttpStatusCode.OK)]
+    [InlineData("filter[limit]=5", HttpStatusCode.OK)]
+    public async Task ValidQueryParameter(string filter, HttpStatusCode code)
+    {
+        await GetTest($"{itemsUrl}?{filter}", code);
+    }
+
+    [Theory]
+    [InlineData("filtercadabra", HttpStatusCode.BadRequest)]
+    [InlineData("filter", HttpStatusCode.BadRequest)]
+    [InlineData("filter[]", HttpStatusCode.BadRequest)]
+    [InlineData("filter[]=", HttpStatusCode.BadRequest)]
+    [InlineData("filter[]=0", HttpStatusCode.BadRequest)]
+    [InlineData("filter[][]=3", HttpStatusCode.BadRequest)]
+    [InlineData("filter[][][]=4", HttpStatusCode.BadRequest)]
+    [InlineData("filter[notexists]=5", HttpStatusCode.BadRequest)]
+    [InlineData("filter[where][notexists]=6", HttpStatusCode.BadRequest)]
+    [InlineData("filter[where][][]=7", HttpStatusCode.BadRequest)]
+    [InlineData("filter[where][id][]=8", HttpStatusCode.BadRequest)]
+    [InlineData("filter[where][id][notexists]=9", HttpStatusCode.BadRequest)]
+    [InlineData("filter[^7@5\\nwhere][id^7@5\\n][|^7@5\\n]=^7@5\\n", HttpStatusCode.BadRequest)]
+    [InlineData("filter[where][id]=^7@5\\n", HttpStatusCode.BadRequest)]
+    [InlineData("filter[][id]=^7@5\\n", HttpStatusCode.BadRequest)]
+    [InlineData("filter[where][id][eq]=^7@5\\n", HttpStatusCode.BadRequest)]
+    [InlineData("filter[limit]=abc", HttpStatusCode.BadRequest)]
+    [InlineData("filter[skip]=abc", HttpStatusCode.BadRequest)]
+    [InlineData("filter[order]=5555incorrectfield777", HttpStatusCode.BadRequest)]
+    public async Task InvalidQueryParameter(string filter, HttpStatusCode code)
+    {
+        await GetTest($"{itemsUrl}?{filter}", code);
+    }
+
+    [Theory]
+    [InlineData(true, "", 1, 1)]
+    [InlineData(true, "filter[where][id][eq]=1", 1, 1)]
+    [InlineData(true, "filter[where][id][eq]=100", 0, 0)]
+    [InlineData(true, "filter[limit]=10&filter[skip]=0", 1, 1)]
+    [InlineData(true, "filter[limit]=10&filter[skip]=100", 1, 0)]
+    [InlineData(false, "", 0, 0)]
+    [InlineData(false, "filter[where][id][eq]=1", 0, 0)]
+    public async Task GetTotalCountTest(bool createTestItem, string filter, int totalCount, int payloadItemsCount)
+    {
+        if (createTestItem)
+        {
+            await CreateItem();
+        }
+
+        var response = await GetTest($"{itemsUrl}?{filter}");
+        response.Should().NotBeNull();
+
+        var totalCountHeader = response.Headers.GetValues(ResponseHeaderNames.TotalCount).FirstOrDefault();
+        totalCountHeader.Should().Be($"{totalCount}");
+        var content = await response.Content.ReadAsStringAsync();
+        var payload = JsonSerializer.Deserialize<List<Contact>>(content);
+        payload.Should().NotBeNull();
+        payload.Should().HaveCount(payloadItemsCount);
+    }
+
+    [Theory]
+    [InlineData("", 150, 100)]
+    [InlineData("filter[skip]=0", 150, 100)]
+    [InlineData("filter[limit]=10&filter[skip]=0", 150, 100)]
+    public async Task LimitLists(string filter, int dataCount, int limitPerRequest)
+    {
+        GenerateBulkRecords(dataCount);
+
+        var response = await GetTest($"{itemsUrl}?{filter}");
+        response.Should().NotBeNull();
+
+        var json = await response.Content.ReadAsStringAsync();
+
+        var deserialized = JsonSerializer.Deserialize<List<Contact>>(json!);
+
+        var returendCount = deserialized!.Count!;
+
+        Assert.True(returendCount <= limitPerRequest);
+    }
+
+    [Theory]
+    [InlineData("filter[limit]=15001", 150)]
+    public async Task InvalidLimit(string filter, int dataCount)
+    {
+        GenerateBulkRecords(dataCount);
+
+        await GetTest($"{itemsUrl}?{filter}", HttpStatusCode.BadRequest);
     }
 
     protected override ContactUpdateDto UpdateItem(TestContact to)

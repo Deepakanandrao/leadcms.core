@@ -20,10 +20,16 @@ public class Account : BaseEntity, ICommentable
     public string Name { get; set; } = string.Empty;
 
     [Searchable]
+    public string? TIN { get; set; }
+
+    [Searchable]
     public string? CityName { get; set; }
 
     [Searchable]
     public string? State { get; set; }
+
+    [Searchable]
+    public string? Address { get; set; }
 
     [Searchable]
     public Continent? ContinentCode { get; set; }
@@ -43,6 +49,9 @@ public class Account : BaseEntity, ICommentable
     public double? Revenue { get; set; }
 
     [Searchable]
+    public double? Profit { get; set; }
+
+    [Searchable]
     [Column(TypeName = "jsonb")]
     public string[]? Tags { get; set; }
 
@@ -52,6 +61,12 @@ public class Account : BaseEntity, ICommentable
 
     [Column(TypeName = "jsonb")]
     public string? Data { get; set; }
+
+    public int ContactCount { get; set; }
+
+    public int DealsCount { get; set; }
+
+    public int DomainsCount { get; set; }
 
     [JsonIgnore]
     public virtual ICollection<Contact>? Contacts { get; set; }

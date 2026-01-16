@@ -27,7 +27,10 @@ public class CommentsTests : TableWithFKTests<Comment, TestComment, CommentUpdat
 
         // Create a comment that will be NotApproved by default (anonymous user)
         var testComment1 = new TestComment(string.Empty, 1);
-        await PostTest(itemsUrl, testComment1);
+        var comment1Url = await PostTest(itemsUrl, testComment1);
+        var comment1 = await GetTest<Comment>(comment1Url);
+        comment1!.Status = CommentStatus.NotApproved;
+        App.GetDbContext()!.Comments!.Update(comment1);
 
         // Create an approved comment (authenticated user would set status to Approved, simulating by direct DB)
         var testComment2 = new TestComment(string.Empty, 1);
@@ -70,7 +73,10 @@ public class CommentsTests : TableWithFKTests<Comment, TestComment, CommentUpdat
 
         // Create a comment that will be NotApproved by default (anonymous user)
         var testComment1 = new TestComment(string.Empty, 1);
-        await PostTest(itemsUrl, testComment1);
+        var comment1Url = await PostTest(itemsUrl, testComment1);
+        var comment1 = await GetTest<Comment>(comment1Url);
+        comment1!.Status = CommentStatus.NotApproved;
+        App.GetDbContext()!.Comments!.Update(comment1);
 
         // Create an approved comment
         var testComment2 = new TestComment(string.Empty, 1);

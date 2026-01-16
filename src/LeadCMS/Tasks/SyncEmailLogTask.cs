@@ -42,12 +42,17 @@ namespace LeadCMS.Tasks
         {
             try
             {
+                int totalEmailsSynced = 0;
+                int newContactsCreated = 0;
+
                 using (var scope = provider.CreateScope())
                 {
                     var contactService = scope.ServiceProvider.GetRequiredService<ContactService>();
 
                     var maxId = await logService.GetMaxId(SourceName);
                     var batch = await dbContext.EmailLogs!.Where(e => e.Id > maxId).OrderBy(e => e.Id).Take(batchSize).ToListAsync();
+                    totalEmailsSynced = batch.Count;
+
                     var batchContacts = batch.Select(b => b.Recipients).ToArray();
                     var existingContacts = await dbContext.Contacts!.Where(contact => batchContacts.Contains(contact.Email)).ToDictionaryAsync(k => k.Email);
 
@@ -63,6 +68,7 @@ namespace LeadCMS.Tasks
                             };
 
                             contactService.SaveAsync(contact).Wait();
+                            newContactsCreated++;
                         }
 
                         return new ActivityLog()
@@ -84,12 +90,14 @@ namespace LeadCMS.Tasks
                     }
                 }
 
+                currentJob.Result = $"Synced {totalEmailsSynced} email logs, created {newContactsCreated} new contacts";
                 return true;
             }
             catch (Exception ex)
             {
                 Log.Error("Failed to dump email events to activity log. Reason: " + ex.Message);
-                throw;
+                currentJob.Result = $"Email log sync failed: {ex.Message}";
+                return false;
             }
         }
     }

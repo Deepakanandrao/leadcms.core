@@ -76,11 +76,16 @@ public class ElasticHelper
 
         if (tableAttribute != null)
         {
-            return $"{indexPrefix}-{tableAttribute.Name}";
+            return $"{indexPrefix.ToLower()}-{tableAttribute.Name.ToLower()}";
         }
         else
         {
-            return $"{indexPrefix}-{nameof(entityType).ToLower()}";
+            return $"{indexPrefix.ToLower()}-{entityType.Name.ToLower()}";
         }
+    }
+
+    public static string GetIndexName(string indexPrefix, string typeName)
+    {
+        return $"{indexPrefix.ToLower()}-{typeName.ToLower()}";
     }
 }

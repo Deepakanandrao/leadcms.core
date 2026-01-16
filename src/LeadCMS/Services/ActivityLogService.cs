@@ -3,6 +3,7 @@
 // </copyright>
 
 using LeadCMS.Data;
+using LeadCMS.Elastic;
 using LeadCMS.Entities;
 using Nest;
 
@@ -17,7 +18,7 @@ namespace LeadCMS.Services
         public ActivityLogService(IConfiguration configuration, EsDbContext esDbContext)
         {
             var indexPrefix = configuration.GetSection("Elastic:IndexPrefix").Get<string>() ?? "LeadCMS";
-            indexName = indexPrefix + "-activitylog";
+            indexName = ElasticHelper.GetIndexName(indexPrefix, "activitylog");
             this.esDbContext = esDbContext;
         }
 

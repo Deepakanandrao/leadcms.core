@@ -200,9 +200,23 @@ public class AutoMapperProfiles : Profile
         CreateMap<SettingImportDto, Setting>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
 
+        // Segment mappings
+        CreateMap<SegmentCreateDto, Segment>()
+            .ReverseMap();
+        CreateMap<SegmentUpdateDto, Segment>()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+        CreateMap<Segment, SegmentUpdateDto>()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+        CreateMap<Segment, SegmentDetailsDto>()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+
         // Media mappings
         CreateMap<Media, MediaDetailsDto>()
             .ForMember(dest => dest.Location, opt => opt.Ignore()) // Location is computed at controller level
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+
+        // Task execution log mappings
+        CreateMap<TaskExecutionLog, TaskExecutionLogDetailsDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
     }
 

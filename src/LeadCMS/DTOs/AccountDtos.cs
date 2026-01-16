@@ -29,10 +29,16 @@ public class AccountCreateDto
     [SwaggerExample<string>("https://example.com/logo.png")]
     public string? LogoUrl { get; set; }
 
+    public string? Address { get; set; }
+
+    public string? TIN { get; set; }
+
     [SwaggerExample<string>("50K-100K")]
     public string? EmployeesRange { get; set; }
 
     public double? Revenue { get; set; }
+
+    public double? Profit { get; set; }
 
     public string[]? Tags { get; set; }
 
@@ -56,6 +62,10 @@ public class AccountDetailsInfo
 
     public string? State { get; set; }
 
+    public string? Address { get; set; }
+
+    public string? TIN { get; set; }
+
     public Continent? ContinentCode { get; set; }
 
     public Country? CountryCode { get; set; }
@@ -63,6 +73,8 @@ public class AccountDetailsInfo
     public string? EmployeesRange { get; set; }
 
     public double? Revenue { get; set; }
+
+    public double? Profit { get; set; }
 
     public string[]? Tags { get; set; }
 
@@ -81,9 +93,13 @@ public class AccountUpdateDto
 
     public string? LogoUrl { get; set; }
 
-    public string? City { get; set; }
+    public string? CityName { get; set; }
 
     public string? StateCode { get; set; }
+
+    public string? Address { get; set; }
+
+    public string? TIN { get; set; }
 
     public Continent? ContinentCode { get; set; }
 
@@ -92,6 +108,8 @@ public class AccountUpdateDto
     public string? EmployeesRange { get; set; }
 
     public double? Revenue { get; set; }
+
+    public double? Profit { get; set; }
 
     public string[]? Tags { get; set; }
 
@@ -110,6 +128,12 @@ public class AccountDetailsDto : AccountCreateDto
 
     public DateTime? UpdatedAt { get; set; }
 
+    public int ContactCount { get; set; }
+
+    public int DealsCount { get; set; }
+
+    public int DomainsCount { get; set; }
+
     [Ignore]
     public List<ContactDetailsDto>? Contacts { get; set; }
 
@@ -124,7 +148,7 @@ public class AccountImportDto : BaseImportDto
     public string Name { get; set; } = string.Empty;
 
     [Optional]
-    public string? City { get; set; }
+    public string? CityName { get; set; }
 
     [Optional]
     public string? StateCode { get; set; }
@@ -142,10 +166,19 @@ public class AccountImportDto : BaseImportDto
     public string? LogoUrl { get; set; }
 
     [Optional]
+    public string? Address { get; set; }
+
+    [Optional]
+    public string? TIN { get; set; }
+
+    [Optional]
     public string? EmployeesRange { get; set; }
 
     [Optional]
     public double? Revenue { get; set; }
+
+    [Optional]
+    public double? Profit { get; set; }
 
     [Optional]
     public string[]? Tags { get; set; }

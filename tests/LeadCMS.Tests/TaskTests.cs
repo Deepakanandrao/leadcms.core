@@ -3,6 +3,7 @@
 // </copyright>
 
 using LeadCMS.Configuration;
+using LeadCMS.Elastic;
 using LeadCMS.Helpers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -74,7 +75,7 @@ public class TaskTests : BaseTestAutoLogin
 
         await SyncElasticSearch();
 
-        CountDocumentsInIndex("LeadCMS-test-dealpipeline").Should().Be(esSyncBatchSize * 2);
+        CountDocumentsInIndex(GetIndexName<DealPipeline>()).Should().Be(esSyncBatchSize * 2);
     }
 
     [Fact]
@@ -88,13 +89,14 @@ public class TaskTests : BaseTestAutoLogin
 
         await SyncElasticSearch();
 
-        CountDocumentsInIndex("LeadCMS-test-dealpipeline").Should().Be(dataSize);
+        var indexName = GetIndexName<DealPipeline>();
+        CountDocumentsInIndex(indexName).Should().Be(dataSize);
 
-        App.GetElasticClient().Indices.Delete("LeadCMS-test-dealpipeline");
+        App.GetElasticClient().Indices.Delete(indexName);
 
         await SyncElasticSearch();
 
-        CountDocumentsInIndex("LeadCMS-test-dealpipeline").Should().Be(dataSize);
+        CountDocumentsInIndex(indexName).Should().Be(dataSize);
     }
 
     private async Task CheckIfTaskNotRunning(string taskName)
@@ -109,5 +111,13 @@ public class TaskTests : BaseTestAutoLogin
         var elasticClient = App.GetElasticClient();
         var countResponse = elasticClient.Count(new CountRequest(Indices.Index(indexName)));
         return countResponse.Count;
+    }
+
+    private string GetIndexName<T>()
+        where T : class
+    {
+        var config = App.Services.GetRequiredService<IConfiguration>();
+        var indexPrefix = config.GetSection("Elastic:IndexPrefix").Get<string>() ?? string.Empty;
+        return ElasticHelper.GetIndexName(indexPrefix, typeof(T));
     }
 }

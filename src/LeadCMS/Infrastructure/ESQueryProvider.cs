@@ -5,6 +5,7 @@
 using System.Reflection;
 using System.Text;
 using LeadCMS.DataAnnotations;
+using LeadCMS.Elastic;
 using LeadCMS.Entities;
 using LeadCMS.Interfaces;
 using Nest;
@@ -14,8 +15,6 @@ namespace LeadCMS.Infrastructure
     public class ESQueryProvider<T> : IQueryProvider<T>
         where T : BaseEntityWithId
     {
-        private readonly char[] regExSymbols = { '.', '?', '+', '*', '|', '{', '}', '[', ']', '(', ')', '"', '\\', '#', '@', '&', '<', '>', '~' };
-
         private readonly ElasticClient elasticClient;
         private readonly List<QueryContainer> andQueries = new List<QueryContainer>();
         private readonly List<QueryContainer> orQueries = new List<QueryContainer>();
@@ -31,7 +30,7 @@ namespace LeadCMS.Infrastructure
             ArgumentNullException.ThrowIfNull(queryBuilder);
             ArgumentException.ThrowIfNullOrEmpty(indexPrefix);
 
-            indexName = indexPrefix + "-" + typeof(T).Name.ToLower();
+            indexName = ElasticHelper.GetIndexName(indexPrefix, typeof(T));
             this.elasticClient = elasticClient;
             this.queryBuilder = queryBuilder;
             searchableTextProperties = typeof(T).GetProperties().Where(p => p.IsDefined(typeof(SearchableAttribute), false) && p.PropertyType == typeof(string)).ToArray();
@@ -316,19 +315,55 @@ namespace LeadCMS.Infrastructure
                     return res;
                 }
 
+                string MakeCaseInsensitiveRegex(string input, bool escapeSpecialChars = false)
+                {
+                    var sb = new StringBuilder();
+                    var regExSymbols = new[] { '.', '?', '+', '*', '|', '{', '}', '[', ']', '(', ')', '"', '\\', '#', '@', '&', '<', '>', '~' };
+
+                    foreach (var c in input)
+                    {
+                        if (escapeSpecialChars && regExSymbols.Contains(c))
+                        {
+                            sb.Append('\\');
+                        }
+
+                        if (char.IsLetter(c))
+                        {
+                            sb.Append('[');
+                            sb.Append(char.ToUpperInvariant(c));
+                            sb.Append(char.ToLowerInvariant(c));
+                            sb.Append(']');
+                        }
+                        else
+                        {
+                            sb.Append(c);
+                        }
+                    }
+
+                    return sb.ToString();
+                }
+
                 RegexpQuery CreateRegExpQuery(QueryModelBuilder<T>.WhereUnitData cmd)
                 {
                     if (cmd.Operation == WOperand.Like)
                     {
-                        return new RegexpQuery { Field = new Field(cmd.Property), Value = "(?i)" + cmd.StringValue };
+                        // For Like, the pattern is already a regex - don't escape
+                        var caseInsensitiveValue = MakeCaseInsensitiveRegex(cmd.StringValue, escapeSpecialChars: false);
+
+                        // Ensure the pattern matches anywhere in the string if it doesn't explicitly anchor
+                        // Regex patterns in Elasticsearch are anchored, so .*est matches "xyz est" but not "xyz est abc"
+                        // To match substrings, ensure trailing .* if not present
+                        if (!caseInsensitiveValue.EndsWith(".*") && !caseInsensitiveValue.EndsWith('$'))
+                        {
+                            caseInsensitiveValue += ".*";
+                        }
+
+                        return new RegexpQuery { Field = new Field(GetElasticKeywordName(cmd.Property)), Value = caseInsensitiveValue };
                     }
                     else if (cmd.Operation == WOperand.Contains)
                     {
                         var data = cmd.ParseContainValue(cmd.StringValue);
                         var sb = new StringBuilder();
-
-                        // Add case insensitive flag at the beginning
-                        sb.Append("(?i)");
 
                         foreach (var d in data)
                         {
@@ -338,7 +373,8 @@ namespace LeadCMS.Infrastructure
                             }
                             else if (d.Item1 == QueryModelBuilder<T>.WhereUnitData.ContainsType.Substring)
                             {
-                                sb.Append(Escape(d.Item2));
+                                // For Contains substrings, escape special chars to match literally
+                                sb.Append(MakeCaseInsensitiveRegex(d.Item2, escapeSpecialChars: true));
                             }
                         }
 
@@ -458,23 +494,6 @@ namespace LeadCMS.Infrastructure
             }
 
             andQueries.Add(new BoolQuery { Should = sq.ToArray() });
-        }
-
-        private string Escape(string value)
-        {
-            var sb = new StringBuilder();
-
-            foreach (var c in value)
-            {
-                if (regExSymbols.Contains(c))
-                {
-                    sb.Append('\\');
-                }
-
-                sb.Append(c);
-            }
-
-            return sb.ToString();
         }
     }
 }

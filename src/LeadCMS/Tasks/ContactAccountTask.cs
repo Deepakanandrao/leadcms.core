@@ -47,35 +47,49 @@ public class ContactAccountTask : BaseTask
     {
         try
         {
+            int totalDomains = 0;
+            int totalContacts = 0;
+            int successfulAccounts = 0;
+            int failedAccounts = 0;
+
             var domainsToHandle = dbContext.Domains!.Where(d => d.AccountStatus == AccountSyncStatus.NotInitialized);
             var totalSize = domainsToHandle.Count();
             for (var start = 0; start < totalSize; start += batchSize)
             {
                 var batch = domainsToHandle.Skip(start).Take(batchSize).ToList();
-                await SetDomainsAccounts(batch);
+                totalDomains += batch.Count;
+                var (successful, failed) = await SetDomainsAccounts(batch);
+                successfulAccounts += successful;
+                failedAccounts += failed;
                 var domainIdDictionary = batch.ToDictionary(d => d.Id, d => d);
                 var contacts = dbContext.Contacts!.Where(c => domainIdDictionary.Keys.Contains(c.DomainId));
                 foreach (var c in contacts)
                 {
                     c.AccountId = null;
                     c.Account = domainIdDictionary[c.DomainId].Account;
+                    totalContacts++;
                 }
 
                 await dbContext.SaveChangesAsync();
             }
+
+            currentJob.Result = $"Processed {totalDomains} domains ({successfulAccounts} successful, {failedAccounts} failed), linked {totalContacts} contacts to accounts";
+            return true;
         }
         catch (Exception ex)
         {
             Log.Error(ex, $"Error occurred when executing Domain Check task in task runner {currentJob.Id}");
+            currentJob.Result = $"Account sync failed: {ex.Message}";
             return false;
         }
-
-        return true;
     }
 
-    private async Task SetDomainsAccounts(List<Domain> domains)
+    private async Task<(int successfulAccounts, int failedAccounts)> SetDomainsAccounts(List<Domain> domains)
     {
         var newAccounts = new HashSet<Account>();
+        int successfulAccounts = 0;
+        int failedAccounts = 0;
+
         foreach (var domain in domains)
         {
             try
@@ -91,10 +105,12 @@ public class ContactAccountTask : BaseTask
                 {
                     accInfo = new AccountDetailsInfo() { Name = domain.Name };
                     domain.AccountStatus = AccountSyncStatus.Failed;
+                    failedAccounts++;
                 }
                 else
                 {
                     domain.AccountStatus = AccountSyncStatus.Successful;
+                    successfulAccounts++;
                 }
 
                 var existingAccount = dbContext.Accounts!.FirstOrDefault(a => a.Name == accInfo.Name);
@@ -121,5 +137,6 @@ public class ContactAccountTask : BaseTask
         }
 
         await dbContext.Accounts!.AddRangeAsync(newAccounts);
+        return (successfulAccounts, failedAccounts);
     }
 }

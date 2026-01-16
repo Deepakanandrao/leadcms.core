@@ -30,13 +30,13 @@ namespace LeadCMS.Tasks
 
             if (!string.IsNullOrEmpty(elasticPrefix))
             {
-                prefix = elasticPrefix + "-";
+                prefix = elasticPrefix;
             }
 
             this.esDbContext = esDbContext;
         }
 
-        protected override void ExecuteLogTask(List<ChangeLog> nextBatch)
+        protected override void ExecuteLogTask(List<ChangeLog> nextBatch, Type loggedType)
         {
             // Skip processing if Elasticsearch is disabled
             if (!esDbContext.IsElasticsearchEnabled)
@@ -45,21 +45,27 @@ namespace LeadCMS.Tasks
             }
 
             var bulkPayload = new StringBuilder();
+            int addedCount = 0;
+            int modifiedCount = 0;
+            int deletedCount = 0;
 
             var existedIndices = GetExistedIndices();
 
-            var newIndexNames = new HashSet<string>();
+            var indexName = ElasticHelper.GetIndexName(prefix, loggedType);
+
+            if (!existedIndices.Contains(indexName))
+            {
+                var resp = esDbContext.ElasticClient.Indices.Create(indexName, c => c.Settings(s => s.Analysis(a => a.Analyzers(an => an.Custom("default", ca => ca.Tokenizer("uax_url_email").Filters("lowercase"))))));
+
+                if (!resp.IsValid)
+                {
+                    throw new ESSyncTaskException($"Cannot create index {indexName}");
+                }
+            }
 
             foreach (var item in nextBatch)
             {
                 var entityState = item.EntityState;
-
-                var indexName = GetIndexName(item.ObjectType);
-
-                if (!existedIndices.Contains(indexName))
-                {
-                    newIndexNames.Add(indexName);
-                }
 
                 if (entityState == EntityState.Added || entityState == EntityState.Modified)
                 {
@@ -68,21 +74,22 @@ namespace LeadCMS.Tasks
                     data!.Add(changeLogId, item.Id);
                     bulkPayload.AppendLine(JsonHelper.Serialize(createItem));
                     bulkPayload.AppendLine(JsonHelper.Serialize(data));
+
+                    if (entityState == EntityState.Added)
+                    {
+                        addedCount++;
+                    }
+                    else
+                    {
+                        modifiedCount++;
+                    }
                 }
 
                 if (entityState == EntityState.Deleted)
                 {
                     var deleteItem = new { delete = new { _index = indexName, _id = item.ObjectId } };
                     bulkPayload.AppendLine(JsonHelper.Serialize(deleteItem));
-                }
-            }
-
-            foreach (var indexName in newIndexNames)
-            {
-                var resp = esDbContext.ElasticClient.Indices.Create(indexName, c => c.Settings(s => s.Analysis(a => a.Analyzers(an => an.Custom("default", ca => ca.Tokenizer("uax_url_email").Filters("lowercase"))))));
-                if (!resp.IsValid)
-                {
-                    throw new ESSyncTaskException($"Cannot create index {indexName}");
+                    deletedCount++;
                 }
             }
 
@@ -120,10 +127,12 @@ namespace LeadCMS.Tasks
 
             var minLogId = 1;
 
-            if (esDbContext.ElasticClient.Indices.Exists(GetIndexName(loggedType.Name)).Exists)
+            var indexName = ElasticHelper.GetIndexName(prefix, loggedType);
+
+            if (esDbContext.ElasticClient.Indices.Exists(indexName).Exists)
             {
                 var requestResponse = esDbContext.ElasticClient.Search<Dictionary<string, object>>(s => s.Query(q => new MatchAllQuery { })
-                .Index(GetIndexName(loggedType.Name))
+                .Index(indexName)
                 .Sort(s => s.Descending(d => d[changeLogId]))
                 .Size(1));
                 if (requestResponse.IsValid && requestResponse.Documents.Count > 0)
@@ -138,11 +147,6 @@ namespace LeadCMS.Tasks
         protected override bool IsTypeSupported(Type type)
         {
             return type.GetCustomAttribute<SupportsElasticAttribute>() != null;
-        }
-
-        private string GetIndexName(string loggedTypeName)
-        {
-            return prefix + loggedTypeName.ToLower();
         }
 
         private HashSet<string> GetExistedIndices()

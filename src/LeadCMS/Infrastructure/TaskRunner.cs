@@ -69,10 +69,11 @@ namespace LeadCMS.Infrastructure
 
                     using (taskLock)
                     {
-                        var currentJob = await AddOrGetPendingTaskExecutionLog(task);
+                        var currentJob = await AddOrGetPendingTaskExecutionLog(task, TaskExecutionTrigger.Scheduled);
 
                         if (IsRightTimeToExecute(currentJob, task))
                         {
+                            currentJob.ActualExecutionTime = DateTime.UtcNow;
                             var isCompleted = await task.Execute(currentJob);
 
                             await UpdateTaskExecutionLog(currentJob, isCompleted ? TaskExecutionStatus.Completed : TaskExecutionStatus.Pending);
@@ -86,7 +87,7 @@ namespace LeadCMS.Infrastructure
             }
         }
 
-        public async Task<bool> ExecuteTask(ITask task)
+        public async Task<bool> ExecuteTask(ITask task, TaskExecutionTrigger trigger = TaskExecutionTrigger.Manual)
         {
             if (!IsPrimaryNode())
             {
@@ -103,7 +104,8 @@ namespace LeadCMS.Infrastructure
 
             using (taskLock)
             {
-                var currentJob = await AddOrGetPendingTaskExecutionLog(task);
+                var currentJob = await AddOrGetPendingTaskExecutionLog(task, trigger);
+                currentJob.ActualExecutionTime = DateTime.UtcNow;
 
                 var isCompleted = await task.Execute(currentJob);
 
@@ -142,7 +144,7 @@ namespace LeadCMS.Infrastructure
             }
         }
 
-        private async Task<TaskExecutionLog> AddOrGetPendingTaskExecutionLog(ITask task)
+        private async Task<TaskExecutionLog> AddOrGetPendingTaskExecutionLog(ITask task, TaskExecutionTrigger trigger = TaskExecutionTrigger.Scheduled)
         {
             var pendingTask = await dbContext.TaskExecutionLogs!.
                 FirstOrDefaultAsync(taskLog => taskLog.Status == TaskExecutionStatus.Pending && taskLog.TaskName == task.Name);
@@ -152,12 +154,15 @@ namespace LeadCMS.Infrastructure
                 return pendingTask;
             }
 
+            var now = DateTime.UtcNow;
             pendingTask = new TaskExecutionLog()
             {
                 TaskName = task.Name,
-                ScheduledExecutionTime = GetExecutionTimeByCronSchedule(task.CronSchedule, DateTime.UtcNow),
+                ScheduledExecutionTime = GetExecutionTimeByCronSchedule(task.CronSchedule, now),
+                ActualExecutionTime = now,
                 Status = TaskExecutionStatus.Pending,
                 RetryCount = 0,
+                TriggeredBy = trigger,
             };
 
             await dbContext.TaskExecutionLogs!.AddAsync(pendingTask);
@@ -168,8 +173,9 @@ namespace LeadCMS.Infrastructure
 
         private async Task UpdateTaskExecutionLog(TaskExecutionLog job, TaskExecutionStatus status)
         {
+            var endTime = DateTime.UtcNow;
             job.Status = status;
-            job.ActualExecutionTime = DateTime.UtcNow;
+            job.Duration = endTime - job.ActualExecutionTime;
 
             if (status == TaskExecutionStatus.Pending)
             {

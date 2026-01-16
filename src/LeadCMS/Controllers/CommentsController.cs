@@ -51,12 +51,13 @@ public class CommentsController : BaseControllerWithImport<Comment, CommentCreat
     }
 
     [HttpGet("with-statistics")]
+    [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<CommentsWithStatisticsDto>> GetWithStatistics([FromQuery] string? query)
+    public async Task<IActionResult> GetWithStatistics([FromQuery] string? query)
     {
-        // Get the comments using the base method
+        // Get the comments using the base method (returns CommentDetailsDto from database)
         var returnedItems = (await base.Get(query)).Result;
         var items = (List<CommentDetailsDto>)((ObjectResult)returnedItems!).Value!;
 
@@ -66,16 +67,27 @@ public class CommentsController : BaseControllerWithImport<Comment, CommentCreat
         // Process items through commentable extension
         var processedResult = commentableControllerExtension.ReturnComments(items, this);
 
-        // Handle authenticated users only
-        var processedItems = (List<CommentDetailsDto>)((ObjectResult)processedResult.Result!).Value!;
-
-        var result = new CommentsWithStatisticsDto
+        // Check if the user is authenticated to return appropriate DTO
+        if (User.Identity != null && User.Identity.IsAuthenticated)
         {
-            Comments = processedItems,
-            Statistics = allStatistics,
-        };
-
-        return Ok(result);
+            var processedItems = (List<CommentDetailsDto>)((ObjectResult)processedResult.Result!).Value!;
+            var result = new CommentsWithStatisticsDto
+            {
+                Comments = processedItems,
+                Statistics = allStatistics,
+            };
+            return Ok(result);
+        }
+        else
+        {
+            var processedItems = (List<AnonymousCommentDetailsDto>)((ObjectResult)processedResult.Result!).Value!;
+            var result = new AnonymousCommentsWithStatisticsDto
+            {
+                Comments = processedItems,
+                Statistics = allStatistics,
+            };
+            return Ok(result);
+        }
     }
 
     // GET api/{entity}s/5
@@ -347,7 +359,7 @@ public class CommentsController : BaseControllerWithImport<Comment, CommentCreat
         {
             Type = FilterType.Where,
             Props = new[] { "answerStatus" },
-            Value = answerStatus.ToString(),
+            Value = ((int)answerStatus).ToString(),
             Source = $"filter[where][answerStatus]={answerStatus}",
         });
 

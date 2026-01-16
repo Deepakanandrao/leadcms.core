@@ -36,7 +36,7 @@ public class TestApplication : WebApplicationFactory<Program>
             if (esDbContext.ElasticClient != null)
             {
                 esDbContext.ElasticClient.Indices.Delete("*");
-            }            
+            }
         }
     }
 

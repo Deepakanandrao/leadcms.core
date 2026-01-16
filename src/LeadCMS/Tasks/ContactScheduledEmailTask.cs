@@ -27,6 +27,12 @@ public class ContactScheduledEmailTask : BaseTask
     {
         try
         {
+            int processedCount = 0;
+            int sentCount = 0;
+            int unsubscribedCount = 0;
+            int completedCount = 0;
+            int failedCount = 0;
+
             // Load all the contact schedules in ContactEmailSchedule table by pending status
             var schedules = dbContext.ContactEmailSchedules!
                 .Include(c => c.Schedule)
@@ -36,12 +42,14 @@ public class ContactScheduledEmailTask : BaseTask
 
             foreach (var schedule in schedules)
             {
+                processedCount++;
                 try
                 {
                     if (schedule.Contact?.UnsubscribeId is not null)
                     {
                         schedule.Status = ScheduleStatus.Unsubscribed;
                         await dbContext.SaveChangesAsync();
+                        unsubscribedCount++;
                         continue;
                     }
 
@@ -87,6 +95,7 @@ public class ContactScheduledEmailTask : BaseTask
                     {
                         schedule.Status = ScheduleStatus.Completed;
                         await dbContext.SaveChangesAsync();
+                        completedCount++;
 
                         continue;
                     }
@@ -101,6 +110,7 @@ public class ContactScheduledEmailTask : BaseTask
                         if (executeNow)
                         {
                             await emailFromTemplateService.SendToContactAsync(schedule.ContactId, nextEmailTemplateToSend!.Name, GetTemplateArguments(), null, schedule.ScheduleId);
+                            sentCount++;
                         }
                     }
                 }
@@ -109,14 +119,17 @@ public class ContactScheduledEmailTask : BaseTask
                     Log.Error(ex, $"Failed to complete email sending for contact schedule Id = {schedule.Id}");
                     schedule.Status = ScheduleStatus.Failed;
                     await dbContext.SaveChangesAsync();
+                    failedCount++;
                 }
             }
 
+            currentJob.Result = $"Processed {processedCount} schedules: {sentCount} emails sent, {completedCount} completed, {unsubscribedCount} unsubscribed, {failedCount} failed";
             return true;
         }
         catch (Exception ex)
         {
             Log.Error(ex, $"Error occurred when executing contact scheduled task in task runner {currentJob.Id}");
+            currentJob.Result = $"Task execution failed: {ex.Message}";
             return false;
         }
     }
@@ -190,7 +203,7 @@ public class ContactScheduledEmailTask : BaseTask
                             && e.ContactId == contactEmailSchedule.ContactId
                             && e.Status == EmailStatus.Sent);
 
-            // Skip the days already the mail is sent 
+            // Skip the days already the mail is sent
             var nextRunDate = contactEmailSchedule.Contact!.CreatedAt.AddDays(days[emailSentCount]);
             // Add given time in the schedule + user timezone adjustment.
             var nextRunDateTime = DateOnly.FromDateTime(nextRunDate).ToDateTime(contactSchedule!.Time!.Value).AddMinutes(userToServerTimeZoneOffset);

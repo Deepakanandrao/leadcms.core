@@ -97,7 +97,7 @@ public class IdentityLoginTests : BaseTestAutoLogin
         // When the user is blocked login returns BadRequest
         await PostTest<JWTokenDto>(LoginApi, testLoginDto, HttpStatusCode.BadRequest);
         await PostTest<JWTokenDto>(LoginApi, testLoginDto, HttpStatusCode.BadRequest);
-        // White untin the user is unlocked automatically
+        // Wait until the user is unlocked automatically
         await Task.Delay(TimeSpan.FromMinutes(lockoutConfig!.LockoutTime * 1.1));
         await PostTest<JWTokenDto>(LoginApi, testLoginDto, HttpStatusCode.Unauthorized);
     }
