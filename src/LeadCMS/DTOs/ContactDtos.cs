@@ -113,6 +113,14 @@ public class ContactDetailsDto : ContactCreateDto
 
     public int AccountId { get; set; }
 
+    public int DealsCount { get; set; }
+
+    public int OrdersCount { get; set; }
+
+    public DateTime? LastOrderDate { get; set; }
+
+    public decimal TotalRevenue { get; set; }
+
     [Ignore]
     public DomainDetailsDto? Domain { get; set; }
 

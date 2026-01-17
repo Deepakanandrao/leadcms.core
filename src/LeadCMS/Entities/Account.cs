@@ -68,6 +68,13 @@ public class Account : BaseEntity, ICommentable
 
     public int DomainsCount { get; set; }
 
+    public int OrdersCount { get; set; }
+
+    public DateTime? LastOrderDate { get; set; }
+
+    [Column(TypeName = "numeric(18,2)")]
+    public decimal TotalRevenue { get; set; }
+
     [JsonIgnore]
     public virtual ICollection<Contact>? Contacts { get; set; }
 

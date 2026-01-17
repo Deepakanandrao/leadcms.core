@@ -101,6 +101,15 @@ public class Contact : BaseEntity, ICommentable
     [Column(TypeName = "jsonb")]
     public string[]? Tags { get; set; }
 
+    public int DealsCount { get; set; }
+
+    public int OrdersCount { get; set; }
+
+    public DateTime? LastOrderDate { get; set; }
+
+    [Column(TypeName = "numeric(18,2)")]
+    public decimal TotalRevenue { get; set; }
+
     [Required]
     public int DomainId { get; set; }
 

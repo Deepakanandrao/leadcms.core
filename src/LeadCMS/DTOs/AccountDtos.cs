@@ -134,6 +134,12 @@ public class AccountDetailsDto : AccountCreateDto
 
     public int DomainsCount { get; set; }
 
+    public int OrdersCount { get; set; }
+
+    public DateTime? LastOrderDate { get; set; }
+
+    public decimal TotalRevenue { get; set; }
+
     [Ignore]
     public List<ContactDetailsDto>? Contacts { get; set; }
 

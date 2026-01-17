@@ -6,6 +6,7 @@ using LeadCMS.Data;
 using LeadCMS.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -14,9 +15,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LeadCMS.Migrations
 {
     [DbContext(typeof(PgDbContext))]
-    partial class PgDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260117142313_AddContactOrderCountAndTotalRevenue")]
+    partial class AddContactOrderCountAndTotalRevenue
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -105,10 +108,6 @@ namespace LeadCMS.Migrations
                         .HasColumnType("text")
                         .HasColumnName("employees_range");
 
-                    b.Property<DateTime?>("LastOrderDate")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_order_date");
-
                     b.Property<string>("LogoUrl")
                         .HasColumnType("text")
                         .HasColumnName("logo_url");
@@ -117,10 +116,6 @@ namespace LeadCMS.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("name");
-
-                    b.Property<int>("OrdersCount")
-                        .HasColumnType("integer")
-                        .HasColumnName("orders_count");
 
                     b.Property<double?>("Profit")
                         .HasColumnType("double precision")
@@ -153,10 +148,6 @@ namespace LeadCMS.Migrations
                     b.Property<string[]>("Tags")
                         .HasColumnType("jsonb")
                         .HasColumnName("tags");
-
-                    b.Property<decimal>("TotalRevenue")
-                        .HasColumnType("numeric(18,2)")
-                        .HasColumnName("total_revenue");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
