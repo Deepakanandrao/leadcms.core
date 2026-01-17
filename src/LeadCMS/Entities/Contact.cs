@@ -32,6 +32,9 @@ public class Contact : BaseEntity, ICommentable
     public string? LastName { get; set; }
 
     [Searchable]
+    public string? FullName { get; private set; }
+
+    [Searchable]
     public DateTime? Birthday { get; set; }
 
     [Required]

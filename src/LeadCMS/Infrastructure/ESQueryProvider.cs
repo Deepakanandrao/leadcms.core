@@ -116,7 +116,7 @@ namespace LeadCMS.Infrastructure
                 {
                     var sortOrder = orderCmd.Ascending ? Nest.SortOrder.Ascending : Nest.SortOrder.Descending;
 
-                    var field = orderCmd.Property.PropertyType == typeof(string) ? new Field(GetElasticKeywordName(orderCmd.Property)) : new Field(orderCmd.Property);
+                    var field = orderCmd.PropertyPath.LeafProperty.PropertyType == typeof(string) ? new Field(GetElasticKeywordName(orderCmd.PropertyPath.LeafProperty)) : new Field(orderCmd.PropertyPath.LeafProperty);
                     sortedConditions.Add(new FieldSort { Field = field, Order = sortOrder, UnmappedType = FieldType.Long });
                 }
             }
@@ -136,7 +136,7 @@ namespace LeadCMS.Infrastructure
 
                 foreach (var p in queryBuilder.OrderData)
                 {
-                    res.Add(p.Property.GetValue(lastObject)!);
+                    res.Add(p.PropertyPath.LeafProperty.GetValue(lastObject)!);
                 }
 
                 return res;
@@ -247,13 +247,13 @@ namespace LeadCMS.Infrastructure
                 TermRangeQuery CreateTermRangeQuery(QueryModelBuilder<T>.WhereUnitData cmd)
                 {
                     TermRangeQuery res;
-                    if (cmd.Property.PropertyType == typeof(string))
+                    if (cmd.PropertyPath.LeafProperty.PropertyType == typeof(string))
                     {
-                        res = new TermRangeQuery { Field = new Field(GetElasticKeywordName(cmd.Property)), };
+                        res = new TermRangeQuery { Field = new Field(GetElasticKeywordName(cmd.PropertyPath.LeafProperty)), };
                     }
                     else
                     {
-                        res = new TermRangeQuery { Field = new Field(cmd.Property), };
+                        res = new TermRangeQuery { Field = new Field(cmd.PropertyPath.LeafProperty), };
                     }
 
                     res.GetType().GetProperty(cmd.Operation.ToString())!.SetValue(res, value.ToString());
@@ -262,13 +262,13 @@ namespace LeadCMS.Infrastructure
 
                 if (double.TryParse(cmd.StringValue, out _))
                 {
-                    var res = new NumericRangeQuery { Field = cmd.Property, };
+                    var res = new NumericRangeQuery { Field = cmd.PropertyPath.LeafProperty, };
                     res.GetType().GetProperty(cmd.Operation.ToString())!.SetValue(res, Convert.ChangeType(value, typeof(double)));
                     return res;
                 }
-                else if (cmd.Property.PropertyType == typeof(DateTime))
+                else if (cmd.PropertyPath.LeafProperty.PropertyType == typeof(DateTime))
                 {
-                    var res = new DateRangeQuery { Field = cmd.Property, };
+                    var res = new DateRangeQuery { Field = cmd.PropertyPath.LeafProperty, };
                     res.GetType().GetProperty(cmd.Operation.ToString())!.SetValue(res, DateMath.Anchored((DateTime)value));
                     return res;
                 }
@@ -290,24 +290,24 @@ namespace LeadCMS.Infrastructure
                     {
                         if (parsedValue != null)
                         {
-                            if (cmd.Property.PropertyType == typeof(string))
+                            if (cmd.PropertyPath.LeafProperty.PropertyType == typeof(string))
                             {
                                 // For string properties, use case-insensitive wildcard query for exact match
                                 resQueries.Add(new WildcardQuery
                                 {
-                                    Field = new Field(GetElasticKeywordName(cmd.Property)),
+                                    Field = new Field(GetElasticKeywordName(cmd.PropertyPath.LeafProperty)),
                                     Value = parsedValue!.ToString(),
                                     CaseInsensitive = true,
                                 });
                             }
                             else
                             {
-                                resQueries.Add(new TermQuery { Field = new Field(cmd.Property), Value = parsedValue!.ToString() });
+                                resQueries.Add(new TermQuery { Field = new Field(cmd.PropertyPath.LeafProperty), Value = parsedValue!.ToString() });
                             }
                         }
                         else
                         {
-                            resQueries.Add(new BoolQuery() { MustNot = new QueryContainer[] { new ExistsQuery { Field = new Field(cmd.Property) } } });
+                            resQueries.Add(new BoolQuery() { MustNot = new QueryContainer[] { new ExistsQuery { Field = new Field(cmd.PropertyPath.LeafProperty) } } });
                         }
                     }
 
@@ -358,7 +358,7 @@ namespace LeadCMS.Infrastructure
                             caseInsensitiveValue += ".*";
                         }
 
-                        return new RegexpQuery { Field = new Field(GetElasticKeywordName(cmd.Property)), Value = caseInsensitiveValue };
+                        return new RegexpQuery { Field = new Field(GetElasticKeywordName(cmd.PropertyPath.LeafProperty)), Value = caseInsensitiveValue };
                     }
                     else if (cmd.Operation == WOperand.Contains)
                     {
@@ -378,7 +378,7 @@ namespace LeadCMS.Infrastructure
                             }
                         }
 
-                        return new RegexpQuery { Field = new Field(GetElasticKeywordName(cmd.Property)), Value = sb.ToString() };
+                        return new RegexpQuery { Field = new Field(GetElasticKeywordName(cmd.PropertyPath.LeafProperty)), Value = sb.ToString() };
                     }
                     else
                     {
@@ -398,14 +398,14 @@ namespace LeadCMS.Infrastructure
                         case WOperand.InList:
                             // Support for 'in' operand
                             var parsedValues = cmd.ParseValues(cmd.StringValue.Split(',').Select(s => s.Trim()));
-                            if (cmd.Property.PropertyType == typeof(string))
+                            if (cmd.PropertyPath.LeafProperty.PropertyType == typeof(string))
                             {
                                 // For string properties, use case-insensitive wildcard queries
                                 var wildcardQueries = parsedValues
                                     .Where(v => v != null)
                                     .Select(v => (QueryContainer)new WildcardQuery
                                     {
-                                        Field = new Field(GetElasticKeywordName(cmd.Property)),
+                                        Field = new Field(GetElasticKeywordName(cmd.PropertyPath.LeafProperty)),
                                         Value = v!.ToString(),
                                         CaseInsensitive = true,
                                     })
@@ -417,7 +417,7 @@ namespace LeadCMS.Infrastructure
                             {
                                 return new TermsQuery
                                 {
-                                    Field = new Field(cmd.Property),
+                                    Field = new Field(cmd.PropertyPath.LeafProperty),
                                     Terms = parsedValues.ToArray(),
                                 };
                             }

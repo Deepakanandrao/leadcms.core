@@ -101,6 +101,8 @@ public class ContactDetailsDto : ContactCreateDto
 {
     public int Id { get; set; }
 
+    public string? FullName { get; set; }
+
     public string AvatarUrl { get; set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; }

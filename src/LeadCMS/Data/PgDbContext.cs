@@ -278,6 +278,11 @@ public class PgDbContext : IdentityDbContext<User>
 
         builder.Entity<User>().Property(u => u.Data).HasColumnType("jsonb");
 
+        // Configure Contact FullName as computed column
+        builder.Entity<Contact>()
+            .Property(c => c.FullName)
+            .HasComputedColumnSql("TRIM(COALESCE(\"first_name\", '') || ' ' || COALESCE(\"middle_name\", '') || ' ' || COALESCE(\"last_name\", ''))", stored: true);
+
         // Fix ContentType foreign key for Content
         builder.Entity<Content>()
             .HasOne(c => c.ContentType)

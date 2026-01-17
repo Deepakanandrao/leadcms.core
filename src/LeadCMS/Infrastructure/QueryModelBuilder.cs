@@ -7,9 +7,35 @@ using System.Reflection;
 using System.Text;
 using LeadCMS.Data;
 using LeadCMS.Entities;
+using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Infrastructure
 {
+#pragma warning disable SA1649, SA1402, SA1516, SA1201 // Multiple types in file is acceptable here
+
+    /// <summary>
+    /// Represents a property path that can contain one or more properties for nested access.
+    /// Property names are matched case-insensitively (e.g., "account.name", "Account.Name", and "ACCOUNT.NAME" are equivalent).
+    /// </summary>
+    public class PropertyPath
+    {
+        public List<PropertyInfo> Properties { get; set; } = new List<PropertyInfo>();
+
+        public PropertyInfo LeafProperty => Properties.Last();
+
+        public bool IsNested => Properties.Count > 1;
+
+        public PropertyPath(PropertyInfo property)
+        {
+            Properties.Add(property);
+        }
+
+        public PropertyPath(List<PropertyInfo> properties)
+        {
+            Properties = properties;
+        }
+    }
+
     public class QueryModelBuilder<T>
         where T : BaseEntityWithId
     {
@@ -297,7 +323,7 @@ namespace LeadCMS.Infrastructure
         {
             public OrderCommandData(string propertyName)
             {
-                Property = InitProperty(propertyName);
+                PropertyPath = InitPropertyPath(propertyName);
                 Ascending = true;
             }
 
@@ -324,25 +350,45 @@ namespace LeadCMS.Infrastructure
                         throw new QueryException(cmd.Source, "Failed to parse. Check syntax.");
                 }
 
-                Property = InitProperty(propertyName);
+                PropertyPath = InitPropertyPath(propertyName);
             }
 
-            public PropertyInfo Property { get; set; }
+            public PropertyPath PropertyPath { get; set; }
 
             public bool Ascending { get; set; }
 
-            private PropertyInfo InitProperty(string propertyName)
+            private PropertyPath InitPropertyPath(string propertyName)
             {
-                var typeProperties = typeof(T).GetProperties();
+                var parts = propertyName.Split('.');
+                var properties = new List<PropertyInfo>();
+                Type currentType = typeof(T);
 
-                var property = typeProperties.FirstOrDefault(p => p.Name.ToLowerInvariant() == propertyName.ToLowerInvariant());
-
-                if (property == null)
+                for (int i = 0; i < parts.Length; i++)
                 {
-                    throw new QueryException(string.Empty, $"No such property '{propertyName}'");
+                    var part = parts[i];
+                    var typeProperties = currentType.GetProperties();
+                    var property = typeProperties.FirstOrDefault(p => p.Name.ToLowerInvariant() == part.ToLowerInvariant());
+
+                    if (property == null)
+                    {
+                        throw new QueryException(string.Empty, $"No such property '{part}' on type '{currentType.Name}'");
+                    }
+
+                    properties.Add(property);
+
+                    // If not the last part, navigate to the property's type
+                    if (i < parts.Length - 1)
+                    {
+                        currentType = property.PropertyType;
+                        // Handle nullable types
+                        if (Nullable.GetUnderlyingType(currentType) != null)
+                        {
+                            currentType = Nullable.GetUnderlyingType(currentType)!;
+                        }
+                    }
                 }
 
-                return property;
+                return new PropertyPath(properties);
             }
         }
 
@@ -356,10 +402,15 @@ namespace LeadCMS.Infrastructure
         public sealed class WhereUnitData
         {
             public readonly string StringValue;
-            public readonly PropertyInfo Property;
+            public readonly PropertyPath PropertyPath;
             public readonly WOperand Operation;
             public readonly bool OrOperation;
             public readonly QueryCommand Cmd;
+
+#pragma warning disable S1133 // Obsolete member kept for backward compatibility
+            [Obsolete("Use PropertyPath instead")]
+            public PropertyInfo Property => PropertyPath.LeafProperty;
+#pragma warning restore S1133
 
             public WhereUnitData(QueryCommand cmd)
             {
@@ -391,8 +442,47 @@ namespace LeadCMS.Infrastructure
 
                 var propertyName = cmd.Props.ElementAtOrDefault(indexOffset);
                 var rawOperation = cmd.Props.ElementAtOrDefault(indexOffset + 1);
-                Property = ParseProperty(propertyName, cmd);
+                PropertyPath = ParsePropertyPath(propertyName, cmd);
                 Operation = ParseOperation(rawOperation, cmd);
+            }
+
+            private PropertyPath ParsePropertyPath(string? propertyName, QueryCommand cmd)
+            {
+                if (propertyName == null || string.IsNullOrWhiteSpace(propertyName))
+                {
+                    throw new QueryException(cmd.Source, "Property field not found");
+                }
+
+                var parts = propertyName.Split('.');
+                var properties = new List<PropertyInfo>();
+                Type currentType = typeof(T);
+
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    var part = parts[i];
+                    var typeProperties = currentType.GetProperties();
+                    var property = typeProperties.FirstOrDefault(p => p.Name.ToLowerInvariant() == part.ToLowerInvariant());
+
+                    if (property == null)
+                    {
+                        throw new QueryException(cmd.Source, $"No such property '{part}' on type '{currentType.Name}'");
+                    }
+
+                    properties.Add(property);
+
+                    // If not the last part, navigate to the property's type
+                    if (i < parts.Length - 1)
+                    {
+                        currentType = property.PropertyType;
+                        // Handle nullable types
+                        if (Nullable.GetUnderlyingType(currentType) != null)
+                        {
+                            currentType = Nullable.GetUnderlyingType(currentType)!;
+                        }
+                    }
+                }
+
+                return new PropertyPath(properties);
             }
 
             public enum ContainsType
@@ -534,14 +624,14 @@ namespace LeadCMS.Infrastructure
             public bool IsNullableProperty()
             {
                 var context = new NullabilityInfoContext();
-                var info = context.Create(Property);
+                var info = context.Create(PropertyPath.LeafProperty);
                 return info.WriteState == NullabilityState.Nullable;
             }
 
             private Type GetUnderlyingPropertyType()
             {
-                var nt = Nullable.GetUnderlyingType(Property.PropertyType);
-                return nt == null ? Property.PropertyType : nt!;
+                var nt = Nullable.GetUnderlyingType(PropertyPath.LeafProperty.PropertyType);
+                return nt == null ? PropertyPath.LeafProperty.PropertyType : nt!;
             }
 
             private WOperand ParseOperation(string? rawOperation, QueryCommand cmd)

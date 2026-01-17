@@ -105,11 +105,22 @@ namespace LeadCMS.Infrastructure
                 foreach (var orderCmd in queryBuilder.OrderData)
                 {
                     var expressionParameter = Expression.Parameter(typeof(T));
-                    var orderPropertyType = orderCmd.Property.PropertyType;
+                    var orderPropertyType = orderCmd.PropertyPath.LeafProperty.PropertyType;
                     Expression orderPropertyExpression;
 
+                    // Add includes for nested properties
+                    if (orderCmd.PropertyPath.IsNested)
+                    {
+                        // Build the include path
+                        var includePath = string.Join(".", orderCmd.PropertyPath.Properties.Take(orderCmd.PropertyPath.Properties.Count - 1).Select(p => p.Name));
+                        if (!string.IsNullOrEmpty(includePath))
+                        {
+                            BuiltQuery = BuiltQuery.Include(includePath);
+                        }
+                    }
+
                     // Special handling for updatedAt: use coalesce(updatedAt, createdAt)
-                    if (string.Equals(orderCmd.Property.Name, "UpdatedAt", StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(orderCmd.PropertyPath.LeafProperty.Name, "UpdatedAt", StringComparison.OrdinalIgnoreCase) && !orderCmd.PropertyPath.IsNested)
                     {
                         var updatedAtProp = typeof(T).GetProperty("UpdatedAt");
                         var createdAtProp = typeof(T).GetProperty("CreatedAt");
@@ -131,12 +142,12 @@ namespace LeadCMS.Infrastructure
                         else
                         {
                             // Fallback to original property if not found
-                            orderPropertyExpression = Expression.Property(expressionParameter, orderCmd.Property.Name);
+                            orderPropertyExpression = BuildNestedPropertyExpression(expressionParameter, orderCmd.PropertyPath);
                         }
                     }
                     else
                     {
-                        orderPropertyExpression = Expression.Property(expressionParameter, orderCmd.Property.Name);
+                        orderPropertyExpression = BuildNestedPropertyExpression(expressionParameter, orderCmd.PropertyPath);
                     }
 
                     var orderDelegateType = typeof(Func<,>).MakeGenericType(typeof(T), orderPropertyType);
@@ -322,7 +333,18 @@ namespace LeadCMS.Infrastructure
         private Expression ParseWhereCommand(ParameterExpression expressionParameter, QueryModelBuilder<T>.WhereUnitData cmd)
         {
             Expression outputExpression;
-            var parameterPropertyExpression = Expression.Property(expressionParameter, cmd.Property.Name);
+
+            // Add includes for nested properties
+            if (cmd.PropertyPath.IsNested)
+            {
+                var includePath = string.Join(".", cmd.PropertyPath.Properties.Take(cmd.PropertyPath.Properties.Count - 1).Select(p => p.Name));
+                if (!string.IsNullOrEmpty(includePath))
+                {
+                    BuiltQuery = BuiltQuery.Include(includePath);
+                }
+            }
+
+            var parameterPropertyExpression = BuildNestedPropertyExpression(expressionParameter, cmd.PropertyPath);
 
             Expression CreateEqualExpression(QueryModelBuilder<T>.WhereUnitData cmd, Expression parameter)
             {
@@ -339,7 +361,7 @@ namespace LeadCMS.Infrastructure
                     else
                     {
                         Expression eqExpression;
-                        if (cmd.Property.PropertyType == typeof(string) && value != null)
+                        if (cmd.PropertyPath.LeafProperty.PropertyType == typeof(string) && value != null)
                         {
                             // Use ToLower() for case-insensitive string comparison that EF Core can translate
                             var toLowerMethod = typeof(string).GetMethod("ToLower", Type.EmptyTypes);
@@ -349,7 +371,7 @@ namespace LeadCMS.Infrastructure
                         }
                         else
                         {
-                            var valueParameterExpression = Expression.Constant(value, cmd.Property.PropertyType);
+                            var valueParameterExpression = Expression.Constant(value, cmd.PropertyPath.LeafProperty.PropertyType);
                             eqExpression = Expression.Equal(parameter, valueParameterExpression);
                         }
 
@@ -371,13 +393,13 @@ namespace LeadCMS.Infrastructure
                 Expression? res = null;
                 var parsedValue = cmd.ParseValues(new string[] { cmd.StringValue })[0];
 
-                Expression value = Expression.Constant(parsedValue, cmd.Property.PropertyType);
+                Expression value = Expression.Constant(parsedValue, cmd.PropertyPath.LeafProperty.PropertyType);
                 var pEx = parameter;
                 var vEx = value;
 
-                if (cmd.Property.PropertyType == typeof(string))
+                if (cmd.PropertyPath.LeafProperty.PropertyType == typeof(string))
                 {
-                    var compareMethod = cmd.Property.PropertyType.GetMethod("CompareTo", new[] { typeof(string) });
+                    var compareMethod = cmd.PropertyPath.LeafProperty.PropertyType.GetMethod("CompareTo", new[] { typeof(string) });
                     pEx = Expression.Call(parameter, compareMethod!, value);
                     vEx = Expression.Constant(0);
                 }
@@ -406,7 +428,7 @@ namespace LeadCMS.Infrastructure
             {
                 var parsedValue = cmd.ParseValues(new string[] { cmd.StringValue })[0];
 
-                Expression value = Expression.Constant(parsedValue, cmd.Property.PropertyType);
+                Expression value = Expression.Constant(parsedValue, cmd.PropertyPath.LeafProperty.PropertyType);
                 Expression? res = null;
 
                 var matchOperation = typeof(Regex).GetMethod("IsMatch", BindingFlags.Static | BindingFlags.Public, new[] { typeof(string), typeof(string), typeof(RegexOptions) });
@@ -512,7 +534,7 @@ namespace LeadCMS.Infrastructure
             var stringValues = cmd.StringValue.Split(',').Select(s => s.Trim()).ToArray();
             var parsedValues = cmd.ParseValues(stringValues);
 
-            if (cmd.Property.PropertyType == typeof(string))
+            if (cmd.PropertyPath.LeafProperty.PropertyType == typeof(string))
             {
                 // For string properties, use case-insensitive comparison with ToLower()
                 Expression orExpression = Expression.Constant(false);
@@ -534,7 +556,7 @@ namespace LeadCMS.Infrastructure
             else
             {
                 // For non-string properties, use the original Contains logic
-                var valuesArray = Array.CreateInstance(cmd.Property.PropertyType, parsedValues.Count);
+                var valuesArray = Array.CreateInstance(cmd.PropertyPath.LeafProperty.PropertyType, parsedValues.Count);
                 for (int i = 0; i < parsedValues.Count; i++)
                 {
                     valuesArray.SetValue(parsedValues[i], i);
@@ -542,10 +564,21 @@ namespace LeadCMS.Infrastructure
 
                 var containsMethod = typeof(Enumerable).GetMethods()
                     .First(m => m.Name == "Contains" && m.GetParameters().Length == 2)
-                    .MakeGenericMethod(cmd.Property.PropertyType);
+                    .MakeGenericMethod(cmd.PropertyPath.LeafProperty.PropertyType);
                 var arrayExpr = Expression.Constant(valuesArray);
                 return Expression.Call(containsMethod, arrayExpr, parameter);
             }
+        }
+
+        private Expression BuildNestedPropertyExpression(ParameterExpression parameter, PropertyPath propertyPath)
+        {
+            Expression expression = parameter;
+            foreach (var property in propertyPath.Properties)
+            {
+                expression = Expression.Property(expression, property);
+            }
+
+            return expression;
         }
 
         private async Task<IList<T>?> GetSelectResult()
