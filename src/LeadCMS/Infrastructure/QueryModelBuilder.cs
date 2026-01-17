@@ -52,6 +52,9 @@ namespace LeadCMS.Infrastructure
             OrderData = ParseOrderCommands(commands);
             SelectData = ParseSelectCommands(commands);
             Ids = ParseIdsCommands(commands);
+
+            // Automatically include relationships for nested properties in SelectData
+            AddAutomaticIncludesForNestedSelects();
         }
 
         public int Limit { get; set; } = 0;
@@ -92,6 +95,7 @@ namespace LeadCMS.Infrastructure
         {
             var trueFields = new List<PropertyInfo>();
             var falseFields = new List<PropertyInfo>();
+            var nestedProperties = new List<PropertyPath>();
 
             var validFieldCommands = commands.Where(c => c.Type == FilterType.Fields);
             foreach (var command in validFieldCommands)
@@ -99,6 +103,32 @@ namespace LeadCMS.Infrastructure
                 var parseSuccess = bool.TryParse(command.Value, out var value);
                 if (parseSuccess)
                 {
+                    var propertyName = command.Props.ElementAtOrDefault(0);
+                    if (string.IsNullOrWhiteSpace(propertyName))
+                    {
+                        continue;
+                    }
+
+                    // Handle nested properties (e.g., contact.fullName)
+                    if (propertyName.Contains('.'))
+                    {
+                        if (value)
+                        {
+                            try
+                            {
+                                var propertyPath = ParseNestedPropertyPath(propertyName, command);
+                                nestedProperties.Add(propertyPath);
+                            }
+                            catch (QueryException)
+                            {
+                                // If nested property doesn't exist, skip it
+                                continue;
+                            }
+                        }
+
+                        continue;
+                    }
+
                     var pi = command.ParseProperty<T>();
                     if (value)
                     {
@@ -115,11 +145,12 @@ namespace LeadCMS.Infrastructure
                 }
             }
 
-            if (trueFields.Count == 0 && falseFields.Count == 0)
+            if (trueFields.Count == 0 && falseFields.Count == 0 && nestedProperties.Count == 0)
             {
                 return new SelectCommandData
                 {
                     SelectedProperties = new List<PropertyInfo>(),
+                    SelectedNestedProperties = new List<PropertyPath>(),
                     IsSelect = false,
                 };
             }
@@ -134,6 +165,7 @@ namespace LeadCMS.Infrastructure
             return new SelectCommandData
             {
                 SelectedProperties = selectedProps,
+                SelectedNestedProperties = nestedProperties,
                 IsSelect = true,
             };
         }
@@ -312,9 +344,78 @@ namespace LeadCMS.Infrastructure
                 .ToList();
         }
 
+        private PropertyPath ParseNestedPropertyPath(string propertyName, QueryCommand cmd)
+        {
+            var parts = propertyName.Split('.');
+            var properties = new List<PropertyInfo>();
+            Type currentType = typeof(T);
+
+            for (int i = 0; i < parts.Length; i++)
+            {
+                var part = parts[i];
+                var typeProperties = currentType.GetProperties();
+                var property = typeProperties.FirstOrDefault(p => p.Name.ToLowerInvariant() == part.ToLowerInvariant());
+
+                if (property == null)
+                {
+                    throw new QueryException(cmd.Source, $"No such property '{part}' on type '{currentType.Name}'");
+                }
+
+                properties.Add(property);
+
+                // If not the last part, navigate to the property's type
+                if (i < parts.Length - 1)
+                {
+                    currentType = property.PropertyType;
+                    // Handle nullable types
+                    if (Nullable.GetUnderlyingType(currentType) != null)
+                    {
+                        currentType = Nullable.GetUnderlyingType(currentType)!;
+                    }
+                }
+            }
+
+            return new PropertyPath(properties);
+        }
+
+        private void AddAutomaticIncludesForNestedSelects()
+        {
+            if (SelectData.SelectedNestedProperties.Count == 0)
+            {
+                return;
+            }
+
+            // Extract relationship properties that need to be included
+            foreach (var nestedProp in SelectData.SelectedNestedProperties)
+            {
+                if (nestedProp.IsNested)
+                {
+                    // Get the first property in the path (the relationship)
+                    var relationshipProperty = nestedProp.Properties[0];
+
+                    // Check if it's already included
+                    if (!IncludeData.Exists(p => p.Name == relationshipProperty.Name))
+                    {
+                        // Verify it's a valid relationship
+                        var isCollection = relationshipProperty.PropertyType.IsGenericType &&
+                                          typeof(ICollection<>).MakeGenericType(relationshipProperty.PropertyType.GetGenericArguments())
+                                              .IsAssignableFrom(relationshipProperty.PropertyType);
+
+                        if (dbContext.Model.FindEntityType(relationshipProperty.PropertyType) != null ||
+                            (isCollection && dbContext.Model.FindEntityType(relationshipProperty.PropertyType.GetGenericArguments().Single()) != null))
+                        {
+                            IncludeData.Add(relationshipProperty);
+                        }
+                    }
+                }
+            }
+        }
+
         public sealed class SelectCommandData
         {
             public List<PropertyInfo> SelectedProperties { get; set; } = new List<PropertyInfo>();
+
+            public List<PropertyPath> SelectedNestedProperties { get; set; } = new List<PropertyPath>();
 
             public bool IsSelect { get; set; } = false;
         }

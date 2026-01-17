@@ -24,6 +24,19 @@ public static class TypeHelper
         return objectType;
     }
 
+    public static Type CompileTypeForSelectStatement((string Name, Type PropertyType)[] types)
+    {
+        var tb = GetTypeBuilder();
+
+        foreach (var field in types)
+        {
+            CreateProperty(tb, field.Name, field.PropertyType);
+        }
+
+        var objectType = tb.CreateType();
+        return objectType;
+    }
+
     private static TypeBuilder GetTypeBuilder()
     {
         var typeSignature = "MyDynamicType";

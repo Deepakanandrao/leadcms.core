@@ -583,20 +583,63 @@ namespace LeadCMS.Infrastructure
 
         private async Task<IList<T>?> GetSelectResult()
         {
-            if (queryBuilder.SelectData.SelectedProperties.Any())
+            var hasMainProperties = queryBuilder.SelectData.SelectedProperties.Any();
+            var hasNestedProperties = queryBuilder.SelectData.SelectedNestedProperties.Any();
+
+            if (hasMainProperties || hasNestedProperties)
             {
                 var expressionParameter = Expression.Parameter(typeof(T));
-                var outputType = TypeHelper.CompileTypeForSelectStatement(queryBuilder.SelectData.SelectedProperties.ToArray());
+
+                // Build property lists and name mappings for the dynamic type
+                var propertyInfosForType = new List<(string Name, System.Reflection.PropertyInfo PropertyInfo)>();
+                var propertyBindings = new List<MemberBinding>();
+
+                // Add main properties
+                foreach (var prop in queryBuilder.SelectData.SelectedProperties)
+                {
+                    propertyInfosForType.Add((prop.Name, prop));
+                }
+
+                // Add nested properties with flattened names (e.g., ContactFullName for contact.fullName)
+                foreach (var nestedProp in queryBuilder.SelectData.SelectedNestedProperties)
+                {
+                    var flattenedName = string.Join(string.Empty, nestedProp.Properties.Select(p => p.Name));
+                    propertyInfosForType.Add((flattenedName, nestedProp.LeafProperty));
+                }
+
+                // Create dynamic type with property names (using flattened names for nested properties)
+                var outputType = TypeHelper.CompileTypeForSelectStatement(
+                    propertyInfosForType.Select(p => (p.Name, p.PropertyInfo.PropertyType)).ToArray());
                 var delegateType = typeof(Func<,>).MakeGenericType(typeof(T), outputType);
                 var createOutputTypeExpression = Expression.New(outputType);
 
-                var expressionSelectedProperties = queryBuilder.SelectData.SelectedProperties.Select(p =>
+                // Build property bindings for main properties
+                foreach (var prop in queryBuilder.SelectData.SelectedProperties)
                 {
-                    var bindProp = outputType.GetProperty(p.Name);
-                    var exprProp = Expression.Property(expressionParameter, p);
-                    return Expression.Bind(bindProp!, exprProp);
-                }).ToArray();
-                var expressionCreateArray = Expression.MemberInit(createOutputTypeExpression, expressionSelectedProperties);
+                    var bindProp = outputType.GetProperty(prop.Name);
+                    var exprProp = Expression.Property(expressionParameter, prop);
+                    propertyBindings.Add(Expression.Bind(bindProp!, exprProp));
+                }
+
+                // Build property bindings for nested properties
+#pragma warning disable S3267 // Cannot simplify - building expression tree with side effects
+                foreach (var nestedProp in queryBuilder.SelectData.SelectedNestedProperties)
+                {
+                    var flattenedName = string.Join(string.Empty, nestedProp.Properties.Select(p => p.Name));
+                    var bindProp = outputType.GetProperty(flattenedName);
+
+                    // Build nested property access expression
+                    Expression propertyExpression = expressionParameter;
+                    foreach (var prop in nestedProp.Properties)
+                    {
+                        propertyExpression = Expression.Property(propertyExpression, prop);
+                    }
+
+                    propertyBindings.Add(Expression.Bind(bindProp!, propertyExpression));
+                }
+#pragma warning restore S3267
+
+                var expressionCreateArray = Expression.MemberInit(createOutputTypeExpression, propertyBindings.ToArray());
                 dynamic lambda = Expression.Lambda(delegateType, expressionCreateArray, expressionParameter);
 
                 var queryMethod = typeof(Queryable).GetMethods().FirstOrDefault(m => m.Name == "Select" && m.GetParameters()[1].ParameterType.GetGenericArguments()[0].GetGenericArguments().Length == 2)!.MakeGenericMethod(typeof(T), outputType);
