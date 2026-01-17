@@ -225,6 +225,68 @@ public class SegmentsTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task PreviewSegment_SupportsNestedAccountAttributes()
+    {
+        // Create an account with a specific total revenue
+        var account = new Account
+        {
+            Name = "High Value Account" + Guid.NewGuid().ToString()[..8],
+            TotalRevenue = 15000.00m,
+        };
+        var dbContext = App.GetDbContext();
+        dbContext!.Accounts!.Add(account);
+        await dbContext.SaveChangesAsync();
+
+        // Create domains
+        var domain1 = new Domain { Name = $"highvalue-{Guid.NewGuid().ToString()[..8]}.com" };
+        var domain2 = new Domain { Name = $"lowvalue-{Guid.NewGuid().ToString()[..8]}.com" };
+        dbContext.Domains!.AddRange(domain1, domain2);
+        await dbContext.SaveChangesAsync();
+
+        // Create contacts linked to this account
+        var contact1 = new Contact
+        {
+            Email = $"contact1-{Guid.NewGuid().ToString()[..8]}@{domain1.Name}",
+            FirstName = "John",
+            LastName = "Doe",
+            AccountId = account.Id,
+            DomainId = domain1.Id,
+        };
+        var contact2 = new Contact
+        {
+            Email = $"contact2-{Guid.NewGuid().ToString()[..8]}@{domain2.Name}",
+            FirstName = "Jane",
+            LastName = "Smith",
+            DomainId = domain2.Id,
+            // No AccountId - should be filtered out
+        };
+
+        dbContext.Contacts!.AddRange(contact1, contact2);
+        await dbContext.SaveChangesAsync();
+
+        // Test filtering by account.totalRevenue > 10
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "account.totalRevenue", Operator = FieldOperator.GreaterThan, Value = "10" },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        var previewResult = preview ?? throw new InvalidOperationException("Expected preview result.");
+        previewResult.ContactCount.Should().Be(1);
+        previewResult.Contacts.Should().ContainSingle();
+        previewResult.Contacts[0].FirstName.Should().Be("John");
+    }
+
+    [Fact]
     public async Task GetContacts_ForMissingSegment_ReturnsNotFound()
     {
         await GetTest($"{SegmentsUrl}/999/contacts", HttpStatusCode.NotFound);

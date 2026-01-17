@@ -205,6 +205,20 @@ public class SegmentService : ISegmentService
     {
         var query = dbContext.Contacts!.AsQueryable();
 
+        // Check if we need to include related entities based on the rules
+        var needsAccountInclude = HasNestedPropertyReference(definition, "account");
+        var needsDomainInclude = HasNestedPropertyReference(definition, "domain");
+
+        if (needsAccountInclude)
+        {
+            query = query.Include(c => c.Account);
+        }
+
+        if (needsDomainInclude)
+        {
+            query = query.Include(c => c.Domain);
+        }
+
         // Apply include rules
         if (definition.IncludeRules != null)
         {
@@ -229,6 +243,29 @@ public class SegmentService : ISegmentService
         }
 
         return query;
+    }
+
+    private bool HasNestedPropertyReference(SegmentDefinition definition, string navigationProperty)
+    {
+        return HasNestedPropertyInRuleGroup(definition.IncludeRules, navigationProperty) ||
+               (definition.ExcludeRules != null && HasNestedPropertyInRuleGroup(definition.ExcludeRules, navigationProperty));
+    }
+
+    private bool HasNestedPropertyInRuleGroup(RuleGroup? ruleGroup, string navigationProperty)
+    {
+        if (ruleGroup == null)
+        {
+            return false;
+        }
+
+        // Check rules in this group
+        if (ruleGroup.Rules.Exists(r => r.FieldId.StartsWith($"{navigationProperty}.")))
+        {
+            return true;
+        }
+
+        // Check nested groups
+        return ruleGroup.Groups.Exists(g => HasNestedPropertyInRuleGroup(g, navigationProperty));
     }
 
     private Expression<Func<Contact, bool>>? BuildRuleGroupExpression(RuleGroup ruleGroup)
@@ -371,7 +408,28 @@ public class SegmentService : ISegmentService
     {
         try
         {
-            // Map fieldId to Contact property
+            // Check if fieldId contains a dot (nested property)
+            if (fieldId.Contains('.'))
+            {
+                var parts = fieldId.Split('.');
+                if (parts.Length == 2)
+                {
+                    var navigationProperty = parts[0];
+                    var targetProperty = parts[1];
+
+                    // Handle nested properties
+                    return navigationProperty switch
+                    {
+                        "account" => BuildAccountPropertyExpression(parameter, targetProperty),
+                        "domain" => BuildDomainPropertyExpression(parameter, targetProperty),
+                        _ => null
+                    };
+                }
+
+                return null;
+            }
+
+            // Map fieldId to Contact property (existing logic)
             var propertyName = fieldId switch
             {
                 "email" => "Email",
@@ -386,6 +444,10 @@ public class SegmentService : ISegmentService
                 "phone" => "Phone",
                 "companyName" => "CompanyName",
                 "jobTitle" => "JobTitle",
+                "ordersCount" => "OrdersCount",
+                "totalRevenue" => "TotalRevenue",
+                "lastOrderDate" => "LastOrderDate",
+                "dealsCount" => "DealsCount",
                 _ => fieldId,
             };
 
@@ -394,6 +456,75 @@ public class SegmentService : ISegmentService
         catch (ArgumentException)
         {
             // Property doesn't exist on Contact entity
+            return null;
+        }
+    }
+
+    private Expression? BuildAccountPropertyExpression(ParameterExpression parameter, string propertyName)
+    {
+        try
+        {
+            // Map account property names
+            var accountPropertyName = propertyName switch
+            {
+                "name" => "Name",
+                "totalRevenue" => "TotalRevenue",
+                "ordersCount" => "OrdersCount",
+                "lastOrderDate" => "LastOrderDate",
+                "dealsCount" => "DealsCount",
+                "contactCount" => "ContactCount",
+                "domainsCount" => "DomainsCount",
+                "revenue" => "Revenue",
+                "profit" => "Profit",
+                "city" => "CityName",
+                "state" => "State",
+                "country" => "CountryCode",
+                "continent" => "ContinentCode",
+                "employeesRange" => "EmployeesRange",
+                "siteUrl" => "SiteUrl",
+                "address" => "Address",
+                "tags" => "Tags",
+                "tin" => "TIN",
+                _ => propertyName
+            };
+
+            // Build expression: contact.Account.PropertyName
+            var accountNavigation = Expression.Property(parameter, "Account");
+            return Expression.Property(accountNavigation, accountPropertyName);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    private Expression? BuildDomainPropertyExpression(ParameterExpression parameter, string propertyName)
+    {
+        try
+        {
+            // Map domain property names
+            var domainPropertyName = propertyName switch
+            {
+                "name" => "Name",
+                "url" => "Url",
+                "title" => "Title",
+                "description" => "Description",
+                "faviconUrl" => "FaviconUrl",
+                "free" => "Free",
+                "disposable" => "Disposable",
+                "catchAll" => "CatchAll",
+                "mxCheck" => "MxCheck",
+                "dnsCheck" => "DnsCheck",
+                "httpCheck" => "HttpCheck",
+                _ => propertyName
+            };
+
+            // Build expression: contact.Domain.PropertyName
+            var domainNavigation = Expression.Property(parameter, "Domain");
+            return Expression.Property(domainNavigation, domainPropertyName);
+        }
+        catch (ArgumentException)
+        {
             return null;
         }
     }
