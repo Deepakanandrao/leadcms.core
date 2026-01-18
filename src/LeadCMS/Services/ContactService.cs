@@ -8,7 +8,6 @@ using LeadCMS.Entities;
 using LeadCMS.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Nest;
 
 namespace LeadCMS.Services
 {
@@ -30,7 +29,12 @@ namespace LeadCMS.Services
         public async Task SaveAsync(Contact contact)
         {
             await EnrichWithDomainId(contact);
-            EnrichWithAccountId(contact);
+
+            // Only enrich AccountId for new contacts (not updates)
+            if (contact.Id == 0)
+            {
+                EnrichWithAccountId(contact);
+            }
 
             if (contact.Id > 0)
             {
@@ -45,7 +49,13 @@ namespace LeadCMS.Services
         public async Task SaveRangeAsync(List<Contact> contacts)
         {
             await EnrichWithDomainIdAsync(contacts);
-            EnrichWithAccountId(contacts);
+
+            // Only enrich AccountId for new contacts (not updates)
+            var newContacts = contacts.Where(c => c.Id == 0).ToList();
+            if (newContacts.Count > 0)
+            {
+                EnrichWithAccountId(newContacts);
+            }
 
             var sortedContacts = contacts.GroupBy(c => c.Id > 0);
 
@@ -234,7 +244,7 @@ namespace LeadCMS.Services
             foreach (var contact in contacts)
             {
                 var domain = contact.Domain;
-                if (domain != null)
+                if (domain != null && contact.AccountId == null)
                 {
                     contact.AccountId = domain.AccountId;
                 }
@@ -244,7 +254,7 @@ namespace LeadCMS.Services
         private void EnrichWithAccountId(Contact contact)
         {
             var domain = contact.Domain;
-            if (domain != null)
+            if (domain != null && contact.AccountId == null)
             {
                 contact.AccountId = domain.AccountId;
             }

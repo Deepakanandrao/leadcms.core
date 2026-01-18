@@ -97,6 +97,7 @@ public class ContactsController : BaseControllerWithImport<Contact, ContactCreat
             throw new EntityNotFoundException("Contact", id.ToString());
         }
 
+        // AutoMapper handles both non-null properties and explicitly-null properties
         mapper.Map(value, existingContact);
 
         await contactService.SaveAsync(existingContact);

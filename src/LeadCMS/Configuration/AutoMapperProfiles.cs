@@ -5,8 +5,27 @@
 using AutoMapper;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.Configuration;
+
+/// <summary>
+/// Extension methods for AutoMapper IMappingExpression to support IPatchDto.
+/// </summary>
+public static class PatchDtoMappingExtensions
+{
+    /// <summary>
+    /// Automatically applies null properties for mappings where TSource implements IPatchDto.
+    /// Call this after CreateMap for any UpdateDto that implements IPatchDto.
+    /// </summary>
+    public static IMappingExpression<TSource, TDestination> WithPatchDtoSupport<TSource, TDestination>(
+        this IMappingExpression<TSource, TDestination> mapping)
+        where TSource : IPatchDto
+        where TDestination : class
+    {
+        return mapping.AfterMap((src, dest) => src.ApplyNullProperties(dest));
+    }
+}
 
 public class AutoMapperProfiles : Profile
 {
@@ -75,6 +94,7 @@ public class AutoMapperProfiles : Profile
 
         CreateMap<ContactCreateDto, Contact>().ReverseMap();
         CreateMap<ContactUpdateDto, Contact>()
+            .WithPatchDtoSupport()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<Contact, ContactUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));

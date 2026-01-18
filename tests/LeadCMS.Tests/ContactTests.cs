@@ -53,6 +53,59 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
     }
 
     [Fact]
+    public async Task PatchContactAccountIdTest()
+    {
+        // Create a contact
+        var item = TestData.Generate<TestContact>();
+        var createUrl = await PostTest(itemsUrl, item);
+        createUrl.Should().NotBeNull();
+
+        // Create two accounts to test switching between them
+        var dbContext = App.GetDbContext()!;
+        var account1 = new Account { Name = "Account 1" };
+        var account2 = new Account { Name = "Account 2" };
+        dbContext.Accounts!.AddRange(account1, account2);
+        await dbContext.SaveChangesAsync();
+
+        // Patch contact with first account
+        var update1 = new ContactUpdateDto { AccountId = account1.Id };
+        var response1 = await Patch(createUrl, update1);
+        if (response1.StatusCode != System.Net.HttpStatusCode.OK)
+        {
+            var error1 = await response1.Content.ReadAsStringAsync();
+            throw new Exception($"PATCH failed with {response1.StatusCode}: {error1}");
+        }
+
+        response1.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+
+        var contact1 = await GetTest<ContactDetailsDto>(createUrl);
+        contact1.Should().NotBeNull();
+        contact1!.AccountId.Should().Be(account1.Id);
+
+        // Patch contact with second account
+        var update2 = new ContactUpdateDto { AccountId = account2.Id };
+        var response2 = await PatchTest(createUrl, update2);
+        response2.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+
+        var contact2 = await GetTest<ContactDetailsDto>(createUrl);
+        contact2.Should().NotBeNull();
+        contact2!.AccountId.Should().Be(account2.Id);
+
+        // Clear the account by setting it to null using raw JSON
+        // We need to use raw JSON to ensure "accountId": null is sent
+        var json3 = "{\"accountId\": null}";
+        var content3 = new System.Net.Http.StringContent(json3, System.Text.Encoding.UTF8, "application/json");
+        var request3 = new HttpRequestMessage(HttpMethod.Patch, createUrl) { Content = content3 };
+        request3.Headers.Authorization = GetAuthenticationHeaderValue();
+        var response3 = await client.SendAsync(request3);
+        response3.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+
+        var contact3 = await GetTest<ContactDetailsDto>(createUrl);
+        contact3.Should().NotBeNull();
+        contact3!.AccountId.Should().BeNull();
+    }
+
+    [Fact]
 
     public async Task GetWithSearchEmailTest()
     {
@@ -276,7 +329,9 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
     protected override ContactUpdateDto UpdateItem(TestContact to)
     {
         var from = new ContactUpdateDto();
-        to.Email = from.Email = "updated" + to.Email;
+        var updatedEmail = "updated" + to.Email;
+        to.Email = updatedEmail;
+        from.Email = updatedEmail;
         return from;
     }
 

@@ -3,10 +3,12 @@
 // </copyright>
 
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using CsvHelper.Configuration.Attributes;
 using LeadCMS.DataAnnotations;
 using LeadCMS.Entities;
 using LeadCMS.Geography;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
 
@@ -56,6 +58,8 @@ public abstract class BaseContactDto
     public int? UnsubscribeId { get; set; }
 
     public string? Source { get; set; }
+
+    public int? AccountId { get; set; }
 }
 
 public class ContactCreateDto : BaseContactDto
@@ -78,9 +82,13 @@ public class ContactCreateDto : BaseContactDto
     }
 }
 
-public class ContactUpdateDto : BaseContactDto
+public class ContactUpdateDto : BaseContactDto, IPatchDto
 {
     private string? email;
+
+    [SwaggerHide]
+    [JsonIgnore]
+    public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     [EmailAddress]
     public string? Email
@@ -92,7 +100,7 @@ public class ContactUpdateDto : BaseContactDto
 
         set
         {
-            email = value == null ? null : value.ToLower();
+            email = value?.ToLower();
         }
     }
 }
@@ -110,8 +118,6 @@ public class ContactDetailsDto : ContactCreateDto
     public DateTime? UpdatedAt { get; set; }
 
     public int DomainId { get; set; }
-
-    public int AccountId { get; set; }
 
     public int DealsCount { get; set; }
 

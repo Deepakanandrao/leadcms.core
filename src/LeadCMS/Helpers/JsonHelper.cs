@@ -5,6 +5,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using LeadCMS.Configuration;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.Helpers;
 
@@ -41,6 +42,7 @@ public class JsonHelper
             options.PropertyNamingPolicy = SnakeCaseNamingPolicy.Instance;
         }
 
+        options.Converters.Add(new PatchDtoConverterFactory());
         options.Converters.Add(new JsonStringEnumConverter());
         options.ReferenceHandler = ReferenceHandler.IgnoreCycles;
     }

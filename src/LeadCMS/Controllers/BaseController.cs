@@ -182,6 +182,7 @@ namespace LeadCMS.Controllers
 
         protected async Task<ActionResult<TD>> Patch(T existingEntity, TU value)
         {
+            // AutoMapper automatically applies null properties if value implements IPatchDto
             mapper.Map(value, existingEntity);
             await dbContext.SaveChangesAsync();
 
