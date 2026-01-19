@@ -120,7 +120,7 @@ public class UsersTests : BaseTestAutoLogin
         retrievedUser.CreatedAt.Should().NotBe(DateTime.MinValue);
         retrievedUser.CreatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1));
 
-        // CreatedAt should match what was returned during creation
-        retrievedUser.CreatedAt.Should().Be(createdUser.CreatedAt);
+        // CreatedAt should match what was returned during creation (PostgreSQL has microsecond precision)
+        retrievedUser.CreatedAt.Should().BeCloseTo(createdUser.CreatedAt, TimeSpan.FromMilliseconds(1));
     }
 }
