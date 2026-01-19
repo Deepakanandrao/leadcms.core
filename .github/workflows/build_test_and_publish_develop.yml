@@ -90,13 +90,14 @@ jobs:
       if: ${{ github.event.inputs.run_tests == 'true' }}
       run: dotnet test --no-build --configuration $BUILD_CONFIG --logger "trx" --verbosity normal --results-directory "./"
 
-    - name: Upload test results
+    - name: Publish Test Results
       if: github.event.inputs.run_tests == 'true' && (success() || failure())
-      uses: actions/upload-artifact@v4
+      uses: dorny/test-reporter@v1
       with:
-        name: test-results
-        path: ./*.trx
-        retention-days: 7
+        name: .NET Test Results
+        path: '*.trx'
+        reporter: dotnet-trx
+        fail-on-error: false
 
     - name: Upload NuGet packages
       uses: actions/upload-artifact@v4
