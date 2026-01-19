@@ -5,6 +5,7 @@
 using System.ComponentModel.DataAnnotations;
 using CsvHelper.Configuration.Attributes;
 using LeadCMS.Entities;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
 
@@ -21,8 +22,11 @@ public class ContentTypeCreateDto
     public bool SupportsCoverImage { get; set; } = false;
 }
 
-public class ContentTypeUpdateDto
+public class ContentTypeUpdateDto : IPatchDto
 {
+    [Ignore]
+    public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     public string? Uid { get; set; }
 
     public ContentFormat? Format { get; set; }

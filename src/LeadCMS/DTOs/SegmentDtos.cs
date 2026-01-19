@@ -3,7 +3,9 @@
 // </copyright>
 
 using System.ComponentModel.DataAnnotations;
+using CsvHelper.Configuration.Attributes;
 using LeadCMS.Entities;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
 
@@ -61,8 +63,11 @@ public class SegmentCreateDto
     public string[]? Tags { get; set; }
 }
 
-public class SegmentUpdateDto
+public class SegmentUpdateDto : IPatchDto
 {
+    [Ignore]
+    public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     public string? Name { get; set; }
 
     public string? Description { get; set; }

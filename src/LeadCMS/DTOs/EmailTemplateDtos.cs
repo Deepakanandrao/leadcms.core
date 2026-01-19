@@ -4,6 +4,7 @@
 
 using System.ComponentModel.DataAnnotations;
 using CsvHelper.Configuration.Attributes;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
 
@@ -34,8 +35,11 @@ public class EmailTemplateCreateDto
     public int EmailGroupId { get; set; }
 }
 
-public class EmailTemplateUpdateDto
+public class EmailTemplateUpdateDto : IPatchDto
 {
+    [Ignore]
+    public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     [MinLength(1)]
     public string? Name { get; set; }
 

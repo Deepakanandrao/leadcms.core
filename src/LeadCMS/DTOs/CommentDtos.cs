@@ -6,6 +6,7 @@ using System.ComponentModel.DataAnnotations;
 using CsvHelper.Configuration.Attributes;
 using LeadCMS.DataAnnotations;
 using LeadCMS.Entities;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
 
@@ -57,9 +58,12 @@ public class CommentCreateDto : CommentCreateBaseDto
     public string CommentableType { get; set; } = string.Empty;
 }
 
-public class CommentUpdateDto
+public class CommentUpdateDto : IPatchDto
 {
     private string? authorEmail;
+
+    [Ignore]
+    public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     public string? Body { get; set; }
 

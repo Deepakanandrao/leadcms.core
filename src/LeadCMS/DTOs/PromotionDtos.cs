@@ -3,6 +3,8 @@
 // </copyright>
 
 using System.ComponentModel.DataAnnotations;
+using CsvHelper.Configuration.Attributes;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
 
@@ -21,8 +23,11 @@ public class PromotionCreateDto
     public DateTime EndDate { get; set; }
 }
 
-public class PromotionUpdateDto
+public class PromotionUpdateDto : IPatchDto
 {
+    [Ignore]
+    public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     public string? Name { get; set; } = string.Empty;
 
     public DateTime? StartDate { get; set; }

@@ -7,6 +7,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 using CsvHelper.Configuration.Attributes;
 using LeadCMS.DataAnnotations;
 using LeadCMS.Entities;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
 
@@ -47,8 +48,11 @@ public class DomainCreateDto
     public string[]? Tags { get; set; }
 }
 
-public class DomainUpdateDto
+public class DomainUpdateDto : IPatchDto
 {
+    [Ignore]
+    public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     public string? Title { get; set; }
 
     public string? Description { get; set; }

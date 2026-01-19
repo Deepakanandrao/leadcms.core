@@ -4,6 +4,7 @@
 
 using System.ComponentModel.DataAnnotations;
 using CsvHelper.Configuration.Attributes;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
 
@@ -13,8 +14,11 @@ public class DealPipelineCreateDto
     public string Name { get; set; } = string.Empty;
 }
 
-public class DealPipelineUpdateDto
+public class DealPipelineUpdateDto : IPatchDto
 {
+    [Ignore]
+    public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     [Required]
     public string Name { get; set; } = string.Empty;
 }

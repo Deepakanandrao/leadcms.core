@@ -3,7 +3,6 @@
 // </copyright>
 
 using System.ComponentModel.DataAnnotations;
-using System.Text.Json.Serialization;
 using CsvHelper.Configuration.Attributes;
 using LeadCMS.DataAnnotations;
 using LeadCMS.Entities;
@@ -86,8 +85,7 @@ public class ContactUpdateDto : BaseContactDto, IPatchDto
 {
     private string? email;
 
-    [SwaggerHide]
-    [JsonIgnore]
+    [Ignore]
     public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     [EmailAddress]

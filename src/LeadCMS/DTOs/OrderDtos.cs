@@ -6,6 +6,7 @@ using System.ComponentModel.DataAnnotations;
 using CsvHelper.Configuration.Attributes;
 using LeadCMS.DataAnnotations;
 using LeadCMS.Entities;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
 
@@ -39,8 +40,11 @@ public class OrderCreateDto
     public string[]? Tags { get; set; }
 }
 
-public class OrderUpdateDto
+public class OrderUpdateDto : IPatchDto
 {
+    [Ignore]
+    public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     [Required]
     public string RefNo { get; set; } = string.Empty;
 

@@ -4,6 +4,8 @@
 
 using System.ComponentModel.DataAnnotations;
 using CsvHelper.Configuration.Attributes;
+using LeadCMS.DataAnnotations;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
 
@@ -21,8 +23,11 @@ public class LinkCreateDto
     public string? Source { get; set; }
 }
 
-public class LinkUpdateDto
+public class LinkUpdateDto : IPatchDto
 {
+    [Ignore]
+    public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     public string? Uid { get; set; }
 
     public string? Destination { get; set; }

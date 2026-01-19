@@ -5,6 +5,7 @@
 using System.ComponentModel.DataAnnotations;
 using CsvHelper.Configuration.Attributes;
 using LeadCMS.DataAnnotations;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
 
@@ -53,8 +54,11 @@ public class ContentCreateDto
     public DateTime? PublishedAt { get; set; }
 }
 
-public class ContentUpdateDto
+public class ContentUpdateDto : IPatchDto
 {
+    [Ignore]
+    public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     [MinLength(1)]
     [ContentTitleLength]
     public string? Title { get; set; }

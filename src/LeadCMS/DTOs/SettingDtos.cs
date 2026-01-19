@@ -3,6 +3,8 @@
 // </copyright>
 
 using System.ComponentModel.DataAnnotations;
+using CsvHelper.Configuration.Attributes;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
 
@@ -17,8 +19,11 @@ public class SettingCreateDto
     public string? UserId { get; set; }
 }
 
-public class SettingUpdateDto
+public class SettingUpdateDto : IPatchDto
 {
+    [Ignore]
+    public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     public string? Value { get; set; }
 }
 

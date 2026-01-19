@@ -48,6 +48,7 @@ public class AutoMapperProfiles : Profile
         CreateMap<Comment, CommentUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<CommentUpdateDto, Comment>()
+            .WithPatchDtoSupport()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<Comment, CommentDetailsDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
@@ -56,6 +57,7 @@ public class AutoMapperProfiles : Profile
 
         CreateMap<ContentCreateDto, Content>().ReverseMap();
         CreateMap<ContentUpdateDto, Content>()
+            .WithPatchDtoSupport()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<Content, ContentUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
@@ -66,6 +68,7 @@ public class AutoMapperProfiles : Profile
 
         CreateMap<OrderCreateDto, Order>().ReverseMap();
         CreateMap<OrderUpdateDto, Order>()
+            .WithPatchDtoSupport()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<Order, OrderUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
@@ -76,6 +79,7 @@ public class AutoMapperProfiles : Profile
 
         CreateMap<OrderItemCreateDto, OrderItem>().ReverseMap();
         CreateMap<OrderItemUpdateDto, OrderItem>()
+            .WithPatchDtoSupport()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<OrderItem, OrderItemUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
@@ -86,6 +90,7 @@ public class AutoMapperProfiles : Profile
 
         CreateMap<EmailTemplateCreateDto, EmailTemplate>().ReverseMap();
         CreateMap<EmailTemplateUpdateDto, EmailTemplate>()
+            .WithPatchDtoSupport()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<EmailTemplate, EmailTemplateUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
@@ -105,6 +110,7 @@ public class AutoMapperProfiles : Profile
 
         CreateMap<DealPipelineCreateDto, DealPipeline>().ReverseMap();
         CreateMap<DealPipelineUpdateDto, DealPipeline>()
+            .WithPatchDtoSupport()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<DealPipeline, DealPipelineUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
@@ -113,6 +119,7 @@ public class AutoMapperProfiles : Profile
 
         CreateMap<DealCreateDto, Deal>().ReverseMap();
         CreateMap<DealUpdateDto, Deal>()
+            .WithPatchDtoSupport()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<Deal, DealUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
@@ -121,6 +128,7 @@ public class AutoMapperProfiles : Profile
 
         CreateMap<PromotionCreateDto, Promotion>().ReverseMap();
         CreateMap<PromotionUpdateDto, Promotion>()
+            .WithPatchDtoSupport()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<Promotion, PromotionUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
@@ -129,6 +137,7 @@ public class AutoMapperProfiles : Profile
 
         CreateMap<DealPipelineStageCreateDto, DealPipelineStage>().ReverseMap();
         CreateMap<DealPipelineStageUpdateDto, DealPipelineStage>()
+            .WithPatchDtoSupport()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<DealPipelineStage, DealPipelineStageUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
@@ -137,6 +146,7 @@ public class AutoMapperProfiles : Profile
 
         CreateMap<EmailGroupCreateDto, EmailGroup>().ReverseMap();
         CreateMap<EmailGroupUpdateDto, EmailGroup>()
+            .WithPatchDtoSupport()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<EmailGroup, EmailGroupUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
@@ -153,6 +163,7 @@ public class AutoMapperProfiles : Profile
         CreateMap<Link, LinkUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<LinkUpdateDto, Link>()
+            .WithPatchDtoSupport()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<Link, LinkDetailsDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
@@ -163,6 +174,7 @@ public class AutoMapperProfiles : Profile
         CreateMap<Domain, DomainUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<DomainUpdateDto, Domain>()
+            .WithPatchDtoSupport()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<Domain, DomainDetailsDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
@@ -175,6 +187,7 @@ public class AutoMapperProfiles : Profile
         CreateMap<Account, AccountUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<AccountUpdateDto, Account>()
+            .WithPatchDtoSupport()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<Account, AccountDetailsDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
@@ -187,6 +200,7 @@ public class AutoMapperProfiles : Profile
         CreateMap<User, UserUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<UserUpdateDto, User>()
+            .WithPatchDtoSupport()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<User, UserDetailsDto>();
 
@@ -202,6 +216,7 @@ public class AutoMapperProfiles : Profile
         // ContentType mappings
         CreateMap<ContentTypeCreateDto, ContentType>().ReverseMap();
         CreateMap<ContentTypeUpdateDto, ContentType>()
+            .WithPatchDtoSupport()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<ContentType, ContentTypeUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
@@ -212,6 +227,7 @@ public class AutoMapperProfiles : Profile
 
         CreateMap<Setting, SettingCreateDto>().ReverseMap();
         CreateMap<SettingUpdateDto, Setting>()
+            .WithPatchDtoSupport()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<Setting, SettingUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
@@ -224,6 +240,7 @@ public class AutoMapperProfiles : Profile
         CreateMap<SegmentCreateDto, Segment>()
             .ReverseMap();
         CreateMap<SegmentUpdateDto, Segment>()
+            .WithPatchDtoSupport()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<Segment, SegmentUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));

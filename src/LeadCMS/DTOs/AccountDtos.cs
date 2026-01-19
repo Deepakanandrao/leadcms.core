@@ -6,6 +6,7 @@ using System.ComponentModel.DataAnnotations;
 using CsvHelper.Configuration.Attributes;
 using LeadCMS.DataAnnotations;
 using LeadCMS.Geography;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
 
@@ -85,8 +86,11 @@ public class AccountDetailsInfo
     public string? Data { get; set; }
 }
 
-public class AccountUpdateDto
+public class AccountUpdateDto : IPatchDto
 {
+    [Ignore]
+    public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     public string? Name { get; set; }
 
     public string? SiteUrl { get; set; }

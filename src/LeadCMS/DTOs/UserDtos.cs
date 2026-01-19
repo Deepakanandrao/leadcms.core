@@ -3,6 +3,8 @@
 // </copyright>
 
 using System.ComponentModel.DataAnnotations;
+using CsvHelper.Configuration.Attributes;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
 
@@ -17,8 +19,11 @@ public class UserCreateDto : UserBaseDto
     public string Language { get; set; } = string.Empty;
 }
 
-public class UserUpdateDto
+public class UserUpdateDto : IPatchDto
 {
+    [Ignore]
+    public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     public string? Email { get; set; }
 
     public string? UserName { get; set; }

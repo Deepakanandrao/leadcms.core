@@ -5,6 +5,7 @@
 using System.ComponentModel.DataAnnotations;
 using CsvHelper.Configuration.Attributes;
 using LeadCMS.DataAnnotations;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
 
@@ -37,8 +38,11 @@ public class DealCreateDto : DealBaseDto
     public HashSet<int> ContactIds { get; set; } = new HashSet<int>();
 }
 
-public class DealUpdateDto
+public class DealUpdateDto : IPatchDto
 {
+    [Ignore]
+    public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     public int? AccountId { get; set; }
 
     public int? DealPipelineId { get; set; }
