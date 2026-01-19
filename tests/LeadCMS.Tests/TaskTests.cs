@@ -13,12 +13,18 @@ namespace LeadCMS.Tests;
 
 public class TaskTests : BaseTestAutoLogin
 {
-    private readonly string tasksUrl = "api/tasks";
+    private const string TasksUrl = "/api/tasks";
+
+    public TaskTests()
+        : base()
+    {
+        TrackEntityType<DealPipeline>();
+    }
 
     [Fact]
     public async Task GetAllTasksTest()
     {
-        var responce = await GetRequest(tasksUrl);
+        var responce = await GetRequest(TasksUrl);
 
         var content = await responce.Content.ReadAsStringAsync();
 
@@ -30,7 +36,7 @@ public class TaskTests : BaseTestAutoLogin
     [Fact]
     public async Task GetByNameFailureTest()
     {
-        await GetTest(tasksUrl + "/SomeUnexistedTask", HttpStatusCode.NotFound);
+        await GetTest(TasksUrl + "/SomeUnexistedTask", HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -38,7 +44,7 @@ public class TaskTests : BaseTestAutoLogin
     {
         var name = "SyncEsTask";
 
-        var responce = await GetTest<TaskDetailsDto>(tasksUrl + "/" + name);
+        var responce = await GetTest<TaskDetailsDto>(TasksUrl + "/" + name);
 
         responce.Should().NotBeNull();
         responce!.Name.Should().Contain("SyncEsTask");
@@ -49,15 +55,15 @@ public class TaskTests : BaseTestAutoLogin
     {
         var name = "SyncEsTask";
 
-        var responce = await GetTest<TaskDetailsDto>(tasksUrl + "/" + name);
+        var responce = await GetTest<TaskDetailsDto>(TasksUrl + "/" + name);
         responce.Should().NotBeNull();
         responce!.IsRunning.Should().BeFalse();
 
-        responce = await GetTest<TaskDetailsDto>(tasksUrl + "/start/" + name);
+        responce = await GetTest<TaskDetailsDto>(TasksUrl + "/start/" + name);
         responce.Should().NotBeNull();
         responce!.IsRunning.Should().BeTrue();
 
-        responce = await GetTest<TaskDetailsDto>(tasksUrl + "/stop/" + name);
+        responce = await GetTest<TaskDetailsDto>(TasksUrl + "/stop/" + name);
         responce.Should().NotBeNull();
         responce!.IsRunning.Should().BeFalse();
     }
@@ -101,7 +107,7 @@ public class TaskTests : BaseTestAutoLogin
 
     private async Task CheckIfTaskNotRunning(string taskName)
     {
-        var responce = await GetTest<TaskDetailsDto>(tasksUrl + "/" + taskName);
+        var responce = await GetTest<TaskDetailsDto>(TasksUrl + "/" + taskName);
         responce.Should().NotBeNull();
         responce!.IsRunning.Should().BeFalse();
     }

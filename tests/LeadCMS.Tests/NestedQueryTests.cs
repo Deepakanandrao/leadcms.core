@@ -2,14 +2,19 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
-using System.Net;
-
 namespace LeadCMS.Tests;
 
 public class NestedQueryTests : BaseTestAutoLogin
 {
     private const string ContactsUrl = "/api/contacts";
     private const string AccountsUrl = "/api/accounts";
+
+    public NestedQueryTests()
+        : base()
+    {
+        TrackEntityType<Contact>();
+        TrackEntityType<Account>();
+    }
 
     [Fact]
     public async Task FilterContactsByAccountName()

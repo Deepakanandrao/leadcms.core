@@ -40,8 +40,8 @@ public class BaseTest : IDisposable
             });
 
         mapper = App.GetMapper();
-        // Database is initialized once globally in TestApplication constructor
-        // No cleanup here - we only clean in Dispose() after the test runs
+
+        TrackEntityType<ChangeLog>();
     }
 
     public virtual void Dispose()
@@ -83,7 +83,7 @@ public class BaseTest : IDisposable
     protected void TrackEntityType<T>()
         where T : class
     {
-        if (typeof(BaseEntity).IsAssignableFrom(typeof(T)))
+        if (typeof(BaseEntityWithId).IsAssignableFrom(typeof(T)))
         {
             usedEntityTypes.Add(typeof(T));
         }
@@ -202,7 +202,7 @@ public class BaseTest : IDisposable
 
         var content = await response.Content.ReadAsStringAsync();
 
-        if (expectedCode == HttpStatusCode.OK)
+        if (expectedCode == HttpStatusCode.OK || expectedCode == HttpStatusCode.Created)
         {
             CheckForRedundantProperties<T>(content);
 

@@ -9,6 +9,12 @@ namespace LeadCMS.Tests;
 
 public class SettingsTests : BaseTestAutoLogin
 {
+    public SettingsTests()
+        : base()
+    {
+        TrackEntityType<Setting>();
+    }
+
     [Fact]
     public async Task GetSystemSettings_ReturnsEnrichedWithDefaults()
     {

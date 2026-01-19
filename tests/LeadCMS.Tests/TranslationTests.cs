@@ -12,6 +12,16 @@ namespace LeadCMS.Tests;
 /// </summary>
 public class TranslationTests : BaseTestAutoLogin
 {
+    public TranslationTests()
+        : base()
+    {
+        TrackEntityType<Content>();
+        TrackEntityType<Contact>();
+        TrackEntityType<EmailGroup>();
+        TrackEntityType<EmailTemplate>();
+        TrackEntityType<Comment>();
+    }
+
     [Fact]
     public async Task GetTranslationDraft_Content_KeepOriginal_ReturnsOk()
     {

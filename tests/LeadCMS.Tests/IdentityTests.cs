@@ -40,11 +40,24 @@ public class IdentityLoginTests : BaseTestAutoLogin
             Assert.NotNull(userManager);
             var user = await userManager.FindByEmailAsync(username);
             Assert.NotNull(user);
+
+            // Store original value to restore later
+            var originalEmailConfirmed = user.EmailConfirmed;
+
             user.EmailConfirmed = false;
             await userManager.UpdateAsync(user);
-        }
 
-        await TestBody(username, password, HttpStatusCode.BadRequest);
+            try
+            {
+                await TestBody(username, password, HttpStatusCode.BadRequest);
+            }
+            finally
+            {
+                // Restore original state
+                user.EmailConfirmed = originalEmailConfirmed;
+                await userManager.UpdateAsync(user);
+            }
+        }
     }
 
     [Fact]

@@ -8,7 +8,12 @@ namespace LeadCMS.Tests.TestEntities;
 
 public class TestAccount : AccountCreateDto
 {
-    public TestAccount(string uid = "")
+    public TestAccount()
+        : this(string.Empty)
+    {
+    }
+
+    public TestAccount(string uid)
     {
         Name = $"WaveAccess {uid}";
         EmployeesRange = "500 - 1000";

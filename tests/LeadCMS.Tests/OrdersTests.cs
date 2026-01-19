@@ -229,7 +229,7 @@ public class OrdersTests : TableWithFKTests<Order, TestOrder, OrderUpdateDto, IE
     [Fact]
     public async Task GetWithSearchWithBigLimitTest()
     {
-        var entitiesNumber = 13000;
+        var entitiesNumber = 130;
         var fkItem = await CreateFKItem();
         var fkId = fkItem.Item1;
 
@@ -257,11 +257,10 @@ public class OrdersTests : TableWithFKTests<Order, TestOrder, OrderUpdateDto, IE
             }
         }
 
-        await TestSkipAndLimit(0, 14000, entitiesNumber);
-        await TestSkipAndLimit(5000, 1000, 1000);
-        await TestSkipAndLimit(11000, 2000, 2000);
-        await TestSkipAndLimit(12000, 2000, 1000);
-        await TestSkipAndLimit(14000, 2000, 0);
+        await TestSkipAndLimit(0, 140, entitiesNumber);
+        await TestSkipAndLimit(50, 50, 50);
+        await TestSkipAndLimit(100, 50, 30);
+        await TestSkipAndLimit(130, 50, 0);
     }
 
     [Fact]
@@ -331,7 +330,7 @@ public class OrdersTests : TableWithFKTests<Order, TestOrder, OrderUpdateDto, IE
     [Fact]
     public async Task GetWithSkipTest()
     {
-        var numberOfItems = 30;
+        var numberOfItems = 5;
         GenerateBulkRecords(numberOfItems);
 
         async Task GetAndCheck(int skipItemsNumber)

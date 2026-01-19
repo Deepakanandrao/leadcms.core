@@ -9,6 +9,12 @@ namespace LeadCMS.Tests;
 
 public class SseIntegrationTests : BaseTestAutoLogin
 {
+    public SseIntegrationTests()
+        : base()
+    {
+        TrackEntityType<Content>();
+    }
+
     [Fact]
     public async Task CheckIfSseSendsContentUpdatesAfterReconnection()
     {

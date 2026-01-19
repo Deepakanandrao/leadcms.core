@@ -6,7 +6,12 @@ namespace LeadCMS.Tests.TestEntities;
 
 public class TestContact : ContactCreateDto
 {
-    public TestContact(string uid = "")
+    public TestContact()
+        : this(string.Empty)
+    {
+    }
+
+    public TestContact(string uid)
     {
         Email = $"contact{uid}@test{uid}.net";
         FirstName = $"FirstName_{uid}";

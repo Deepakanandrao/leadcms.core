@@ -10,11 +10,29 @@ namespace LeadCMS.Tests;
 
 public class DealTests : SimpleTableTests<Deal, TestDeal, DealUpdateDto, IDealService>
 {
+    private readonly List<string> createdUserIds = new List<string>();
+
     public DealTests()
         : base("/api/deals")
     {
         TrackEntityType<Contact>();
         TrackEntityType<Account>();
+        TrackEntityType<DealPipeline>();
+        TrackEntityType<DealPipelineStage>();
+    }
+
+    public override void Dispose()
+    {
+        // Delete test users created during this test
+        if (createdUserIds.Any())
+        {
+            var dbContext = App.GetDbContext()!;
+            var usersToDelete = dbContext.Users!.Where(u => createdUserIds.Contains(u.Id)).ToList();
+            dbContext.Users!.RemoveRange(usersToDelete);
+            dbContext.SaveChanges();
+        }
+
+        base.Dispose();
     }
 
     [Fact]
@@ -94,57 +112,37 @@ public class DealTests : SimpleTableTests<Deal, TestDeal, DealUpdateDto, IDealSe
         }
     }
 
-    private async Task<string> PostUserTest(object payload)
-    {
-        var url = "/api/users";
-        var response = await Request(HttpMethod.Post, url, payload);
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-
-        var location = response.Headers?.Location?.LocalPath ?? string.Empty;
-        location.Should().StartWith(url);
-
-        var content = await response.Content.ReadAsStringAsync();
-        var result = JsonHelper.Deserialize<User>(content);
-        result.Should().NotBeNull();
-        result!.Id.Should().NotBeEmpty();
-
-        return location;
-    }
-
     private async Task<FKData> CreateFKItems(List<TestContact> testContacts)
     {
         var result = new FKData();
 
         var accountCreate = new TestAccount();
-        var accountUrl = await PostTest("/api/accounts", accountCreate, HttpStatusCode.Created);
-        var account = await GetTest<Account>(accountUrl);
+        var account = await PostTest<Account>("/api/accounts", accountCreate);
         account.Should().NotBeNull();
         result.AccountId = account!.Id;
 
         var pipelineCreate = new TestDealPipeline();
-        var pipelineUrl = await PostTest("/api/deal-pipelines", pipelineCreate, HttpStatusCode.Created);
-        var pipeline = await GetTest<DealPipeline>(pipelineUrl);
+        var pipeline = await PostTest<DealPipeline>("/api/deal-pipelines", pipelineCreate);
         pipeline.Should().NotBeNull();
         result.PipelineId = pipeline!.Id;
 
         var userCreate = new TestUser();
-        var userUrl = await PostUserTest(userCreate);
-        var user = await GetTest<User>(userUrl);
+        var user = await PostTest<User>("/api/users", userCreate);
         user.Should().NotBeNull();
         result.UserId = user!.Id;
+        // Track the created user for cleanup
+        createdUserIds.Add(user.Id);
 
         var stages = new TestPipelineStage[] { new TestPipelineStage(string.Empty, pipeline!.Id) { Order = 0 }, new TestPipelineStage(string.Empty, pipeline!.Id) { Order = 1 } };
         foreach (var stage in stages)
         {
-            var stageUrl = await PostTest("/api/deal-pipeline-stages", stage, HttpStatusCode.Created);
-            var newStage = await GetTest<DealPipelineStage>(stageUrl);
+            var newStage = await PostTest<DealPipelineStage>("/api/deal-pipeline-stages", stage);
             newStage.Should().NotBeNull();
         }
 
         foreach (var contact in testContacts)
         {
-            var contactUrl = await PostTest("/api/contacts", contact, HttpStatusCode.Created);
-            var newContact = await GetTest<Contact>(contactUrl);
+            var newContact = await PostTest<Contact>("/api/contacts", contact);
             result.ContactIds.Add(newContact!.Id);
         }
 

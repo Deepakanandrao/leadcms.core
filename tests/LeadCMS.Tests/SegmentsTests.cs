@@ -12,6 +12,13 @@ public class SegmentsTests : BaseTestAutoLogin
     private const string SegmentsUrl = "/api/segments";
     private const string ContactsUrl = "/api/contacts";
 
+    public SegmentsTests()
+        : base()
+    {
+        TrackEntityType<Contact>();
+        TrackEntityType<Segment>();
+    }
+
     [Fact]
     public async Task CreateStaticSegment_ReturnsContactsAndCount()
     {
