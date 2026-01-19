@@ -3,6 +3,7 @@
 // </copyright>
 
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using CsvHelper.Configuration.Attributes;
 using LeadCMS.DataAnnotations;
 using LeadCMS.Entities;
@@ -63,6 +64,7 @@ public class CommentUpdateDto : IPatchDto
     private string? authorEmail;
 
     [Ignore]
+    [JsonIgnore]
     public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     public string? Body { get; set; }

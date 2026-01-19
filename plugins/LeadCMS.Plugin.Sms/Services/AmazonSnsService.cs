@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Net;
 using Amazon;
 using Amazon.SimpleNotificationService;
 using Amazon.SimpleNotificationService.Model;
@@ -50,7 +51,7 @@ public class AmazonSnsGatewayService : ISmsService
 
         var response = await client.PublishAsync(request);
 
-        if (response.HttpStatusCode != System.Net.HttpStatusCode.OK)
+        if (response.HttpStatusCode != HttpStatusCode.OK)
         {
             throw new AwsSnsException("Failed to send Messages through SNS : Receiver : {" + recipient + "} St : { " + response.HttpStatusCode.ToString() + " }");
         }

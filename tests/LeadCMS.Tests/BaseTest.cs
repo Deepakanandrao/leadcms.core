@@ -21,6 +21,8 @@ public class BaseTest : IDisposable
 
     protected readonly HttpClient client;
     protected readonly IMapper mapper;
+    private readonly System.Diagnostics.Stopwatch testStopwatch;
+    private readonly HashSet<Type> usedEntityTypes = new HashSet<Type>();
 
     static BaseTest()
     {
@@ -29,6 +31,8 @@ public class BaseTest : IDisposable
 
     protected BaseTest()
     {
+        testStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
         client = App.CreateClient(
             new WebApplicationFactoryClientOptions
             {
@@ -36,19 +40,61 @@ public class BaseTest : IDisposable
             });
 
         mapper = App.GetMapper();
-        App.CleanDatabase();
+        // Database is initialized once globally in TestApplication constructor
+        // No cleanup here - we only clean in Dispose() after the test runs
     }
 
     public virtual void Dispose()
     {
+        testStopwatch.Stop();
+
+        // Log slow tests for investigation
+        if (testStopwatch.ElapsedMilliseconds > 5000)
+        {
+            Console.WriteLine($"⚠️  Slow test detected: {GetType().Name} took {testStopwatch.ElapsedMilliseconds}ms");
+        }
+
+        // Cleanup only tables that were used in THIS test
+        // If no entities were tracked, skip cleanup (test didn't modify database)
+        if (usedEntityTypes.Any())
+        {
+            App.CleanDatabase(usedEntityTypes);
+        }
+
         client.Dispose();
+        usedEntityTypes.Clear();
     }
 
     protected static StringContent PayloadToStringContent(object payload)
     {
-        var payloadString = JsonHelper.Serialize(payload);
+        var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)
+        {
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        };
+
+        // Copy converters from JsonHelper
+        JsonHelper.Configure(options);
+
+        var payloadString = System.Text.Json.JsonSerializer.Serialize(payload, options);
 
         return new StringContent(payloadString, Encoding.UTF8, "application/json");
+    }
+
+    protected void TrackEntityType<T>()
+        where T : class
+    {
+        if (typeof(BaseEntity).IsAssignableFrom(typeof(T)))
+        {
+            usedEntityTypes.Add(typeof(T));
+        }
+    }
+
+    protected void PopulateBulkData<T, TS>(dynamic bulkItems)
+        where T : BaseEntityWithId
+        where TS : IEntityService<T>
+    {
+        TrackEntityType<T>();
+        App.PopulateBulkData<T, TS>(bulkItems);
     }
 
     protected virtual AuthenticationHeaderValue? GetAuthenticationHeaderValue()
@@ -97,6 +143,7 @@ public class BaseTest : IDisposable
     protected async Task<T?> GetTest<T>(string url, HttpStatusCode expectedCode = HttpStatusCode.OK)
         where T : class
     {
+        TrackEntityType<T>();
         var response = await GetTest(url, expectedCode);
 
         var content = await response.Content.ReadAsStringAsync();
@@ -116,6 +163,7 @@ public class BaseTest : IDisposable
     protected async Task<List<TI>?> GetTestCSV<TI>(string url, HttpStatusCode expectedCode = HttpStatusCode.OK)
     where TI : class
     {
+        TrackEntityType<TI>();
         var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Authorization = GetAuthenticationHeaderValue();
 
@@ -147,6 +195,7 @@ public class BaseTest : IDisposable
     protected async Task<T?> PostTest<T>(string url, object payload, HttpStatusCode expectedCode = HttpStatusCode.Created)
         where T : class
     {
+        TrackEntityType<T>();
         var response = await Request(HttpMethod.Post, url, payload);
 
         response.StatusCode.Should().Be(expectedCode);

@@ -70,13 +70,13 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
         // Patch contact with first account
         var update1 = new ContactUpdateDto { AccountId = account1.Id };
         var response1 = await Patch(createUrl, update1);
-        if (response1.StatusCode != System.Net.HttpStatusCode.OK)
+        if (response1.StatusCode != HttpStatusCode.OK)
         {
             var error1 = await response1.Content.ReadAsStringAsync();
             throw new Exception($"PATCH failed with {response1.StatusCode}: {error1}");
         }
 
-        response1.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        response1.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var contact1 = await GetTest<ContactDetailsDto>(createUrl);
         contact1.Should().NotBeNull();
@@ -85,7 +85,7 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
         // Patch contact with second account
         var update2 = new ContactUpdateDto { AccountId = account2.Id };
         var response2 = await PatchTest(createUrl, update2);
-        response2.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        response2.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var contact2 = await GetTest<ContactDetailsDto>(createUrl);
         contact2.Should().NotBeNull();
@@ -98,7 +98,7 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
         var request3 = new HttpRequestMessage(HttpMethod.Patch, createUrl) { Content = content3 };
         request3.Headers.Authorization = GetAuthenticationHeaderValue();
         var response3 = await client.SendAsync(request3);
-        response3.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        response3.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var contact3 = await GetTest<ContactDetailsDto>(createUrl);
         contact3.Should().NotBeNull();
@@ -298,9 +298,9 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
     }
 
     [Theory]
-    [InlineData("", 150, 100)]
-    [InlineData("filter[skip]=0", 150, 100)]
-    [InlineData("filter[limit]=10&filter[skip]=0", 150, 100)]
+    [InlineData("", 15, 10)]
+    [InlineData("filter[skip]=0", 15, 10)]
+    [InlineData("filter[limit]=10&filter[skip]=0", 15, 10)]
     public async Task LimitLists(string filter, int dataCount, int limitPerRequest)
     {
         GenerateBulkRecords(dataCount);
@@ -318,7 +318,7 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
     }
 
     [Theory]
-    [InlineData("filter[limit]=15001", 150)]
+    [InlineData("filter[limit]=15001", 15)]
     public async Task InvalidLimit(string filter, int dataCount)
     {
         GenerateBulkRecords(dataCount);
@@ -347,7 +347,9 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
             contacts.Add(contact);
         }
 
-        App.PopulateBulkData<Contact, IContactService>(contacts);
+        // Track both Contact and Domain since we're creating both
+        TrackEntityType<Domain>();
+        PopulateBulkData<Contact, IContactService>(contacts);
     }
 
     private string DomainChecker(string email)

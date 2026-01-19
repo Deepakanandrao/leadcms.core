@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Security.Authentication;
 using LeadCMS.Helpers;
 using LeadCMS.Tests.TestEntities;
 
@@ -12,6 +13,8 @@ public class DealTests : SimpleTableTests<Deal, TestDeal, DealUpdateDto, IDealSe
     public DealTests()
         : base("/api/deals")
     {
+        TrackEntityType<Contact>();
+        TrackEntityType<Account>();
     }
 
     [Fact]
@@ -61,7 +64,7 @@ public class DealTests : SimpleTableTests<Deal, TestDeal, DealUpdateDto, IDealSe
         var bulkList = TestData.GenerateAndPopulateAttributes<TestDeal>(dataCount, populateAttributes, fkData.ContactIds, fkData.AccountId, fkData.PipelineId, fkData.UserId);
         var bulkEntitiesList = mapper.Map<List<Deal>>(bulkList);
 
-        App.PopulateBulkData<Deal, IDealService>(bulkEntitiesList);
+        PopulateBulkData<Deal, IDealService>(bulkEntitiesList);
     }
 
     protected override DealUpdateDto UpdateItem(TestDeal td)
@@ -120,7 +123,7 @@ public class DealTests : SimpleTableTests<Deal, TestDeal, DealUpdateDto, IDealSe
 
         var pipelineCreate = new TestDealPipeline();
         var pipelineUrl = await PostTest("/api/deal-pipelines", pipelineCreate, HttpStatusCode.Created);
-        var pipeline = await GetTest<Account>(pipelineUrl);
+        var pipeline = await GetTest<DealPipeline>(pipelineUrl);
         pipeline.Should().NotBeNull();
         result.PipelineId = pipeline!.Id;
 

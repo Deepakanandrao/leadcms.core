@@ -118,7 +118,7 @@ public class ContentTests : SimpleTableTests<Content, TestContent, ContentUpdate
     protected override ContentUpdateDto UpdateItem(TestContent to)
     {
         var from = new ContentUpdateDto();
-        to.Type = from.Type = to.Type + "Updated";
+        to.Author = from.Author = to.Author + " Updated";
         return from;
     }
 }

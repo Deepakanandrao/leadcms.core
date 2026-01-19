@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Net;
 using LeadCMS.Data;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;
@@ -98,7 +99,7 @@ public class SyncSuppressionsTask : BaseTask
         var statusCode = response.StatusCode;
         var result = await response.Body.ReadAsStringAsync();
 
-        if (statusCode != System.Net.HttpStatusCode.OK)
+        if (statusCode != HttpStatusCode.OK)
         {
             throw new SendGridApiException("Invalid result returned from SendGrid API: " + result);
         }

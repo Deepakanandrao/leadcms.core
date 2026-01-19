@@ -202,7 +202,7 @@ public class SegmentsTests : BaseTestAutoLogin
             });
         }
 
-        App.PopulateBulkData<Contact, IContactService>(contacts);
+        PopulateBulkData<Contact, IContactService>(contacts);
 
         var definition = new SegmentDefinition
         {

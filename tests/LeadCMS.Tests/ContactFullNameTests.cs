@@ -19,7 +19,7 @@ public class ContactFullNameTests : BaseTestAutoLogin
         contactDto.LastName = "Smith";
 
         // Act
-        await PostTest<TestContact>(ContactsUrl, contactDto);
+        await PostTest<Contact>(ContactsUrl, contactDto);
 
         // Get the contact back
         var dbContext = App.GetDbContext();
@@ -40,7 +40,7 @@ public class ContactFullNameTests : BaseTestAutoLogin
         contactDto.LastName = "Doe";
 
         // Act
-        await PostTest<TestContact>(ContactsUrl, contactDto);
+        await PostTest<Contact>(ContactsUrl, contactDto);
 
         // Get the contact back
         var dbContext = App.GetDbContext();
@@ -61,7 +61,7 @@ public class ContactFullNameTests : BaseTestAutoLogin
         contactDto.LastName = null;
 
         // Act
-        await PostTest<TestContact>(ContactsUrl, contactDto);
+        await PostTest<Contact>(ContactsUrl, contactDto);
 
         // Get the contact back
         var dbContext = App.GetDbContext();
@@ -79,7 +79,7 @@ public class ContactFullNameTests : BaseTestAutoLogin
         var contactDto = TestData.Generate<TestContact>(uniqueId);
         contactDto.FirstName = "Alice";
         contactDto.LastName = "Brown";
-        await PostTest<TestContact>(ContactsUrl, contactDto);
+        await PostTest<Contact>(ContactsUrl, contactDto);
 
         var dbContext = App.GetDbContext();
         var contact = dbContext!.Contacts!.First(c => c.Email == contactDto.Email);
@@ -110,8 +110,8 @@ public class ContactFullNameTests : BaseTestAutoLogin
         contact2Dto.FirstName = "AnotherTest";
         contact2Dto.LastName = "DifferentName";
 
-        await PostTest<TestContact>(ContactsUrl, contact1Dto);
-        await PostTest<TestContact>(ContactsUrl, contact2Dto);
+        await PostTest<Contact>(ContactsUrl, contact1Dto);
+        await PostTest<Contact>(ContactsUrl, contact2Dto);
 
         // Act: Filter by full name
         var result = await GetTest<List<Contact>>($"{ContactsUrl}?filter[where][fullName]=TestFilter UniqueLastName");
@@ -135,11 +135,11 @@ public class ContactFullNameTests : BaseTestAutoLogin
         contact2Dto.FirstName = "Alice";
         contact2Dto.LastName = "Baker";
 
-        await PostTest<TestContact>(ContactsUrl, contact1Dto);
-        await PostTest<TestContact>(ContactsUrl, contact2Dto);
+        await PostTest<Contact>(ContactsUrl, contact1Dto);
+        await PostTest<Contact>(ContactsUrl, contact2Dto);
 
         // Act: Order by full name ascending
-        var result = await GetTest<List<Contact>>($"{ContactsUrl}?filter[order]=fullName&filter[limit]=100");
+        var result = await GetTest<List<Contact>>($"{ContactsUrl}?filter[order]=fullName&filter[limit]=10");
 
         // Assert
         result.Should().NotBeNull();
@@ -163,7 +163,7 @@ public class ContactFullNameTests : BaseTestAutoLogin
         contactDto.MiddleName = "James";
         contactDto.LastName = "Martinez";
 
-        await PostTest<TestContact>(ContactsUrl, contactDto);
+        await PostTest<Contact>(ContactsUrl, contactDto);
 
         // Act: Search using like operator
         var result = await GetTest<List<Contact>>($"{ContactsUrl}?filter[where][fullName][like]=Christopher.*");

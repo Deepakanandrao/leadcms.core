@@ -16,26 +16,83 @@ namespace LeadCMS.Tests.Environment;
 
 public class TestApplication : WebApplicationFactory<Program>
 {
+    private static readonly object LockObject = new object();
+
+    private static bool databaseInitialized = false;
+
     public TestApplication()
     {
         var projectDir = Directory.GetCurrentDirectory();
         var configPath = Path.Combine(projectDir, "appsettings.tests.json");
 
         Program.AddAppSettingsJsonFile(configPath);
+
+        // Initialize database once on first TestApplication instance
+        EnsureDatabaseInitialized();
     }
 
-    public void CleanDatabase()
+    public void EnsureDatabaseInitialized()
     {
-        using (var scope = Services.CreateScope())
+        if (databaseInitialized)
         {
-            var dataContaxt = scope.ServiceProvider.GetRequiredService<PgDbContext>();
-            RenewDatabase(dataContaxt);
-            Program.CreateDefaultIdentity(scope).Wait();
+            return;
+        }
 
-            var esDbContext = scope.ServiceProvider.GetRequiredService<EsDbContext>();
-            if (esDbContext.ElasticClient != null)
+        lock (LockObject)
+        {
+            // Double-check after acquiring lock
+            if (databaseInitialized)
             {
-                esDbContext.ElasticClient.Indices.Delete("*");
+                return;
+            }
+
+            using (var scope = Services.CreateScope())
+            {
+                var dataContext = scope.ServiceProvider.GetRequiredService<PgDbContext>();
+
+                // Initialize database schema and seed data
+                RenewDatabase(dataContext);
+
+                // Create default identity (admin user, roles, etc.)
+                Program.CreateDefaultIdentity(scope).Wait();
+
+                databaseInitialized = true;
+            }
+        }
+    }
+
+    public void CleanDatabase(HashSet<Type>? usedEntityTypes = null)
+    {
+        lock (LockObject)
+        {
+            using (var scope = Services.CreateScope())
+            {
+                var dataContext = scope.ServiceProvider.GetRequiredService<PgDbContext>();
+
+                // Only truncate tables - no need to recreate schema
+                TruncateTables(dataContext, usedEntityTypes);
+
+                // ElasticSearch cleanup if needed
+                var esDbContext = scope.ServiceProvider.GetRequiredService<EsDbContext>();
+                if (esDbContext.ElasticClient != null)
+                {
+                    esDbContext.ElasticClient.Indices.Delete("*");
+                }
+            }
+        }
+    }
+
+    public void ResetDatabase()
+    {
+        lock (LockObject)
+        {
+            using (var scope = Services.CreateScope())
+            {
+                var dataContext = scope.ServiceProvider.GetRequiredService<PgDbContext>();
+
+                // Full database reset - recreate schema and seed data
+                RenewDatabase(dataContext);
+                Program.CreateDefaultIdentity(scope).Wait();
             }
         }
     }
@@ -99,6 +156,89 @@ public class TestApplication : WebApplicationFactory<Program>
         });
 
         return base.CreateHost(builder);
+    }
+
+    private void TruncateTables(PgDbContext context, HashSet<Type>? usedEntityTypes = null)
+    {
+        try
+        {
+            // Get table names - either from used entity types or all tables
+            var tablesToClean = usedEntityTypes != null && usedEntityTypes.Any()
+                ? GetTablesToCleanForEntityTypes(context, usedEntityTypes)
+                : GetTablesToClean(context);
+
+            if (!tablesToClean.Any())
+            {
+                return; // Nothing to clean
+            }
+
+            // Disable triggers and constraints temporarily for faster truncation
+            context.Database.ExecuteSqlRaw("SET session_replication_role = 'replica';");
+
+            foreach (var table in tablesToClean)
+            {
+                try
+                {
+                    // Table names are from DbContext model metadata, not user input
+                    // RESTART IDENTITY resets auto-increment sequences
+#pragma warning disable EF1002
+                    context.Database.ExecuteSqlRaw($"TRUNCATE TABLE {table} RESTART IDENTITY CASCADE;");
+#pragma warning restore EF1002
+                }
+                catch
+                {
+                    // Table might not exist or have issues, continue
+                }
+            }
+
+            // Re-enable triggers and constraints
+            context.Database.ExecuteSqlRaw("SET session_replication_role = 'origin';");
+        }
+        catch (Exception ex)
+        {
+            // If truncate fails, fall back to full database renewal
+            Console.WriteLine($"Truncate failed: {ex.Message}. Falling back to full database renewal.");
+            RenewDatabase(context);
+        }
+    }
+
+    private List<string> GetTablesToClean(PgDbContext context)
+    {
+        var tables = new List<string>();
+        var entityTypes = context.Model.GetEntityTypes();
+
+        foreach (var entityType in entityTypes)
+        {
+            var tableName = entityType.GetTableName();
+            if (!string.IsNullOrEmpty(tableName))
+            {
+                tables.Add(tableName);
+            }
+        }
+
+        return tables;
+    }
+
+    private List<string> GetTablesToCleanForEntityTypes(PgDbContext context, HashSet<Type> usedEntityTypes)
+    {
+        var tables = new HashSet<string>();
+        var entityTypes = context.Model.GetEntityTypes();
+
+        foreach (var entityType in entityTypes)
+        {
+            // Check if this entity type or any of its derived types were used
+            var clrType = entityType.ClrType;
+            if (usedEntityTypes.Contains(clrType) || usedEntityTypes.Any(t => clrType.IsAssignableFrom(t)))
+            {
+                var tableName = entityType.GetTableName();
+                if (!string.IsNullOrEmpty(tableName))
+                {
+                    tables.Add(tableName);
+                }
+            }
+        }
+
+        return tables.ToList();
     }
 
     private void RenewDatabase(PgDbContext context)

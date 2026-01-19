@@ -3,6 +3,7 @@
 // </copyright>
 
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using CsvHelper.Configuration.Attributes;
 using LeadCMS.Entities;
 using LeadCMS.Infrastructure;
@@ -66,6 +67,7 @@ public class SegmentCreateDto
 public class SegmentUpdateDto : IPatchDto
 {
     [Ignore]
+    [JsonIgnore]
     public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     public string? Name { get; set; }

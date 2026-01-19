@@ -86,7 +86,7 @@ public class ExportNestedPropertiesTests : TableWithFKTests<Order, TestOrder, Or
         request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("text/csv"));
         var httpResponse = await client.SendAsync(request);
 
-        httpResponse.StatusCode.Should().Be(System.Net.HttpStatusCode.OK, "export should succeed");
+        httpResponse.StatusCode.Should().Be(HttpStatusCode.OK, "export should succeed");
 
         var csvContent = await httpResponse.Content.ReadAsStringAsync();
         csvContent.Should().Contain("ContactFullName", "CSV should have ContactFullName column header");

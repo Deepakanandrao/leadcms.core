@@ -279,9 +279,14 @@ public class PgDbContext : IdentityDbContext<User>
         builder.Entity<User>().Property(u => u.Data).HasColumnType("jsonb");
 
         // Configure Contact FullName as computed column
+        // Use CASE statements for conditional concatenation - all functions used are IMMUTABLE
         builder.Entity<Contact>()
             .Property(c => c.FullName)
-            .HasComputedColumnSql("TRIM(COALESCE(\"first_name\", '') || ' ' || COALESCE(\"middle_name\", '') || ' ' || COALESCE(\"last_name\", ''))", stored: true);
+            .HasComputedColumnSql(
+                "TRIM(COALESCE(\"first_name\", '') || " +
+                "CASE WHEN COALESCE(\"middle_name\", '') != '' THEN ' ' || \"middle_name\" ELSE '' END || " +
+                "CASE WHEN COALESCE(\"last_name\", '') != '' THEN ' ' || \"last_name\" ELSE '' END)",
+                stored: true);
 
         // Fix ContentType foreign key for Content
         builder.Entity<Content>()

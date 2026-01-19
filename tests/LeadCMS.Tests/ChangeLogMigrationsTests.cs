@@ -14,6 +14,16 @@ namespace LeadCMS.Tests;
 
 public class ChangeLogMigrationsTests : BaseTest
 {
+    public override void Dispose()
+    {
+        // ChangeLogMigrations tests need a full database reset instead of just truncating tables
+        // because they manipulate migrations and schema changes
+        App.ResetDatabase();
+
+        // Don't call base.Dispose() as it would do table truncation
+        // base.Dispose();
+    }
+
     [Fact]
     public void InsertDataTest()
     {

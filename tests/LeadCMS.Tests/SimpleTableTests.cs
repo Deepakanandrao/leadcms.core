@@ -22,6 +22,7 @@ public abstract class SimpleTableTests<T, TC, TU, TS> : BaseTestAutoLogin
     {
         itemsUrl = url;
         itemsUrlNotFound = url + "/404";
+        TrackEntityType<T>();
     }
 
     [Fact]
@@ -211,6 +212,9 @@ public abstract class SimpleTableTests<T, TC, TU, TS> : BaseTestAutoLogin
     {
         var testCreateItem = TestData.Generate<TC>();
 
+        // Track the entity type being created
+        TrackEntityType<T>();
+
         var newItemUrl = await PostTest(itemsUrl, testCreateItem, HttpStatusCode.Created);
 
         return (testCreateItem, newItemUrl);
@@ -221,7 +225,7 @@ public abstract class SimpleTableTests<T, TC, TU, TS> : BaseTestAutoLogin
         var bulkList = TestData.GenerateAndPopulateAttributes<TC>(dataCount, populateAttributes);
         var bulkEntitiesList = mapper.Map<List<T>>(bulkList);
 
-        App.PopulateBulkData<T, TS>(bulkEntitiesList);
+        PopulateBulkData<T, TS>(bulkEntitiesList);
     }
 
     protected async Task GetAllRecords(bool asAnonimus)

@@ -4,7 +4,7 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using LeadCMS.DataAnnotations;
+using AutoMapper.Configuration.Annotations;
 
 namespace LeadCMS.Infrastructure;
 
@@ -19,7 +19,7 @@ public interface IPatchDto
     /// Gets the collection of property names that were explicitly set to null in the JSON request.
     /// This is populated automatically during deserialization.
     /// </summary>
-    [SwaggerHide]
+    [Ignore]
     [JsonIgnore]
     HashSet<string> NullProperties { get; }
 }

@@ -67,7 +67,7 @@ public abstract class TableWithFKTests<T, TC, TU, TS> : SimpleTableTests<T, TC, 
         var bulkList = TestData.GenerateAndPopulateAttributes<TC>(dataCount, populateAttributes, fkId);
         var bulkEntitiesList = mapper.Map<List<T>>(bulkList);
 
-        App.PopulateBulkData<T, TS>(bulkEntitiesList);
+        PopulateBulkData<T, TS>(bulkEntitiesList);
     }
 
     protected abstract Task<(TC, string)> CreateItem(string uid, int fkId);

@@ -3,6 +3,7 @@
 // </copyright>
 
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using CsvHelper.Configuration.Attributes;
 using LeadCMS.Infrastructure;
 
@@ -38,6 +39,7 @@ public class EmailTemplateCreateDto
 public class EmailTemplateUpdateDto : IPatchDto
 {
     [Ignore]
+    [JsonIgnore]
     public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     [MinLength(1)]

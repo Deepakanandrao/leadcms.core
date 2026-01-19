@@ -11,6 +11,8 @@ public class CommentsTests : TableWithFKTests<Comment, TestComment, CommentUpdat
     public CommentsTests()
         : base("/api/comments")
     {
+        TrackEntityType<Content>();
+        TrackEntityType<Contact>();
     }
 
     [Fact]
@@ -29,24 +31,29 @@ public class CommentsTests : TableWithFKTests<Comment, TestComment, CommentUpdat
         var testComment1 = new TestComment(string.Empty, 1);
         var comment1Url = await PostTest(itemsUrl, testComment1);
         var comment1 = await GetTest<Comment>(comment1Url);
-        comment1!.Status = CommentStatus.NotApproved;
-        App.GetDbContext()!.Comments!.Update(comment1);
 
         // Create an approved comment (authenticated user would set status to Approved, simulating by direct DB)
         var testComment2 = new TestComment(string.Empty, 1);
         var comment2Url = await PostTest(itemsUrl, testComment2);
         var comment2 = await GetTest<Comment>(comment2Url);
-        comment2!.Status = CommentStatus.Approved;
-        App.GetDbContext()!.Comments!.Update(comment2);
 
         // Create a spam comment
         var testComment3 = new TestComment(string.Empty, 1);
         var comment3Url = await PostTest(itemsUrl, testComment3);
         var comment3 = await GetTest<Comment>(comment3Url);
-        comment3!.Status = CommentStatus.Spam;
-        App.GetDbContext()!.Comments!.Update(comment3);
 
-        await App.GetDbContext()!.SaveChangesAsync();
+        // Update statuses using a single DbContext instance
+        var dbContext = App.GetDbContext()!;
+        var dbComment1 = dbContext.Comments!.Find(comment1!.Id);
+        dbComment1!.Status = CommentStatus.NotApproved;
+
+        var dbComment2 = dbContext.Comments!.Find(comment2!.Id);
+        dbComment2!.Status = CommentStatus.Approved;
+
+        var dbComment3 = dbContext.Comments!.Find(comment3!.Id);
+        dbComment3!.Status = CommentStatus.Spam;
+
+        await dbContext.SaveChangesAsync();
 
         // Act - call the GetWithStatistics endpoint
         var result = await GetTest<CommentsWithStatisticsDto>($"{itemsUrl}/with-statistics");
@@ -75,21 +82,25 @@ public class CommentsTests : TableWithFKTests<Comment, TestComment, CommentUpdat
         var testComment1 = new TestComment(string.Empty, 1);
         var comment1Url = await PostTest(itemsUrl, testComment1);
         var comment1 = await GetTest<Comment>(comment1Url);
-        comment1!.Status = CommentStatus.NotApproved;
-        App.GetDbContext()!.Comments!.Update(comment1);
 
         // Create an approved comment
         var testComment2 = new TestComment(string.Empty, 1);
         var comment2Url = await PostTest(itemsUrl, testComment2);
         var comment2 = await GetTest<Comment>(comment2Url);
-        comment2!.Status = CommentStatus.Approved;
-        App.GetDbContext()!.Comments!.Update(comment2);
 
-        await App.GetDbContext()!.SaveChangesAsync();
+        // Update statuses using a single DbContext instance
+        var dbContext = App.GetDbContext()!;
+        var dbComment1 = dbContext.Comments!.Find(comment1!.Id);
+        dbComment1!.Status = CommentStatus.NotApproved;
+
+        var dbComment2 = dbContext.Comments!.Find(comment2!.Id);
+        dbComment2!.Status = CommentStatus.Approved;
+
+        await dbContext.SaveChangesAsync();
 
         // Act - call the GetWithStatistics endpoint as anonymous user
         Logout();
-        var result = await GetTest<CommentsWithStatisticsDto>($"{itemsUrl}/with-statistics");
+        var result = await GetTest<AnonymousCommentsWithStatisticsDto>($"{itemsUrl}/with-statistics");
 
         // Assert - check that the anonymous response structure is correct
         result.Should().NotBeNull();
@@ -120,24 +131,32 @@ public class CommentsTests : TableWithFKTests<Comment, TestComment, CommentUpdat
 
         // Create comments for different commentable entities
         var testComment1 = new TestComment("test1", 1) { Body = "First comment" };
-        await PostTest(itemsUrl, testComment1);
+        var comment1Url = await PostTest(itemsUrl, testComment1);
+        var comment1 = await GetTest<Comment>(comment1Url);
 
         var testComment2 = new TestComment("test2", 2) { Body = "Second comment" };
         var comment2Url = await PostTest(itemsUrl, testComment2);
         var comment2 = await GetTest<Comment>(comment2Url);
-        comment2!.Status = CommentStatus.Approved;
-        App.GetDbContext()!.Comments!.Update(comment2);
 
         var testComment3 = new TestComment("test3", 1) { Body = "Third comment" };
         var comment3Url = await PostTest(itemsUrl, testComment3);
         var comment3 = await GetTest<Comment>(comment3Url);
-        comment3!.Status = CommentStatus.Spam;
-        App.GetDbContext()!.Comments!.Update(comment3);
 
-        await App.GetDbContext()!.SaveChangesAsync();
+        // Update statuses using a single DbContext instance
+        var dbContext = App.GetDbContext()!;
+        var dbComment1 = dbContext.Comments!.Find(comment1!.Id);
+        dbComment1!.Status = CommentStatus.NotApproved;
+
+        var dbComment2 = dbContext.Comments!.Find(comment2!.Id);
+        dbComment2!.Status = CommentStatus.Approved;
+
+        var dbComment3 = dbContext.Comments!.Find(comment3!.Id);
+        dbComment3!.Status = CommentStatus.Spam;
+
+        await dbContext.SaveChangesAsync();
 
         // Act - call with filter for specific commentable ID
-        var filteredResult = await GetTest<CommentsWithStatisticsDto>($"{itemsUrl}/with-statistics?commentableId=1");
+        var filteredResult = await GetTest<CommentsWithStatisticsDto>($"{itemsUrl}/with-statistics?filter[where][commentableId]=1");
 
         // Assert - should only include statistics for comments with commentableId=1
         filteredResult.Should().NotBeNull();
@@ -157,24 +176,32 @@ public class CommentsTests : TableWithFKTests<Comment, TestComment, CommentUpdat
 
         // Create comments with different statuses
         var testComment1 = new TestComment(string.Empty, 1);
-        await PostTest(itemsUrl, testComment1);
+        var comment1Url = await PostTest(itemsUrl, testComment1);
+        var comment1 = await GetTest<Comment>(comment1Url);
 
         var testComment2 = new TestComment(string.Empty, 1);
         var comment2Url = await PostTest(itemsUrl, testComment2);
         var comment2 = await GetTest<Comment>(comment2Url);
-        comment2!.Status = CommentStatus.Approved;
-        App.GetDbContext()!.Comments!.Update(comment2);
 
         var testComment3 = new TestComment(string.Empty, 1);
         var comment3Url = await PostTest(itemsUrl, testComment3);
         var comment3 = await GetTest<Comment>(comment3Url);
-        comment3!.Status = CommentStatus.Spam;
-        App.GetDbContext()!.Comments!.Update(comment3);
 
-        await App.GetDbContext()!.SaveChangesAsync();
+        // Update statuses using a single DbContext instance
+        var dbContext = App.GetDbContext()!;
+        var dbComment1 = dbContext.Comments!.Find(comment1!.Id);
+        dbComment1!.Status = CommentStatus.NotApproved;
+
+        var dbComment2 = dbContext.Comments!.Find(comment2!.Id);
+        dbComment2!.Status = CommentStatus.Approved;
+
+        var dbComment3 = dbContext.Comments!.Find(comment3!.Id);
+        dbComment3!.Status = CommentStatus.Spam;
+
+        await dbContext.SaveChangesAsync();
 
         // Act - call with status filter (should only return approved comments, but stats should show all)
-        var filteredResult = await GetTest<CommentsWithStatisticsDto>($"{itemsUrl}/with-statistics?status=Approved");
+        var filteredResult = await GetTest<CommentsWithStatisticsDto>($"{itemsUrl}/with-statistics?filter[where][status]=Approved");
 
         // Assert - comments should be filtered to only approved
         filteredResult.Should().NotBeNull();

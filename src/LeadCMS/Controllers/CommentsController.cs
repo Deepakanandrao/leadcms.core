@@ -58,15 +58,8 @@ public class CommentsController : BaseControllerWithImport<Comment, CommentCreat
     public async Task<IActionResult> GetWithStatistics([FromQuery] string? query)
     {
         // Get the comments using the base method (returns CommentDetailsDto from database)
-        var getResult = await base.Get(query);
-
-        // Check if base.Get returned an error response
-        if (getResult.Result is not OkObjectResult okResult)
-        {
-            return getResult.Result!;
-        }
-
-        var items = (List<CommentDetailsDto>)okResult.Value!;
+        var returnedItems = (await base.Get(query)).Result;
+        var items = (List<CommentDetailsDto>)((ObjectResult)returnedItems!).Value!;
 
         // Get statistics for all comment statuses and answer statuses using query without status filter
         var allStatistics = await GetCommentStatisticsWithQuery();
@@ -366,7 +359,7 @@ public class CommentsController : BaseControllerWithImport<Comment, CommentCreat
         {
             Type = FilterType.Where,
             Props = new[] { "answerStatus" },
-            Value = ((int)answerStatus).ToString(),
+            Value = answerStatus.ToString(),
             Source = $"filter[where][answerStatus]={answerStatus}",
         });
 

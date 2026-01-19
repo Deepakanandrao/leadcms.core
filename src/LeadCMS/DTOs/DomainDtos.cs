@@ -4,6 +4,7 @@
 
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 using CsvHelper.Configuration.Attributes;
 using LeadCMS.DataAnnotations;
 using LeadCMS.Entities;
@@ -51,6 +52,7 @@ public class DomainCreateDto
 public class DomainUpdateDto : IPatchDto
 {
     [Ignore]
+    [JsonIgnore]
     public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     public string? Title { get; set; }

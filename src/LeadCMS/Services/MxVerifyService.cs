@@ -19,7 +19,7 @@ public class MxVerifyService : IMxVerifyService
     ///  -&gt; RCPT Command: <see langword="5 Minutes"/> (300 sec)<br/>
     /// <br/>
     /// Set timeout as 60 sec to get answer from most valid services.<br/>
-    /// <br/>[ LINK ] 
+    /// <br/>[ LINK ]
     /// <see href="https://www.rfc-editor.org/rfc/rfc5321">RFC 5321 - SMTP - October 2008</see>.<br/>
     /// </summary>
     private const int TimeOutSeconds = 60;
@@ -286,7 +286,7 @@ public class MxVerifyService : IMxVerifyService
         }
         catch
         {
-            // Send failed 
+            // Send failed
         }
     }
 }
