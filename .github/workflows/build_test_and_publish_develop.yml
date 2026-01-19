@@ -91,7 +91,7 @@ jobs:
       run: dotnet test --no-build --configuration $BUILD_CONFIG --logger "trx" --verbosity normal --results-directory "./"
 
     - name: Upload test results
-      if: ${{ github.event.inputs.run_tests == 'true' }} && (success() || failure())
+      if: github.event.inputs.run_tests == 'true' && (success() || failure())
       uses: actions/upload-artifact@v4
       with:
         name: test-results
