@@ -52,10 +52,10 @@ public class CommentsController : BaseControllerWithImport<Comment, CommentCreat
 
     [HttpGet("with-statistics")]
     [AllowAnonymous]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(CommentsWithStatisticsDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetWithStatistics([FromQuery] string? query)
+    public async Task<ActionResult<CommentsWithStatisticsDto>> GetWithStatistics([FromQuery] string? query)
     {
         // Get the comments using the base method (returns CommentDetailsDto from database)
         var returnedItems = (await base.Get(query)).Result;
