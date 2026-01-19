@@ -1,15 +1,15 @@
-name: 'Test Reporter'
+name: Test Reporter
 on:
   workflow_run:
-    workflows: ['.NET Build and Test', '.NET NuGet & Docker Publish', 'Manual Docker Publish from Develop'] # runs after CI workflow
+    workflows: ['PR & Develop - Build & Test', 'Release - Build, Test & Publish', 'Manual - Build, Test & Publish (Develop)']
     types:
       - completed
 jobs:
   report:
     runs-on: ubuntu-latest
-    steps: 
+    steps:
       - uses: dorny/test-reporter@v1.9.1
-        with:   
+        with:
           name: TRX Tests
           artifact: test-results                                                          # artifact name
           fail-on-error: false                                                            # Supress error on failed tests

@@ -1,4 +1,4 @@
-name: Docker Publish from Develop
+name: Manual - Build, Test & Publish (Develop)
 
 on:
   workflow_dispatch:
