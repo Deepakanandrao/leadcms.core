@@ -19,4 +19,6 @@ public class ContentGenerationRequest
     [Required]
     [MinLength(1, ErrorMessage = "Prompt cannot be empty")]
     public string Prompt { get; set; } = string.Empty;
+
+    public int? ReferenceContentId { get; set; }
 }

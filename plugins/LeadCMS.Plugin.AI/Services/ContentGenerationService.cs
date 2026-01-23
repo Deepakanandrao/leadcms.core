@@ -61,7 +61,7 @@ public class ContentGenerationService : IContentGenerationService
         }
 
         // Step 2: Find sample content records
-        var sampleContent = await FindSampleContentAsync(request.ContentType, request.Language);
+        var sampleContent = await FindSampleContentAsync(request.ContentType, request.Language, request.ReferenceContentId);
 
         if (sampleContent == null)
         {
@@ -200,8 +200,30 @@ public class ContentGenerationService : IContentGenerationService
         }
     }
 
-    private async Task<Content?> FindSampleContentAsync(string contentType, string language)
+    private async Task<Content?> FindSampleContentAsync(string contentType, string language, int? referenceContentId)
     {
+        if (referenceContentId.HasValue)
+        {
+            var referencedContent = await dbContext.Content!
+                .FirstOrDefaultAsync(c => c.Id == referenceContentId.Value);
+
+            if (referencedContent == null)
+            {
+                throw new AIProviderException(
+                    "ContentGeneration",
+                    $"Reference content with id {referenceContentId.Value} was not found.");
+            }
+
+            if (!string.Equals(referencedContent.Type, contentType, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new AIProviderException(
+                    "ContentGeneration",
+                    $"Reference content id {referenceContentId.Value} does not match content type '{contentType}'.");
+            }
+
+            return referencedContent;
+        }
+
         // First try to find content with the same language
         var sampleContent = await dbContext.Content!
             .Where(c => c.Type == contentType && c.Language == language)
