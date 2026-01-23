@@ -95,15 +95,16 @@ public class MdxParser
     }
 
     /// <summary>
-    /// Extracts JSX components directly from source content.
-    /// This approach handles multiline props and complex JSX syntax better than HTML parsing.
+    /// Extracts only top-level JSX components from source content.
+    /// Nested components are included in the parent's full match but not returned individually.
+    /// This ensures we only capture components that can be used at the root level.
     /// </summary>
     private List<ComponentMatch> ExtractComponentsFromSource(string content)
     {
         var components = new List<ComponentMatch>();
+        var processedRanges = new List<(int Start, int End)>();
 
-        // Pattern to match JSX components (self-closing and opening tags)
-        // This handles multiline content and complex props, including dotted component names like TwoColumns.HalfWidthColumn
+        // Pattern to match JSX component opening tags (self-closing and opening tags)
         var componentPattern = @"<([A-Z][a-zA-Z0-9]*(?:\.[A-Z][a-zA-Z0-9]*)*)\s*([^>]*?)(/?)>";
         var matches = System.Text.RegularExpressions.Regex.Matches(
             content,
@@ -112,6 +113,12 @@ public class MdxParser
 
         foreach (System.Text.RegularExpressions.Match match in matches)
         {
+            // Skip if this match is within an already processed top-level component
+            if (IsWithinProcessedRange(match.Index, processedRanges))
+            {
+                continue;
+            }
+
             var componentName = match.Groups[1].Value;
             var propsString = match.Groups[2].Value;
             var isSelfClosing = match.Groups[3].Value == "/";
@@ -123,29 +130,30 @@ public class MdxParser
                 continue;
             }
 
-            // For non-self-closing tags, check if they have children
             var hasChildren = false;
+            var componentEndIndex = match.Index + match.Length;
+
             if (!isSelfClosing)
             {
-                // Look for closing tag to determine if it has children
-                var escapedComponentName = System.Text.RegularExpressions.Regex.Escape(componentName);
-                var closingTagPattern = $@"</{escapedComponentName}\s*>";
-                var closingMatch = System.Text.RegularExpressions.Regex.Match(content, closingTagPattern);
-                if (closingMatch.Success && closingMatch.Index > match.Index)
+                // Find the matching closing tag, accounting for nested components of the same type
+                var closingTagEndIndex = FindMatchingClosingTag(content, match.Index + match.Length, componentName);
+
+                if (closingTagEndIndex > 0)
                 {
                     hasChildren = true;
-                    // Include content up to closing tag in full match
-                    var endIndex = closingMatch.Index + closingMatch.Length;
-                    fullMatch = content.Substring(match.Index, endIndex - match.Index);
+                    fullMatch = content.Substring(match.Index, closingTagEndIndex - match.Index);
+                    componentEndIndex = closingTagEndIndex;
                 }
                 else
                 {
                     // No closing tag found, but since it's not self-closing, assume it has children
-                    // and create a minimal valid example
                     hasChildren = true;
                     fullMatch = match.Value.TrimEnd('>') + $">...</{componentName}>";
                 }
             }
+
+            // Mark this range as processed so nested components are skipped
+            processedRanges.Add((match.Index, componentEndIndex));
 
             var properties = ParsePropsFromString(propsString);
 
@@ -159,6 +167,85 @@ public class MdxParser
         }
 
         return components;
+    }
+
+    /// <summary>
+    /// Checks if a position is within any of the already processed component ranges.
+    /// </summary>
+    private bool IsWithinProcessedRange(int position, List<(int Start, int End)> processedRanges)
+    {
+        foreach (var range in processedRanges)
+        {
+            if (position > range.Start && position < range.End)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Finds the matching closing tag for a component, properly handling nested components of the same type.
+    /// </summary>
+    private int FindMatchingClosingTag(string content, int startIndex, string componentName)
+    {
+        var escapedComponentName = System.Text.RegularExpressions.Regex.Escape(componentName);
+
+        // Pattern to match opening tags of the same component (including self-closing)
+        var openingTagPattern = $@"<{escapedComponentName}(?:\s[^>]*)?(/?)\s*>";
+
+        // Pattern to match closing tags
+        var closingTagPattern = $@"</{escapedComponentName}\s*>";
+
+        var nestingLevel = 1; // We start after the opening tag, so level is 1
+        var currentIndex = startIndex;
+
+        while (currentIndex < content.Length && nestingLevel > 0)
+        {
+            // Find the next opening or closing tag
+            var openingMatch = System.Text.RegularExpressions.Regex.Match(
+                content.Substring(currentIndex),
+                openingTagPattern);
+            var closingMatch = System.Text.RegularExpressions.Regex.Match(
+                content.Substring(currentIndex),
+                closingTagPattern);
+
+            // Determine which comes first
+            var openingIndex = openingMatch.Success ? currentIndex + openingMatch.Index : int.MaxValue;
+            var closingIndex = closingMatch.Success ? currentIndex + closingMatch.Index : int.MaxValue;
+
+            if (closingIndex == int.MaxValue && openingIndex == int.MaxValue)
+            {
+                // No more tags found
+                break;
+            }
+
+            if (closingIndex < openingIndex)
+            {
+                // Closing tag comes first
+                nestingLevel--;
+                currentIndex = closingIndex + closingMatch.Length;
+
+                if (nestingLevel == 0)
+                {
+                    return currentIndex;
+                }
+            }
+            else
+            {
+                // Opening tag comes first
+                var isSelfClosing = openingMatch.Groups[1].Value == "/";
+                if (!isSelfClosing)
+                {
+                    nestingLevel++;
+                }
+
+                currentIndex = openingIndex + openingMatch.Length;
+            }
+        }
+
+        return -1; // No matching closing tag found
     }
 
     /// <summary>
@@ -200,7 +287,8 @@ public class MdxParser
     }
 
     /// <summary>
-    /// Extracts individual props from a props string using simpler regex approach.
+    /// Extracts individual props from a props string using a strict regex approach.
+    /// Only recognizes valid JSX prop names: ASCII letters, numbers, starting with a letter.
     /// </summary>
     private List<PropMatch> ExtractPropsFromString(string propsString)
     {
@@ -211,22 +299,55 @@ public class MdxParser
             return props;
         }
 
-        // Use regex to match prop patterns: propName="value" or propName={value} or standalone propName
-        var propPattern = @"(\w+(?:-\w+)*)(?:\s*=\s*(""[^""]*""|'[^']*'|\{[^}]*\}|\S+))?";
-        var matches = System.Text.RegularExpressions.Regex.Matches(propsString, propPattern);
+        // Pattern explanation:
+        // - Prop names must start with a letter (a-zA-Z) and can contain letters, digits, hyphens
+        // - This explicitly excludes Unicode word characters (like Cyrillic) which are not valid JSX prop names
+        // - Props can be: name="value", name='value', name={expr}, or standalone boolean (like 'disabled')
+        // - Standalone boolean props must be followed by whitespace, =, /, or end of string to be valid
+        var propWithValuePattern = @"([a-zA-Z][a-zA-Z0-9]*(?:-[a-zA-Z0-9]+)*)\s*=\s*(""[^""]*""|'[^']*'|\{[^}]*\}|\S+)";
+        var booleanPropPattern = @"([a-zA-Z][a-zA-Z0-9]*(?:-[a-zA-Z0-9]+)*)(?=\s+[a-zA-Z]|\s*[/>=]|\s*$)";
 
-        foreach (var groups in matches.Select(match => match.Groups))
+        // First, extract all props with values
+        var valueMatches = System.Text.RegularExpressions.Regex.Matches(propsString, propWithValuePattern);
+        var processedRanges = new List<(int Start, int End)>();
+
+        foreach (System.Text.RegularExpressions.Match match in valueMatches)
         {
-            var propName = groups[1].Value;
-            var propValue = groups[2].Success ? groups[2].Value : "true";
+            var propName = match.Groups[1].Value;
+            var propValue = match.Groups[2].Value;
 
             // Handle complex JSX expressions that might contain nested braces
             if (propValue.StartsWith('{'))
             {
-                propValue = ExtractBalancedBraces(propsString, groups[2].Index);
+                propValue = ExtractBalancedBraces(propsString, match.Groups[2].Index);
             }
 
             props.Add(new PropMatch { Name = propName, Value = propValue });
+            processedRanges.Add((match.Index, match.Index + match.Length));
+        }
+
+        // Then, extract standalone boolean props (not already part of a value prop)
+        var booleanMatches = System.Text.RegularExpressions.Regex.Matches(propsString, booleanPropPattern);
+
+        foreach (System.Text.RegularExpressions.Match match in booleanMatches)
+        {
+            // Skip if this match overlaps with an already processed prop
+            var matchStart = match.Index;
+            var matchEnd = match.Index + match.Length;
+            var isOverlapping = processedRanges.Exists(r =>
+                (matchStart >= r.Start && matchStart < r.End) ||
+                (matchEnd > r.Start && matchEnd <= r.End));
+
+            if (!isOverlapping)
+            {
+                var propName = match.Groups[1].Value;
+
+                // Skip if we already have this prop
+                if (!props.Exists(p => p.Name == propName))
+                {
+                    props.Add(new PropMatch { Name = propName, Value = "true" });
+                }
+            }
         }
 
         return props;
@@ -594,16 +715,21 @@ public class MdxParser
 
     /// <summary>
     /// Truncates an example to a reasonable length while preserving valid MDX structure.
+    /// Since examples now include full nested component structure, we use a larger limit.
     /// </summary>
     private string TruncateExample(string example, bool hasChildren)
     {
-        if (example.Length <= 200)
+        // Use a larger limit for examples since they now include full nested component structure
+        // This is important for providing meaningful examples showing how to use components with children
+        const int maxExampleLength = 2000;
+
+        if (example.Length <= maxExampleLength)
         {
             return example;
         }
 
         // Try to find a valid truncation point that preserves MDX structure
-        var truncated = TruncateMdxSafely(example, 200, hasChildren);
+        var truncated = TruncateMdxSafely(example, maxExampleLength, hasChildren);
         return truncated;
     }
 

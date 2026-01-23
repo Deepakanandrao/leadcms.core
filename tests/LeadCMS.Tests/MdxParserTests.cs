@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using FluentAssertions;
 using LeadCMS.Services;
 
 namespace LeadCMS.Tests;
@@ -39,7 +40,7 @@ public class MdxParserTests
     {
         // Arrange
         var parser = new MdxParser();
-        var longText = new string('a', 300); // Create a very long string
+        var longText = new string('a', 2500); // Create a very long string exceeding the 2000 limit
         var mdxContent = $"<Button variant=\"primary\" onClick={{handleClick}} className=\"{longText}\">Click me</Button>";
 
         // Act
@@ -53,7 +54,7 @@ public class MdxParserTests
         var example = result[0].Examples[0];
         example.Should().StartWith("<Button");
         example.Should().EndWith(">");
-        example.Length.Should().BeLessOrEqualTo(203); // 200 + "..." = 203
+        example.Length.Should().BeLessOrEqualTo(2003); // 2000 + "..." = 2003
     }
 
     /// <summary>
@@ -64,7 +65,7 @@ public class MdxParserTests
     {
         // Arrange
         var parser = new MdxParser();
-        var longText = new string('b', 300);
+        var longText = new string('b', 2500);
         var mdxContent = $"<Image src=\"/path/to/image.jpg\" alt=\"{longText}\" width={{800}} height={{600}} />";
 
         // Act
@@ -78,7 +79,7 @@ public class MdxParserTests
         var example = result[0].Examples[0];
         example.Should().StartWith("<Image");
         example.Should().EndWith("/>"); // Should preserve self-closing structure
-        example.Length.Should().BeLessOrEqualTo(203);
+        example.Length.Should().BeLessOrEqualTo(2003);
     }
 
     /// <summary>
@@ -141,21 +142,21 @@ public class MdxParserTests
     }
 
     /// <summary>
-    /// Tests that components with children are truncated at appropriate boundaries.
+    /// Tests that only top-level components are returned, with nested components included in parent examples.
     /// </summary>
     [Fact]
-    public void ParseMdx_ComponentWithChildren_TruncatesAtBoundaries()
+    public void ParseMdx_ComponentWithChildren_ReturnsOnlyTopLevel()
     {
         // Arrange
         var parser = new MdxParser();
-        var longText = new string('d', 300);
+        var longText = new string('d', 50);
         var mdxContent = $"<Card title=\"Card Title\"><CardBody>{longText}</CardBody></Card>";
 
         // Act
         var result = parser.ParseMdx(mdxContent);
 
-        // Assert
-        result.Should().HaveCount(2); // Card and CardBody
+        // Assert - Only the top-level Card component should be returned
+        result.Should().HaveCount(1);
 
         var cardComponent = result.FirstOrDefault(c => c.Name == "Card");
         cardComponent.Should().NotBeNull();
@@ -163,8 +164,11 @@ public class MdxParserTests
 
         var example = cardComponent.Examples[0];
         example.Should().StartWith("<Card");
-        // Should end with a valid structure (either self-closing or with closing tag)
-        (example.EndsWith('>') || example.EndsWith("/>") || example.EndsWith("</Card>")).Should().BeTrue();
+        example.Should().EndWith("</Card>");
+
+        // The example should contain the nested CardBody component
+        example.Should().Contain("<CardBody>");
+        example.Should().Contain("</CardBody>");
     }
 
     /// <summary>
@@ -204,10 +208,11 @@ public class MdxParserTests
     }
 
     /// <summary>
-    /// Tests that components with dotted names (like TwoColumns.HalfWidthColumn) are parsed correctly.
+    /// Tests that only top-level components with dotted names (like TwoColumns.HalfWidthColumn) are parsed.
+    /// Nested components are included in parent examples but not returned individually.
     /// </summary>
     [Fact]
-    public void ParseMdx_DottedComponentNames_ParsesCorrectly()
+    public void ParseMdx_DottedComponentNames_ReturnsOnlyTopLevel()
     {
         // Arrange
         var parser = new MdxParser();
@@ -229,56 +234,54 @@ public class MdxParserTests
         // Act
         var result = parser.ParseMdx(mdxContent);
 
-        // Assert
-        result.Should().HaveCount(3); // Section, TwoColumns, TwoColumns.HalfWidthColumn
+        // Assert - Only Section should be returned as it's the top-level component
+        result.Should().HaveCount(1);
 
         var sectionComponent = result.FirstOrDefault(c => c.Name == "Section");
         sectionComponent.Should().NotBeNull();
+        sectionComponent!.AcceptsChildren.Should().BeTrue();
 
-        var twoColumnsComponent = result.FirstOrDefault(c => c.Name == "TwoColumns");
-        twoColumnsComponent.Should().NotBeNull();
-
-        var halfWidthComponent = result.FirstOrDefault(c => c.Name == "TwoColumns.HalfWidthColumn");
-        halfWidthComponent.Should().NotBeNull();
-        halfWidthComponent!.UsageCount.Should().Be(2); // Used twice in the example
-        halfWidthComponent.AcceptsChildren.Should().BeTrue(); // Has text content inside
+        // The example should contain all nested components
+        var example = sectionComponent.Examples[0];
+        example.Should().Contain("<TwoColumns>");
+        example.Should().Contain("<TwoColumns.HalfWidthColumn>");
+        example.Should().Contain("</TwoColumns.HalfWidthColumn>");
+        example.Should().Contain("</TwoColumns>");
+        example.Should().Contain("</Section>");
     }
 
     /// <summary>
-    /// Tests that components with dotted names are parsed correctly.
+    /// Tests that multiple sibling top-level components are all returned.
     /// </summary>
     [Fact]
-    public void ParseMdx_WithDottedComponentNames_ShouldParseCorrectly()
+    public void ParseMdx_MultipleSiblingComponents_ReturnsAllTopLevel()
     {
         // Arrange
         var parser = new MdxParser();
         var mdxContent = @"<Section>
-    <TwoColumns>
-        <TwoColumns.HalfWidthColumn>
-            Content 1
-        </TwoColumns.HalfWidthColumn>
-        <TwoColumns.HalfWidthColumn>
-            Content 2
-        </TwoColumns.HalfWidthColumn>
-    </TwoColumns>
-</Section>";
+    Content 1
+</Section>
+<Card>
+    <CardBody>Content 2</CardBody>
+</Card>
+<Button onClick={handleClick}>Click me</Button>";
 
         // Act
         var result = parser.ParseMdx(mdxContent);
 
-        // Assert
+        // Assert - All three top-level components should be returned
         result.Should().HaveCount(3);
 
         var sectionComponent = result.FirstOrDefault(c => c.Name == "Section");
         sectionComponent.Should().NotBeNull();
 
-        var twoColumnsComponent = result.FirstOrDefault(c => c.Name == "TwoColumns");
-        twoColumnsComponent.Should().NotBeNull();
+        var cardComponent = result.FirstOrDefault(c => c.Name == "Card");
+        cardComponent.Should().NotBeNull();
+        // Card example should include nested CardBody
+        cardComponent!.Examples[0].Should().Contain("<CardBody>");
 
-        var dottedComponent = result.FirstOrDefault(c => c.Name == "TwoColumns.HalfWidthColumn");
-        dottedComponent.Should().NotBeNull();
-        dottedComponent!.UsageCount.Should().Be(2);
-        dottedComponent.AcceptsChildren.Should().BeTrue();
+        var buttonComponent = result.FirstOrDefault(c => c.Name == "Button");
+        buttonComponent.Should().NotBeNull();
     }
 
     /// <summary>
@@ -318,15 +321,15 @@ public class MdxParserTests
     }
 
     /// <summary>
-    /// Tests that complex JSX arrays/objects are truncated correctly to maintain valid syntax.
+    /// Tests that complex JSX arrays/objects are preserved when under the 2000 char limit.
     /// </summary>
     [Fact]
-    public void MdxParser_ComplexJsxArraysTruncation_MaintainsValidSyntax()
+    public void MdxParser_ComplexJsxArrays_PreservedWhenUnderLimit()
     {
         // Arrange
         var parser = new MdxParser();
 
-        // Create the exact failing case from the user's report
+        // Create a complex component with JSX array props (under 2000 chars)
         var complexComponent = @"<WhySection
   title=""Why LeadCMS?""
   description=""Built with developers in mind, LeadCMS gives you complete control over your sales and content platform.""
@@ -387,78 +390,59 @@ description: ""Comprehensive API endpoints for seamless integration with your ex
         var doubleQuotes = sample.Count(c => c == '"');
         (doubleQuotes % 2).Should().Be(0, "Double quotes should be balanced");
 
-        // The sample should be truncated but syntactically valid
-        sample.Length.Should().BeLessOrEqualTo(203); // 200 + "..." = 203
-        sample.Should().NotContain("...} />", "Should not have broken JSX syntax");
+        // Since this is under 2000 chars, the full example should be preserved
+        sample.Should().Be(complexComponent);
     }
 
     /// <summary>
-    /// Tests that components with nested children always have valid closing tags in truncated examples.
-    /// This addresses the specific issue where truncated examples lack proper closing tags.
+    /// Tests that only top-level Section component is returned, with all nested components in example.
     /// </summary>
     [Fact]
-    public void ParseMdx_NestedComponentsWithTruncation_AlwaysHaveValidClosingTags()
+    public void ParseMdx_NestedComponents_ReturnsOnlyTopLevelWithFullExample()
     {
         // Arrange
         var parser = new MdxParser();
 
-        // Create a scenario similar to the user's issue with nested components and long content
-        var longContent = string.Join("\n", Enumerable.Range(1, 20).Select(i => $"This is line {i} with some content that makes the example very long."));
-        var mdxContent = $@"<Section withLargeTopPadding>
+        var mdxContent = @"<Section withLargeTopPadding>
   <SectionTitle>E-Mail <TextLink to=""mailto:info@all3.com"">info@all3.com</TextLink></SectionTitle>
-
-  {longContent}
-
   <AccentTitle />
 </Section>";
 
         // Act
         var result = parser.ParseMdx(mdxContent);
 
-        // Assert
+        // Assert - Only Section should be returned as the top-level component
+        result.Should().HaveCount(1);
+
         var sectionComponent = result.FirstOrDefault(c => c.Name == "Section");
         sectionComponent.Should().NotBeNull();
         sectionComponent!.Examples.Should().HaveCount(1);
 
         var example = sectionComponent.Examples[0];
 
-        // Verify the example is a valid, complete MDX component
+        // Verify the example contains all nested components
         example.Should().StartWith("<Section");
+        example.Should().EndWith("</Section>");
+        example.Should().Contain("<SectionTitle>");
+        example.Should().Contain("<TextLink");
+        example.Should().Contain("<AccentTitle />");
 
-        // The example should either be self-closing or have a proper closing tag
-        var isValidStructure = example.EndsWith("/>") || example.EndsWith("</Section>");
-        isValidStructure.Should().BeTrue("Component example should have valid closing structure");
-
-        // Verify JSX braces are balanced
-        var openBraces = example.Count(c => c == '{');
-        var closeBraces = example.Count(c => c == '}');
-        openBraces.Should().Be(closeBraces, "JSX expressions should have balanced braces");
-
-        // Verify quotes are balanced
-        var doubleQuotes = example.Count(c => c == '"');
-        (doubleQuotes % 2).Should().Be(0, "Double quotes should be balanced");
-
-        // Verify the example doesn't end with broken syntax (incomplete opening tags)
-        if (example.EndsWith('>') && !example.EndsWith("/>") && !example.EndsWith("</Section>"))
-        {
-            // If it ends with ">", it should be a valid closing tag, not an incomplete opening tag
-            var endsWithValidClosing = System.Text.RegularExpressions.Regex.IsMatch(example, @"</[A-Za-z][A-Za-z0-9]*>$");
-            endsWithValidClosing.Should().BeTrue("If ending with '>', it should be a valid closing tag");
-        }
+        // Verify no nested components are returned separately
+        result.FirstOrDefault(c => c.Name == "SectionTitle").Should().BeNull();
+        result.FirstOrDefault(c => c.Name == "TextLink").Should().BeNull();
+        result.FirstOrDefault(c => c.Name == "AccentTitle").Should().BeNull();
     }
 
     /// <summary>
-    /// Tests that components with multiple levels of nesting maintain valid structure when truncated.
+    /// Tests that deeply nested components are captured in the top-level component's example.
     /// </summary>
     [Fact]
-    public void ParseMdx_DeeplyNestedComponents_MaintainValidStructureWhenTruncated()
+    public void ParseMdx_DeeplyNestedComponents_ReturnsOnlyTopLevelWithAllNested()
     {
         // Arrange
         var parser = new MdxParser();
 
-        // Create deeply nested structure with long content that will trigger truncation
-        var longText = new string('x', 300);
-        var mdxContent = $@"<Container>
+        var mdxContent = @"<Container>
   <Header>
     <Navigation>
       <NavItem href=""/home"">Home</NavItem>
@@ -467,9 +451,9 @@ description: ""Comprehensive API endpoints for seamless integration with your ex
   </Header>
   <Main>
     <Article>
-      <ArticleTitle>Long Article Title That Should Be Truncated</ArticleTitle>
+      <ArticleTitle>Article Title</ArticleTitle>
       <ArticleContent>
-        {longText}
+        Some content here
       </ArticleContent>
     </Article>
   </Main>
@@ -478,34 +462,335 @@ description: ""Comprehensive API endpoints for seamless integration with your ex
         // Act
         var result = parser.ParseMdx(mdxContent);
 
+        // Assert - Only Container should be returned
+        result.Should().HaveCount(1);
+
+        var containerComponent = result.FirstOrDefault(c => c.Name == "Container");
+        containerComponent.Should().NotBeNull();
+        containerComponent!.AcceptsChildren.Should().BeTrue();
+
+        var example = containerComponent.Examples[0];
+
+        // The example should contain all nested components
+        example.Should().Contain("<Header>");
+        example.Should().Contain("<Navigation>");
+        example.Should().Contain("<NavItem");
+        example.Should().Contain("<Main>");
+        example.Should().Contain("<Article>");
+        example.Should().Contain("<ArticleTitle>");
+        example.Should().Contain("<ArticleContent>");
+        example.Should().EndWith("</Container>");
+
+        // No nested components should be returned separately
+        result.FirstOrDefault(c => c.Name == "Header").Should().BeNull();
+        result.FirstOrDefault(c => c.Name == "Navigation").Should().BeNull();
+        result.FirstOrDefault(c => c.Name == "NavItem").Should().BeNull();
+    }
+
+    /// <summary>
+    /// Tests that the user's original use case works - only top-level Callout is returned.
+    /// </summary>
+    [Fact]
+    public void ParseMdx_UserScenario_ReturnsOnlyTopLevelCallout()
+    {
+        // Arrange
+        var parser = new MdxParser();
+        var mdxContent = @"# Header
+
+<table>
+<tr></tr>
+</table>
+
+Text
+
+<Callout>Callout <a href=""https://example.com"">link</a></Callout>";
+
+        // Act
+        var result = parser.ParseMdx(mdxContent);
+
+        // Assert - Only Callout should be returned (table/tr/a are standard HTML)
+        result.Should().HaveCount(1);
+
+        var calloutComponent = result.FirstOrDefault(c => c.Name == "Callout");
+        calloutComponent.Should().NotBeNull();
+        calloutComponent!.AcceptsChildren.Should().BeTrue();
+
+        var example = calloutComponent.Examples[0];
+        example.Should().StartWith("<Callout>");
+        example.Should().EndWith("</Callout>");
+        // The example should contain the nested anchor tag
+        example.Should().Contain("<a href");
+    }
+
+    /// <summary>
+    /// Tests that same component used at multiple top levels is counted correctly.
+    /// </summary>
+    [Fact]
+    public void ParseMdx_SameComponentMultipleTimes_CountsUsageCorrectly()
+    {
+        // Arrange
+        var parser = new MdxParser();
+        var mdxContent = @"<Button variant=""primary"">First</Button>
+<Card><Button variant=""secondary"">Nested - should not count separately</Button></Card>
+<Button variant=""tertiary"">Third</Button>";
+
+        // Act
+        var result = parser.ParseMdx(mdxContent);
+
+        // Assert - Button at top level appears twice, Card appears once
+        result.Should().HaveCount(2);
+
+        var buttonComponent = result.FirstOrDefault(c => c.Name == "Button");
+        buttonComponent.Should().NotBeNull();
+        buttonComponent!.UsageCount.Should().Be(2); // Only top-level usages count
+
+        var cardComponent = result.FirstOrDefault(c => c.Name == "Card");
+        cardComponent.Should().NotBeNull();
+        cardComponent!.UsageCount.Should().Be(1);
+        // Card's example should contain the nested Button
+        cardComponent.Examples[0].Should().Contain("<Button");
+    }
+
+    /// <summary>
+    /// Tests handling of nested components of the same type.
+    /// </summary>
+    [Fact]
+    public void ParseMdx_NestedSameTypeComponents_HandlesCorrectly()
+    {
+        // Arrange
+        var parser = new MdxParser();
+        var mdxContent = @"<Container>
+  <Container>
+    Inner content
+  </Container>
+</Container>";
+
+        // Act
+        var result = parser.ParseMdx(mdxContent);
+
+        // Assert - Only outer Container should be returned
+        result.Should().HaveCount(1);
+
+        var containerComponent = result.FirstOrDefault(c => c.Name == "Container");
+        containerComponent.Should().NotBeNull();
+
+        var example = containerComponent!.Examples[0];
+        example.Should().StartWith("<Container>");
+        example.Should().EndWith("</Container>");
+        // Should contain the inner Container
+        example.Should().Contain("<Container>", Exactly.Twice());
+        example.Should().Contain("</Container>", Exactly.Twice());
+    }
+
+    /// <summary>
+    /// Tests that empty and whitespace MDX content returns empty list.
+    /// </summary>
+    [Fact]
+    public void ParseMdx_EmptyContent_ReturnsEmptyList()
+    {
+        // Arrange
+        var parser = new MdxParser();
+
+        // Act & Assert
+        parser.ParseMdx(string.Empty).Should().BeEmpty();
+        parser.ParseMdx("   ").Should().BeEmpty();
+        parser.ParseMdx(null!).Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// Tests that pure markdown content (no components) returns empty list.
+    /// </summary>
+    [Fact]
+    public void ParseMdx_PureMarkdown_ReturnsEmptyList()
+    {
+        // Arrange
+        var parser = new MdxParser();
+        var mdxContent = @"# Header
+
+This is some **bold** and *italic* text.
+
+- List item 1
+- List item 2
+
+[A link](https://example.com)";
+
+        // Act
+        var result = parser.ParseMdx(mdxContent);
+
+        // Assert - No JSX components, only markdown
+        result.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// Tests that self-closing components at top level are correctly identified.
+    /// </summary>
+    [Fact]
+    public void ParseMdx_SelfClosingTopLevel_ReturnsComponent()
+    {
+        // Arrange
+        var parser = new MdxParser();
+        var mdxContent = @"Some text
+
+<Divider />
+
+More text
+
+<Image src=""/path/to/image.jpg"" alt=""description"" />";
+
+        // Act
+        var result = parser.ParseMdx(mdxContent);
+
+        // Assert - Two self-closing components
+        result.Should().HaveCount(2);
+
+        var divider = result.FirstOrDefault(c => c.Name == "Divider");
+        divider.Should().NotBeNull();
+        divider!.AcceptsChildren.Should().BeFalse();
+
+        var image = result.FirstOrDefault(c => c.Name == "Image");
+        image.Should().NotBeNull();
+        image!.AcceptsChildren.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Tests mixed content with markdown, HTML, and JSX components.
+    /// </summary>
+    [Fact]
+    public void ParseMdx_MixedContent_ReturnsOnlyJsxComponents()
+    {
+        // Arrange
+        var parser = new MdxParser();
+        var mdxContent = @"# Title
+
+<div class=""container"">
+  <p>Some HTML paragraph</p>
+</div>
+
+<Alert type=""warning"">
+  This is an alert with <strong>bold text</strong> inside.
+</Alert>
+
+Regular paragraph.
+
+<table>
+  <tr><td>Cell</td></tr>
+</table>
+
+<CustomTable data={tableData}>
+  <CustomRow />
+</CustomTable>";
+
+        // Act
+        var result = parser.ParseMdx(mdxContent);
+
+        // Assert - Only JSX components (Alert, CustomTable), not HTML tags
+        result.Should().HaveCount(2);
+
+        var alert = result.FirstOrDefault(c => c.Name == "Alert");
+        alert.Should().NotBeNull();
+        alert!.AcceptsChildren.Should().BeTrue();
+        // Example should contain the nested strong tag
+        alert.Examples[0].Should().Contain("<strong>");
+
+        var customTable = result.FirstOrDefault(c => c.Name == "CustomTable");
+        customTable.Should().NotBeNull();
+        customTable!.AcceptsChildren.Should().BeTrue();
+        // Example should contain the nested CustomRow
+        customTable.Examples[0].Should().Contain("<CustomRow />");
+    }
+
+    /// <summary>
+    /// Tests that props are only recognized when they have valid prop syntax (name=value or valid boolean prop names).
+    /// This prevents text content from being incorrectly parsed as boolean props.
+    /// </summary>
+    [Fact]
+    public void ParseMdx_PropsWithTextContent_DoesNotParseTextAsProps()
+    {
+        // Arrange
+        var parser = new MdxParser();
+
+        // This simulates malformed MDX where text appears on a new line before the closing />
+        // The parser should NOT interpret Russian words as props
+        var mdxContent = @"<Image src=""/api/media/image.png"" alt=""Description"" caption=""Caption""
+В личном кабинете исполнителя Обучать работе с мобильным приложением не придётся
+/>";
+
+        // Act
+        var result = parser.ParseMdx(mdxContent);
+
         // Assert
-        // Check that all components have valid examples
-        foreach (var component in result)
-        {
-            component.Examples.Should().NotBeEmpty($"Component {component.Name} should have at least one example");
+        result.Should().HaveCount(1);
+        var imageComponent = result[0];
+        imageComponent.Name.Should().Be("Image");
 
-            // Check each example for valid structure
-            foreach (var example in component.Examples)
-            {
-                // Verify the example starts with the component name
-                example.Should().StartWith($"<{component.Name}");
+        // Should only have the valid props: src, alt, caption
+        imageComponent.Properties.Should().HaveCount(3);
+        imageComponent.Properties.Select(p => p.Name).Should().BeEquivalentTo("src", "alt", "caption");
 
-                // Verify the example has valid structure (either self-closing or proper closing tag)
-                var isValidStructure = example.EndsWith("/>") ||
-                                     example.EndsWith($"</{component.Name}>") ||
-                                     System.Text.RegularExpressions.Regex.IsMatch(example, @"</[A-Za-z][A-Za-z0-9]*>$");
+        // Should NOT have props like "в", "личном", "кабинете", etc.
+        imageComponent.Properties.Should().NotContain(p => p.Name == "в");
+        imageComponent.Properties.Should().NotContain(p => p.Name == "личном");
+        imageComponent.Properties.Should().NotContain(p => p.Name == "кабинете");
+    }
 
-                isValidStructure.Should().BeTrue($"Component {component.Name} example should have valid closing structure. Example: {example}");
+    /// <summary>
+    /// Tests that valid boolean props (like 'disabled', 'required') are still recognized.
+    /// </summary>
+    [Fact]
+    public void ParseMdx_ValidBooleanProps_AreRecognized()
+    {
+        // Arrange
+        var parser = new MdxParser();
+        var mdxContent = @"<Button disabled primary large onClick={handleClick}>Click me</Button>";
 
-                // Verify JSX braces are balanced
-                var openBraces = example.Count(c => c == '{');
-                var closeBraces = example.Count(c => c == '}');
-                openBraces.Should().Be(closeBraces, "JSX expressions should have balanced braces");
+        // Act
+        var result = parser.ParseMdx(mdxContent);
 
-                // Verify quotes are balanced
-                var doubleQuotes = example.Count(c => c == '"');
-                (doubleQuotes % 2).Should().Be(0, "Double quotes should be balanced");
-            }
-        }
+        // Assert
+        result.Should().HaveCount(1);
+        var buttonComponent = result[0];
+        buttonComponent.Name.Should().Be("Button");
+
+        // Should have boolean props: disabled, primary, large, and onClick
+        buttonComponent.Properties.Select(p => p.Name).Should().Contain("disabled");
+        buttonComponent.Properties.Select(p => p.Name).Should().Contain("primary");
+        buttonComponent.Properties.Select(p => p.Name).Should().Contain("large");
+        buttonComponent.Properties.Select(p => p.Name).Should().Contain("onClick");
+    }
+
+    /// <summary>
+    /// Tests that text following a valid prop is not parsed as additional props.
+    /// </summary>
+    [Fact]
+    public void ParseMdx_MultipleImageComponents_MergesOnlyValidProps()
+    {
+        // Arrange
+        var parser = new MdxParser();
+
+        // Two valid Image usages
+        var mdxContent = @"<Image src=""/path/to/image1.png"" alt=""First image"" />
+
+Some text in between
+
+<Image src=""/path/to/image2.png"" alt=""Second image"" caption=""A caption"" />";
+
+        // Act
+        var result = parser.ParseMdx(mdxContent);
+
+        // Assert
+        result.Should().HaveCount(1); // Same component merged
+        var imageComponent = result[0];
+        imageComponent.Name.Should().Be("Image");
+        imageComponent.UsageCount.Should().Be(2);
+
+        // Should only have valid props
+        var propNames = imageComponent.Properties.Select(p => p.Name).ToList();
+        propNames.Should().Contain("src");
+        propNames.Should().Contain("alt");
+        propNames.Should().Contain("caption");
+
+        // Should NOT have any props that look like text content
+        propNames.Should().NotContain(p => p.Length == 1); // Single-char props are suspicious
+        propNames.TrueForAll(p => System.Text.RegularExpressions.Regex.IsMatch(p, @"^[a-zA-Z][a-zA-Z0-9]*$")).Should().BeTrue();
     }
 }
