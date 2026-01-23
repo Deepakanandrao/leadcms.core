@@ -80,6 +80,11 @@ public class MediaController : ControllerBase
                 uploadedMedia.Description = imageCreateDto.Description!.Trim();
             }
 
+            if (imageCreateDto.Tags != null)
+            {
+                uploadedMedia.Tags = NormalizeTags(imageCreateDto.Tags);
+            }
+
             pgDbContext.Media!.Update(uploadedMedia);
         }
         else
@@ -93,6 +98,7 @@ public class MediaController : ControllerBase
                 ScopeUid = imageCreateDto.ScopeUid.Trim(),
                 Extension = incomingFileExtension,
                 Description = string.IsNullOrWhiteSpace(imageCreateDto.Description) ? null : imageCreateDto.Description!.Trim(),
+                Tags = NormalizeTags(imageCreateDto.Tags),
             };
             await pgDbContext.Media!.AddAsync(uploadedMedia);
         }
@@ -111,6 +117,7 @@ public class MediaController : ControllerBase
             Size = uploadedMedia.Size,
             Extension = uploadedMedia.Extension,
             MimeType = uploadedMedia.MimeType,
+            Tags = uploadedMedia.Tags,
             CreatedAt = uploadedMedia.CreatedAt,
             UpdatedAt = uploadedMedia.UpdatedAt,
             Location = CalculateMediaLocation(uploadedMedia.ScopeUid, uploadedMedia.Name),
@@ -228,6 +235,7 @@ public class MediaController : ControllerBase
                 Size = m.Size,
                 Extension = m.Extension,
                 MimeType = m.MimeType,
+                Tags = m.Tags,
                 CreatedAt = m.CreatedAt,
                 UpdatedAt = m.UpdatedAt,
                 Location = CalculateMediaLocation(m.ScopeUid, m.Name),
@@ -269,6 +277,7 @@ public class MediaController : ControllerBase
                         Size = m.Size,
                         Extension = m.Extension,
                         MimeType = m.MimeType,
+                        Tags = m.Tags,
                         CreatedAt = m.CreatedAt,
                         UpdatedAt = m.UpdatedAt,
                     })
@@ -305,6 +314,7 @@ public class MediaController : ControllerBase
                         Size = m.Size,
                         Extension = m.Extension,
                         MimeType = m.MimeType,
+                        Tags = m.Tags,
                         CreatedAt = m.CreatedAt,
                         UpdatedAt = m.UpdatedAt,
                     })
@@ -352,6 +362,7 @@ public class MediaController : ControllerBase
                     Description = null,
                     Size = size,
                     MimeType = "inode/directory",
+                    Tags = Array.Empty<string>(),
                     CreatedAt = createdAt,
                     UpdatedAt = updatedAt,
                 });
@@ -367,6 +378,7 @@ public class MediaController : ControllerBase
                 Size = m.Size,
                 Extension = m.Extension,
                 MimeType = m.MimeType,
+                Tags = m.Tags,
                 CreatedAt = m.CreatedAt,
                 UpdatedAt = m.UpdatedAt,
                 Location = CalculateMediaLocation(m.ScopeUid, m.Name),
@@ -430,6 +442,11 @@ public class MediaController : ControllerBase
             existingMedia.Description = string.IsNullOrEmpty(trimmed) ? null : trimmed;
         }
 
+        if (mediaUpdateDto.Tags != null)
+        {
+            existingMedia.Tags = NormalizeTags(mediaUpdateDto.Tags);
+        }
+
         pgDbContext.Media!.Update(existingMedia);
         await pgDbContext.SaveChangesAsync();
 
@@ -449,6 +466,7 @@ public class MediaController : ControllerBase
             Size = existingMedia.Size,
             Extension = existingMedia.Extension,
             MimeType = existingMedia.MimeType,
+            Tags = existingMedia.Tags,
             CreatedAt = existingMedia.CreatedAt,
             UpdatedAt = existingMedia.UpdatedAt,
             Location = CalculateMediaLocation(existingMedia.ScopeUid, existingMedia.Name),
@@ -487,6 +505,20 @@ public class MediaController : ControllerBase
         }
 
         return result;
+    }
+
+    private static string[] NormalizeTags(string[]? tags)
+    {
+        if (tags == null)
+        {
+            return Array.Empty<string>();
+        }
+
+        return tags
+            .Where(tag => !string.IsNullOrWhiteSpace(tag))
+            .Select(tag => tag.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     /// <summary>

@@ -48,14 +48,17 @@ For a fast, reliable MVP, use **OpenAI File Search** instead of building a local
 
 ## 3) OpenAI APIs to use (MVP)
 
-1. **Text generation**: Use the existing chat completion flow but adopt **structured output** for JSON/MDX generation.
+1. **Text generation**: Use the existing chat completion flow and keep **raw MDX/MD** in the `body` field.
 
 - Model: `gpt-5` (already in use).
-- Use **JSON schema output** (structured output) when generating structured content blocks.
-- Pass a `ChatResponseFormat` with a JSON schema to enforce output structure.
+- Keep output as flat JSON with `body` as MDX/MD string.
 
-2. **File Search**: Use OpenAI Assistants API with vector store for file search.
-3. **Image generation**: keep DALL·E 3 usage for illustrative media.
+2. **File Search**: Use OpenAI Responses API with `file_search` tool and vector stores for knowledge retrieval.
+
+- Create a single vector store (generate `site_id` on first use and reuse it)
+- Upload JSONL files with metadata (`type`, `language`) for filtering
+- Use `max_num_results` to control retrieved snippets (e.g., 5–10 for knowledge, 3–5 for media)
+- Parse file citations from responses for traceability
 
 > **SDK note**: Upgrade `OpenAI` NuGet package from `2.3.0` to latest (`2.5.x+`) to access the Assistants/Files API surface.
 
@@ -78,9 +81,11 @@ Add a site-level configuration table (or extend existing settings):
 
 ### 4.2 Knowledge Base (File Storage sync)
 
-Add a new entity to track OpenAI file storage per site:
+Add a new entity to track OpenAI file storage:
 
-- `KnowledgeFile` (site_id, openai_file_id, last_sync_token, status, metadata)
+- `KnowledgeFile` (site_id, openai_file_id, openai_vector_store_id, last_sync_token, status, metadata)
+
+> `site_id` is generated on first use and reused for all subsequent syncs (single-site CMS)
 
 ### 4.3 Media Index (MVP)
 
@@ -93,7 +98,7 @@ Store **media metadata only** in OpenAI File Storage for search (no binaries):
 
 > The existing `Media` entity does not have `Tags` or `AltText` fields. If needed, these can be added later or derived from `Description`.
 
-Recommended format: **one JSON Lines file per site** to simplify updates and avoid OpenAI file count limits (max 10,000 files per org).
+Recommended format: **one JSON Lines file** to simplify updates and avoid OpenAI file count limits (max 10,000 files per org).
 
 ---
 
@@ -101,7 +106,7 @@ Recommended format: **one JSON Lines file per site** to simplify updates and avo
 
 ### 5.1 Retrieval
 
-For a request `(site_id, content_type, language, prompt)`:
+For a request `(content_type, language, prompt)`:
 
 1. **Find sample content** (existing in ContentGenerationService).
 2. **Sync Knowledge Base** via the CMS sync API + OpenAI File Storage (if needed).
@@ -111,7 +116,7 @@ For a request `(site_id, content_type, language, prompt)`:
 
 ### 5.2 Prompt composition
 
-- **System prompt**: content type rules, formatting requirements, JSON schema, SEO constraints.
+- **System prompt**: content type rules, formatting requirements, SEO constraints.
 - **Context pack**: site profile, style summary, related content snippets, top knowledge chunks, and media suggestions.
 - **User prompt**: the copywriter’s request + desired tone or constraints.
 
@@ -123,13 +128,16 @@ This can be implemented as a new **ContextBuilderService** and re-used by the ex
 
 ### Phase 1: File Search MVP with CMS sync
 
-- Create a `KnowledgeFile` table to map `site_id` → `openai_file_id` + `openai_vector_store_id` + `last_sync_token` + status.
+- Create a `KnowledgeFile` table with a single record: `site_id` (GUID), `openai_file_id`, `openai_vector_store_id`, `last_sync_token`, `status`.
 - Build a `KnowledgeSyncService` that:
   - calls the existing `SyncService` or content endpoint internally (add a method returning raw DTOs, not `IActionResult`)
-  - creates a JSONL file from content and uploads to OpenAI File Storage on first use
-  - updates/replaces the file on subsequent syncs
-  - stores the new `last_sync_token`
-- Build a `FileSearchService` that runs file search queries per request.
+  - on first use: generates `site_id` (GUID), creates JSONL file from content with metadata (`type`, `language`), uploads to OpenAI File Storage, creates vector store, saves record
+  - updates/replaces the file on subsequent syncs using `last_sync_token`
+  - stores the new `last_sync_token` and checks file processing status before search
+- Build a `FileSearchService` that:
+  - calls Responses API with `file_search` tool, passing `vector_store_ids`
+  - sets `max_num_results` to cap snippets (e.g., 5–10 knowledge, 3–5 media)
+  - parses file citations from responses for audit/trace
 
 ### Phase 2: Site Profile
 
@@ -149,11 +157,9 @@ This can be implemented as a new **ContextBuilderService** and re-used by the ex
   - fetch site profile
   - call `KnowledgeSyncService` then `FileSearchService` for related knowledge chunks
   - pass media suggestions
-  - enforce JSON schema output for structured content blocks
 
 ### Phase 5: Quality and validation
 
-- Add server-side JSON validation for generated content.
 - Add MDX lint or parse check for MDX output.
 - Track usage and feedback to improve prompts.
 
@@ -164,10 +170,10 @@ This can be implemented as a new **ContextBuilderService** and re-used by the ex
 The existing content generation API (`POST /api/content/ai-draft`) remains unchanged. All new logic is **internal**:
 
 1. **On-demand sync**: When `GenerateContentAsync` is called, internally:
-   - Check if `KnowledgeFile` record exists for the site
-   - If not, call `SyncService` (or query content/media directly) to build JSONL and upload to OpenAI File Storage
+   - Check if `KnowledgeFile` record exists (single record for entire CMS)
+   - If not, generate a `site_id` (e.g., GUID), build JSONL, upload to OpenAI File Storage, create vector store
    - If exists, use stored `last_sync_token` to fetch deltas via existing sync API and update the file
-   - Store new `last_sync_token` and `openai_file_id`
+   - Store new `last_sync_token`, `openai_file_id`, and `openai_vector_store_id`
 
 2. **File search integration**: Before generating, query OpenAI File Search with the user's prompt to retrieve relevant knowledge chunks.
 
@@ -203,10 +209,10 @@ The existing content generation API (`POST /api/content/ai-draft`) remains uncha
 | Area                        | Current                             | Needed                                                                |
 | --------------------------- | ----------------------------------- | --------------------------------------------------------------------- |
 | **Context**                 | Single sample content               | Add site profile, knowledge chunks from File Search, media candidates |
-| **Output format**           | Flat JSON with raw MDX/MD in `body` | Structured JSON blocks (section 9) for validation                     |
+| **Output format**           | Flat JSON with raw MDX/MD in `body` | Keep as-is (raw MDX/MD in `body`)                                     |
 | **File Search integration** | None                                | Add retrieved snippets to context pack                                |
 | **Media reuse**             | None                                | Include media candidates with `mediaId` + caption                     |
-| **Correction mode**         | Returns full content                | Return JSON Patch operations (section 12)                             |
+| **Correction mode**         | Returns full content                | Keep as-is (full content)                                             |
 
 ### 8.3 Example adjusted system prompt (generation)
 
@@ -233,13 +239,18 @@ OUTPUT FORMAT:
 Return a JSON object with this structure:
 {
   "title": "...",
-  "slug": "...",
   "description": "...",
-  "blocks": [ ... ],
-  "seo": { "metaTitle": "...", "metaDescription": "..." }
+  "slug": "...",
+  "type": "...",
+  "author": "...",
+  "language": "...",
+  "category": "...",
+  "tags": [...],
+  "allowComments": true/false,
+  "coverImageUrl": "...",
+  "coverImageAlt": "...",
+  "body": "<MDX or Markdown string>"
 }
-
-See schema for block types: markdown, component.
 ```
 
 ### 8.4 Example adjusted system prompt (edit/correction)
@@ -251,174 +262,30 @@ CURRENT CONTENT:
 {current_content_json}
 
 RULES:
-- Return ONLY a JSON Patch array (RFC 6902) with the minimal changes needed.
-- Do NOT return the full content.
-- Each operation: { "op": "replace"|"add"|"remove", "path": "/blocks/2/markdown", "value": "..." }
+- Return the full updated content JSON.
+- Keep body as raw MDX/Markdown in the "body" field.
 - Make your best judgment on the user's intent. If the request is unclear, apply the most reasonable interpretation.
 ```
 
----
+## 10) Security, compliance, and cost
 
-## 9) Prompt structure (example outline)
-
-**System**
-
-- Role: “Generate content in {format} with schema compliance”
-- Schema (for JSON)
-- MDX component list
-- SEO constraints
-
-**Context Pack**
-
-- Site profile summary
-- Related content summaries (2–3)
-- Knowledge chunks (5–10, each 300–500 chars)
-- Media candidates (IDs + short captions)
-
-**User**
-
-- Copywriter prompt
-- Optional additional constraints
-
----
-
-## 9) Structured content blocks (recommended for MVP)
-
-Instead of generating raw MDX, generate a **validated JSON structure** that can be safely transformed into MDX.
-
-### 9.1 Example structure
-
-```
-{
-  "title": "How to Reduce Facility Downtime",
-  "slug": "reduce-facility-downtime",
-  "blocks": [
-    { "type": "markdown", "markdown": "## Why downtime happens\n\nMost issues come from..." },
-    {
-      "type": "component",
-      "name": "Callout",
-      "props": { "variant": "info", "title": "Quick win" },
-      "children": [
-        { "type": "markdown", "markdown": "Start with a weekly checklist for..." }
-      ]
-    },
-    {
-      "type": "component",
-      "name": "Image",
-      "props": { "mediaId": "m_123", "alt": "Technician inspecting HVAC" }
-    }
-  ],
-  "seo": {
-    "metaTitle": "Reduce Facility Downtime",
-    "metaDescription": "Practical steps to reduce downtime in large facilities."
-  }
-}
-```
-
-### 9.2 Rendering to MDX (server-side)
-
-Convert to MDX by mapping:
-
-- `markdown` blocks → markdown text
-- `component` blocks → `<Component {...props}>...</Component>`
-
-### 9.3 Validation loop
-
-- Validate JSON schema server-side.
-- If invalid, return structured error details to the model and request **corrected object** (not full text).
-- This reduces hallucinations and makes outputs deterministic.
-
----
-
-## 11) Edit with AI and JSON Patch correction flow
-
-### 11.1 Problem with current approach
-
-The current `GenerateContentEditAsync` returns full content JSON, even for small edits. This is:
-
-- Slow (model regenerates everything)
-- Error-prone (may change unrelated content)
-- Expensive (high token usage)
-
-### 11.2 JSON Patch approach (RFC 6902)
-
-Instead of returning full content, the model returns an array of JSON Patch operations:
-
-```json
-[
-  { "op": "replace", "path": "/title", "value": "Updated Title Here" },
-  {
-    "op": "replace",
-    "path": "/blocks/1/markdown",
-    "value": "## New heading\n\nUpdated paragraph..."
-  },
-  {
-    "op": "add",
-    "path": "/blocks/3",
-    "value": { "type": "markdown", "markdown": "New section..." }
-  },
-  { "op": "remove", "path": "/blocks/4" }
 ]
-```
 
-### 11.3 Benefits
-
-- **Faster**: Model only outputs the delta
-- **Cheaper**: Fewer output tokens
-- **Safer**: Changes are explicit and auditable
-- **Correctable**: If patch is invalid, ask model to fix just the patch, not regenerate everything
-
-### 11.4 Implementation flow
-
-```
-1. User submits edit request with prompt
-2. Server sends current content JSON + prompt to AI
-3. AI returns JSON Patch array
-4. Server validates patch operations:
-   - Valid JSON Patch syntax?
-   - Paths exist in current content?
-   - Values match expected types?
-5. If valid: apply patch, return updated content
-6. If invalid: send error details back to model, request corrected patch
-7. Retry up to N times, then fail gracefully
-```
-
-### 11.5 System prompt for edit mode
-
-```
-You are a content editor. Apply the requested changes to the provided content.
-
-CURRENT CONTENT (JSON):
-{current_content_json}
-
-USER REQUEST:
-{user_prompt}
-
-RULES:
-1. Return ONLY a JSON Patch array (RFC 6902 format)
-2. Use minimal operations to achieve the requested change
-3. Valid operations: "add", "remove", "replace", "move", "copy"
-4. Paths use JSON Pointer syntax: /title, /blocks/0/markdown, /seo/metaTitle
-5. Do NOT return the full content object
-6. Make your best judgment on the user's intent. Apply the most reasonable interpretation if unclear.
-
-Example response:
-[
-  { "op": "replace", "path": "/title", "value": "New Title" },
-  { "op": "replace", "path": "/blocks/0/markdown", "value": "Updated intro..." }
-]
 ```
 
 ### 11.6 Correction request (on validation failure)
 
 ```
+
 Your previous patch was invalid:
 
 ERRORS:
-- Path "/blocks/5" does not exist (array has 4 items)
-- Value at "/blocks/1/markdown" must be a string
+
+- Path "/body/5" does not exist (array has 4 items)
+- Value at "/body/1/markdown" must be a string
 
 Please return a corrected JSON Patch array that fixes these issues.
+
 ```
 
 ### 11.7 Server-side implementation notes
@@ -440,6 +307,7 @@ Please return a corrected JSON Patch array that fixes these issues.
 
 ---
 
-## 13) Summary
+## 11) Summary
 
-You already have a strong AI plugin with content generation and MDX component awareness. The fastest MVP is **OpenAI File Search** + **structured JSON blocks** with a sync-based knowledge file built from your content table. For edits, use **JSON Patch** to minimize token usage and enable fast correction loops. This enables safe, validated output and quick iteration, while keeping a clean path to a future local RAG layer when scale requires it.
+You already have a strong AI plugin with content generation and MDX component awareness. The fastest MVP is **OpenAI File Search** with a sync-based knowledge file built from your content table. Content generation keeps **raw MDX/MD in the body field**, and edits return the **full updated content**. This keeps output quality high and minimizes latency while preserving a path to a future local RAG layer when scale requires it.
+```

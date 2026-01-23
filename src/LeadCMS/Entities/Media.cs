@@ -29,6 +29,9 @@ namespace LeadCMS.Entities
         [Searchable]
         public string MimeType { get; set; } = string.Empty;
 
+        [Searchable]
+        public string[] Tags { get; set; } = Array.Empty<string>();
+
         public byte[] Data { get; set; } = Array.Empty<byte>();
     }
 }

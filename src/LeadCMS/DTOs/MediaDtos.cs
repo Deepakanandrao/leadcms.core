@@ -18,6 +18,9 @@ public class MediaCreateDto
 
     // Optional description for media
     public string? Description { get; set; }
+
+    // Optional tags for media
+    public string[]? Tags { get; set; }
 }
 
 public class MediaUpdateDto
@@ -34,6 +37,9 @@ public class MediaUpdateDto
 
     // Optional description update
     public string? Description { get; set; }
+
+    // Optional tags update
+    public string[]? Tags { get; set; }
 }
 
 public class MediaDetailsDto
@@ -53,6 +59,8 @@ public class MediaDetailsDto
     public string Extension { get; set; } = string.Empty;
 
     public string MimeType { get; set; } = string.Empty;
+
+    public string[] Tags { get; set; } = Array.Empty<string>();
 
     public DateTime CreatedAt { get; set; }
 
