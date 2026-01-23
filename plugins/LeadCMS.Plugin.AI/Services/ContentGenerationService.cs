@@ -9,6 +9,7 @@ using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;
+using LeadCMS.Plugin.AI.Configuration;
 using LeadCMS.Plugin.AI.DTOs;
 using LeadCMS.Plugin.AI.Exceptions;
 using LeadCMS.Plugin.AI.Interfaces;
@@ -264,6 +265,8 @@ public class ContentGenerationService : IContentGenerationService
         // Analyze slug patterns from existing content of the same type
         var existingSlugPatterns = await AnalyzeSlugPatternsAsync(contentType.Uid);
 
+        var siteProfileSection = await BuildSiteProfileSectionAsync();
+
         var prompt = $@"You are an expert content creator generating new content for a CMS. Generate a new {contentType.Uid} content record based on the sample and user requirements.
 
 SAMPLE CONTENT STRUCTURE:
@@ -276,6 +279,14 @@ Language: {sampleContent.Language}
 Cover Image Alt: {sampleContent.CoverImageAlt}
 Body Format: {contentType.Format}
 Body Sample (first 500 chars): {(sampleContent.Body.Length > 500 ? sampleContent.Body.Substring(0, 500) + "..." : sampleContent.Body)}";
+
+        if (!string.IsNullOrEmpty(siteProfileSection))
+        {
+            prompt += $@"
+
+    SITE PROFILE:
+    {siteProfileSection}";
+        }
 
         if (componentAnalysis != null && componentAnalysis.Components.Any())
         {
@@ -453,41 +464,94 @@ Remember to return only the JSON structure as specified in the system prompt.";
         return result.ToArray();
     }
 
+    private void AddIfPresent(List<string> items, string label, Dictionary<string, string?> settings, string key)
+    {
+        if (settings.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
+        {
+            items.Add($"{label}: {value.Trim()}");
+        }
+    }
+
+    private async Task<string> BuildSiteProfileSectionAsync()
+    {
+        var keys = new[]
+        {
+            AiSettingKeys.SiteTopic,
+            AiSettingKeys.SiteAudience,
+            AiSettingKeys.BrandVoice,
+            AiSettingKeys.PreferredTerms,
+            AiSettingKeys.AvoidTerms,
+            AiSettingKeys.StyleExamples,
+        };
+
+        var settings = await settingService.GetSettingsByKeysAsync(keys);
+
+        var items = new List<string>();
+        AddIfPresent(items, "Topic", settings, AiSettingKeys.SiteTopic);
+        AddIfPresent(items, "Audience", settings, AiSettingKeys.SiteAudience);
+        AddIfPresent(items, "Voice", settings, AiSettingKeys.BrandVoice);
+        AddIfPresent(items, "Preferred terms", settings, AiSettingKeys.PreferredTerms);
+        AddIfPresent(items, "Avoid", settings, AiSettingKeys.AvoidTerms);
+        AddIfPresent(items, "Style examples", settings, AiSettingKeys.StyleExamples);
+
+        if (items.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        return string.Join("\n", items.Select(i => $"- {i}"));
+    }
+
     private async Task<string> BuildEditSystemPromptAsync()
     {
         // Get content length constraints from settings/configuration
         var (minTitleLength, maxTitleLength, minDescriptionLength, maxDescriptionLength) = await GetContentLengthConstraintsAsync();
 
-        return $@"You are a content editor assistant. Your task is to edit existing content based on user prompts while maintaining the original structure and improving quality.
+        var siteProfileSection = await BuildSiteProfileSectionAsync();
 
-Guidelines:
-- Preserve the core meaning and structure of the original content
-- Apply the user's requested changes thoughtfully
-- Maintain appropriate tone and style
-- Ensure all content is factual and well-written
-- Keep the same format (markdown, etc.) as the original
+        var prompt = $@"You are a content editor assistant. Your task is to edit existing content based on user prompts while maintaining the original structure and improving quality.
 
-CONTENT LENGTH REQUIREMENTS:
-- Title: Must be between {minTitleLength} and {maxTitleLength} characters (SEO optimized)
-- Description: Must be between {minDescriptionLength} and {maxDescriptionLength} characters (SEO optimized for meta descriptions)
+    Guidelines:
+    - Preserve the core meaning and structure of the original content
+    - Apply the user's requested changes thoughtfully
+    - Maintain appropriate tone and style
+    - Ensure all content is factual and well-written
+    - Keep the same format (markdown, etc.) as the original
+    ";
 
-Return your response as valid JSON with these fields:
-- title: Edited article title ({minTitleLength}-{maxTitleLength} characters)
-- slug: URL-friendly slug (lowercase, hyphens instead of spaces)
-- description: Brief summary/meta description ({minDescriptionLength}-{maxDescriptionLength} characters)
-- body: Main content body (preserve markdown formatting)
-- tags: Array of relevant tags
-- category: Relevant category
+        if (!string.IsNullOrEmpty(siteProfileSection))
+        {
+            prompt += $@"
+    SITE PROFILE:
+    {siteProfileSection}
+    ";
+        }
 
-Example format:
-{{
-  ""title"": ""Updated Article Title"",
-  ""slug"": ""updated-article-title"",
-  ""description"": ""Brief description of the updated content"",
-  ""body"": ""# Main Heading\n\nUpdated content here..."",
-  ""tags"": [""tag1"", ""tag2""],
-  ""category"": ""category1""
-}}";
+        prompt += $@"
+
+    CONTENT LENGTH REQUIREMENTS:
+    - Title: Must be between {minTitleLength} and {maxTitleLength} characters (SEO optimized)
+    - Description: Must be between {minDescriptionLength} and {maxDescriptionLength} characters (SEO optimized for meta descriptions)
+
+    Return your response as valid JSON with these fields:
+    - title: Edited article title ({minTitleLength}-{maxTitleLength} characters)
+    - slug: URL-friendly slug (lowercase, hyphens instead of spaces)
+    - description: Brief summary/meta description ({minDescriptionLength}-{maxDescriptionLength} characters)
+    - body: Main content body (preserve markdown formatting)
+    - tags: Array of relevant tags
+    - category: Relevant category
+
+    Example format:
+    {{
+      ""title"": ""Updated Article Title"",
+      ""slug"": ""updated-article-title"",
+      ""description"": ""Brief description of the updated content"",
+      ""body"": ""# Main Heading\n\nUpdated content here..."",
+      ""tags"": [""tag1"", ""tag2""],
+      ""category"": ""category1""
+    }}";
+
+        return prompt;
     }
 
     private string BuildEditUserPrompt(ContentEditRequest contentData, string userPrompt)
