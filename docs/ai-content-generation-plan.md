@@ -55,7 +55,7 @@ For a fast, reliable MVP, use **OpenAI File Search** instead of building a local
 
 2. **File Search**: Use OpenAI Responses API with `file_search` tool and vector stores for knowledge retrieval.
 
-- Create a single vector store (generate `site_id` on first use and reuse it)
+- Create a single vector store (single-site CMS; reuse the same vector store ID)
 - Upload JSONL files with metadata (`type`, `language`) for filtering
 - Use `max_num_results` to control retrieved snippets (e.g., 5–10 for knowledge, 3–5 for media)
 - Parse file citations from responses for traceability
@@ -72,20 +72,23 @@ For a fast, reliable MVP, use **OpenAI File Search** instead of building a local
 
 Add a site-level configuration table (or extend existing settings):
 
-- `site_topic` (short summary)
-- `site_audience`
-- `brand_voice`
-- `preferred_terms`
-- `avoid_terms`
-- `style_examples` (optional links or content IDs)
+- `AI.SiteProfile.Topic` (short summary)
+- `AI.SiteProfile.Audience`
+- `AI.SiteProfile.BrandVoice`
+- `AI.SiteProfile.PreferredTerms`
+- `AI.SiteProfile.AvoidTerms`
+- `AI.SiteProfile.StyleExamples` (optional links or content IDs)
 
 ### 4.2 Knowledge Base (File Storage sync)
 
-Add a new entity to track OpenAI file storage:
+Store OpenAI File Search sync metadata in the Settings table (single-site CMS, no `site_id` needed):
 
-- `KnowledgeFile` (site_id, openai_file_id, openai_vector_store_id, last_sync_token, status, metadata)
-
-> `site_id` is generated on first use and reused for all subsequent syncs (single-site CMS)
+- `AI.FileSearch.VectorStoreId`
+- `AI.FileSearch.ContentFileIds` (JSON array of file IDs)
+- `AI.FileSearch.MediaFileIds` (JSON array of file IDs)
+- `AI.FileSearch.ContentSyncToken`
+- `AI.FileSearch.MediaSyncToken`
+- `AI.FileSearch.FileSyncStatus`
 
 ### 4.3 Media Index (MVP)
 
@@ -98,7 +101,7 @@ Store **media metadata only** in OpenAI File Storage for search (no binaries):
 
 > The existing `Media` entity does not have `Tags` or `AltText` fields. If needed, these can be added later or derived from `Description`.
 
-Recommended format: **one JSON Lines file** to simplify updates and avoid OpenAI file count limits (max 10,000 files per org).
+Recommended format: **one file per record** (MD/JSON). Track all file IDs in Settings to support incremental updates and deletions.
 
 ---
 
@@ -128,12 +131,12 @@ This can be implemented as a new **ContextBuilderService** and re-used by the ex
 
 ### Phase 1: File Search MVP with CMS sync
 
-- Create a `KnowledgeFile` table with a single record: `site_id` (GUID), `openai_file_id`, `openai_vector_store_id`, `last_sync_token`, `status`.
+- Store OpenAI file search metadata in the Settings table (single-site CMS).
 - Build a `KnowledgeSyncService` that:
   - calls the existing `SyncService` or content endpoint internally (add a method returning raw DTOs, not `IActionResult`)
-  - on first use: generates `site_id` (GUID), creates JSONL file from content with metadata (`type`, `language`), uploads to OpenAI File Storage, creates vector store, saves record
-  - updates/replaces the file on subsequent syncs using `last_sync_token`
-  - stores the new `last_sync_token` and checks file processing status before search
+  - on first use: creates JSONL file from content with metadata (`type`, `language`), uploads to OpenAI File Storage, creates vector store, saves IDs in Settings
+  - updates/replaces the file on subsequent syncs using last sync timestamps stored in Settings
+  - stores the new sync timestamps and checks file processing status before search
 - Build a `FileSearchService` that:
   - calls Responses API with `file_search` tool, passing `vector_store_ids`
   - sets `max_num_results` to cap snippets (e.g., 5–10 knowledge, 3–5 media)
@@ -170,10 +173,11 @@ This can be implemented as a new **ContextBuilderService** and re-used by the ex
 The existing content generation API (`POST /api/content/ai-draft`) remains unchanged. All new logic is **internal**:
 
 1. **On-demand sync**: When `GenerateContentAsync` is called, internally:
-   - Check if `KnowledgeFile` record exists (single record for entire CMS)
-   - If not, generate a `site_id` (e.g., GUID), build JSONL, upload to OpenAI File Storage, create vector store
-   - If exists, use stored `last_sync_token` to fetch deltas via existing sync API and update the file
-   - Store new `last_sync_token`, `openai_file_id`, and `openai_vector_store_id`
+
+- Check if Settings contain the vector store + file IDs
+- If not, build JSONL, upload to OpenAI File Storage, create vector store
+- If exists, use stored sync timestamps to fetch deltas via existing sync API and update the file
+- Store new timestamps and file/vector IDs in Settings
 
 2. **File search integration**: Before generating, query OpenAI File Search with the user's prompt to retrieve relevant knowledge chunks.
 
