@@ -152,7 +152,7 @@ public class ContentMediaMetadataTests : BaseTestAutoLogin
 
     private async Task RefreshMediaDescriptionsAsync()
     {
-        var response = await Request(HttpMethod.Post, "/api/content/refresh-media-descriptions", new { });
+        var response = await Request(HttpMethod.Post, "/api/content/refresh-media-metadata", new { });
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 }

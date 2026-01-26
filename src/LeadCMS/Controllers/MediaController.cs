@@ -237,6 +237,7 @@ public class MediaController : ControllerBase
                 Extension = m.Extension,
                 MimeType = m.MimeType,
                 Tags = m.Tags,
+                UsageCount = m.UsageCount,
                 CreatedAt = m.CreatedAt,
                 UpdatedAt = m.UpdatedAt,
                 Location = CalculateMediaLocation(m.ScopeUid, m.Name),
@@ -364,6 +365,7 @@ public class MediaController : ControllerBase
                     Size = size,
                     MimeType = "inode/directory",
                     Tags = Array.Empty<string>(),
+                    UsageCount = 0,
                     CreatedAt = createdAt,
                     UpdatedAt = updatedAt,
                 });
@@ -380,6 +382,7 @@ public class MediaController : ControllerBase
                 Extension = m.Extension,
                 MimeType = m.MimeType,
                 Tags = m.Tags,
+                UsageCount = m.UsageCount,
                 CreatedAt = m.CreatedAt,
                 UpdatedAt = m.UpdatedAt,
                 Location = CalculateMediaLocation(m.ScopeUid, m.Name),
