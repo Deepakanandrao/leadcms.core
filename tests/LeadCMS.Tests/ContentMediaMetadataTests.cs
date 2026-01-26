@@ -1,0 +1,126 @@
+// <copyright file="ContentMediaMetadataTests.cs" company="WavePoint Co. Ltd.">
+// Licensed under the MIT license. See LICENSE file in the samples root for full license information.
+// </copyright>
+
+namespace LeadCMS.Tests;
+
+public class ContentMediaMetadataTests : BaseTestAutoLogin
+{
+    public ContentMediaMetadataTests()
+        : base()
+    {
+        TrackEntityType<Media>();
+        TrackEntityType<Content>();
+    }
+
+    [Fact]
+    public async Task CreateContent_WithHtmlImageTag_ShouldUpdateMediaDescription()
+    {
+        var createdMedia = await CreateMediaAsync("html-image.png");
+
+        var body = $"<p>Test</p><img src=\"/api/media/{createdMedia.ScopeUid}/{createdMedia.Name}\" alt=\"HTML alt text\" />";
+        await CreateContentWithBodyAsync(body, "-html-img");
+
+        var media = await GetMediaByNameAsync(createdMedia.ScopeUid, createdMedia.Name);
+        media.Description.Should().Be("HTML alt text");
+    }
+
+    [Fact]
+    public async Task CreateContent_WithMarkdownImage_ShouldUpdateMediaDescription()
+    {
+        var createdMedia = await CreateMediaAsync("markdown-image.png");
+
+        var body = $"![Markdown alt text](/api/media/{createdMedia.ScopeUid}/{createdMedia.Name})";
+        await CreateContentWithBodyAsync(body, "-markdown-img");
+
+        var media = await GetMediaByNameAsync(createdMedia.ScopeUid, createdMedia.Name);
+        media.Description.Should().Be("Markdown alt text");
+    }
+
+    [Fact]
+    public async Task CreateContent_WithMdxImageTag_Multiline_ShouldUpdateMediaDescription()
+    {
+        var createdMedia = await CreateMediaAsync("mdx-image.png");
+
+        var body = "<Image\n" +
+                   $"  src=\"/api/media/{createdMedia.ScopeUid}/{createdMedia.Name}\"\n" +
+                   "  caption=\"MDX caption text\"\n" +
+                   "/>";
+        await CreateContentWithBodyAsync(body, "-mdx-img");
+
+        var media = await GetMediaByNameAsync(createdMedia.ScopeUid, createdMedia.Name);
+        media.Description.Should().Be("MDX caption text");
+    }
+
+    [Fact]
+    public async Task CreateContent_WithAllImageTypes_ShouldUpdateAllMediaDescriptions()
+    {
+        var htmlMedia = await CreateMediaAsync("all-html.png");
+        var mdxMedia = await CreateMediaAsync("all-mdx.png");
+        var markdownMedia = await CreateMediaAsync("all-md.png");
+
+        var body = $@"<Image src=""/api/media/{mdxMedia.ScopeUid}/{mdxMedia.Name}"" alt=""MDX alt text"" />
+    <p>middle</p>
+    <img src=""/api/media/{htmlMedia.ScopeUid}/{htmlMedia.Name}"" alt=""HTML alt text"" />
+    ![Markdown alt text](/api/media/{markdownMedia.ScopeUid}/{markdownMedia.Name})";
+
+        await CreateContentWithBodyAsync(body, "-all-img");
+
+        var html = await GetMediaByNameAsync(htmlMedia.ScopeUid, htmlMedia.Name);
+        var mdx = await GetMediaByNameAsync(mdxMedia.ScopeUid, mdxMedia.Name);
+        var markdown = await GetMediaByNameAsync(markdownMedia.ScopeUid, markdownMedia.Name);
+
+        html.Description.Should().Be("HTML alt text");
+        mdx.Description.Should().Be("MDX alt text");
+        markdown.Description.Should().Be("Markdown alt text");
+    }
+
+    protected override Task<HttpResponseMessage> Request(HttpMethod method, string url, object? payload)
+    {
+        if (payload is not TestMedia)
+        {
+            return base.Request(method, url, payload);
+        }
+
+        var request = new HttpRequestMessage(method, url);
+        var testMedia = (TestMedia)payload!;
+        var content = new MultipartFormDataContent
+        {
+            { new StreamContent(testMedia.DataBuffer), "File", testMedia.File!.Name },
+            { new StringContent(testMedia.ScopeUid), "ScopeUid" },
+        };
+
+        request.Content = content;
+        request.Headers.Authorization = GetAuthenticationHeaderValue();
+
+        return client.SendAsync(request);
+    }
+
+    private async Task<MediaDetailsDto> CreateMediaAsync(string fileName)
+    {
+        var testMedia = new TestMedia(fileName, 1024);
+        var createdMedia = await PostTest<MediaDetailsDto>("/api/media", testMedia);
+        createdMedia.Should().NotBeNull();
+        createdMedia!.Description.Should().BeNullOrEmpty();
+        return createdMedia;
+    }
+
+    private async Task CreateContentWithBodyAsync(string body, string suffix)
+    {
+        var content = new TestContent(suffix)
+        {
+            Body = body,
+        };
+
+        var createdContent = await PostTest<ContentDetailsDto>("/api/content", content);
+        createdContent.Should().NotBeNull();
+    }
+
+    private async Task<MediaDetailsDto> GetMediaByNameAsync(string scopeUid, string name)
+    {
+        var mediaList = await GetTest<List<MediaDetailsDto>>($"/api/media?filter[where][scopeUid][eq]={scopeUid}&filter[where][name][eq]={name}");
+        mediaList.Should().NotBeNull();
+        mediaList!.Count.Should().Be(1);
+        return mediaList[0];
+    }
+}

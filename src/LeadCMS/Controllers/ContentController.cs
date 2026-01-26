@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Text.RegularExpressions;
 using AutoMapper;
 using LeadCMS.Attributes;
 using LeadCMS.Configuration;
@@ -23,6 +24,12 @@ namespace LeadCMS.Controllers;
 [Route("api/[controller]")]
 public class ContentController : BaseControllerWithImport<Content, ContentCreateDto, ContentUpdateDto, ContentDetailsDto, ContentImportDto>
 {
+    private static readonly Regex MdxImageTagRegex = new Regex(@"<Image\b[^>]*?>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+    private static readonly Regex HtmlImageTagRegex = new Regex(@"<img\b[^>]*?>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+    private static readonly Regex MdxAttributeRegex = new Regex(@"(\w+)\s*=\s*""([^""]*)""", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+    private static readonly Regex MarkdownImageRegex = new Regex(@"!\[(?<alt>[^\]]*)\]\((?<url>[^)]+)\)", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+    private static readonly Regex MediaPathRegex = new Regex(@"/api/media/[^\s""')]+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     private readonly CommentableControllerExtension commentableControllerExtension;
     private readonly ITranslationService translationService;
     private readonly IMediaResolver mediaResolver;
@@ -681,10 +688,7 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
     /// </summary>
     protected override async Task OnAfterCreateAsync(Content entity)
     {
-        if (!string.IsNullOrEmpty(entity.Type))
-        {
-            await ClearCacheIfMdxType(entity.Type);
-        }
+        await HandleContentSavedAsync(entity);
     }
 
     /// <summary>
@@ -692,10 +696,7 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
     /// </summary>
     protected override async Task OnAfterUpdateAsync(Content entity)
     {
-        if (!string.IsNullOrEmpty(entity.Type))
-        {
-            await ClearCacheIfMdxType(entity.Type);
-        }
+        await HandleContentSavedAsync(entity);
     }
 
     /// <summary>
@@ -725,6 +726,130 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         }
     }
 
+    private List<(string Url, string Description)> ExtractImageReferences(string contentBody)
+    {
+        var mdxResults = MdxImageTagRegex.Matches(contentBody)
+            .Cast<Match>()
+            .Select(match =>
+            {
+                var attributes = ParseMdxAttributes(match.Value);
+                if (!attributes.TryGetValue("src", out var src) || string.IsNullOrWhiteSpace(src))
+                {
+                    return (Url: string.Empty, Description: string.Empty);
+                }
+
+                attributes.TryGetValue("alt", out var alt);
+                attributes.TryGetValue("caption", out var caption);
+
+                var description = !string.IsNullOrWhiteSpace(alt) ? alt : caption;
+                return string.IsNullOrWhiteSpace(description)
+                    ? (Url: string.Empty, Description: string.Empty)
+                    : (Url: src, Description: description!);
+            })
+            .Where(result => !string.IsNullOrWhiteSpace(result.Url) && !string.IsNullOrWhiteSpace(result.Description))
+            .ToList();
+
+        var htmlResults = HtmlImageTagRegex.Matches(contentBody)
+            .Cast<Match>()
+            .Select(match =>
+            {
+                var attributes = ParseMdxAttributes(match.Value);
+                if (!attributes.TryGetValue("src", out var src) || string.IsNullOrWhiteSpace(src))
+                {
+                    return (Url: string.Empty, Description: string.Empty);
+                }
+
+                attributes.TryGetValue("alt", out var alt);
+                return string.IsNullOrWhiteSpace(alt)
+                    ? (Url: string.Empty, Description: string.Empty)
+                    : (Url: src, Description: alt!);
+            })
+            .Where(result => !string.IsNullOrWhiteSpace(result.Url) && !string.IsNullOrWhiteSpace(result.Description))
+            .ToList();
+
+        var markdownResults = MarkdownImageRegex.Matches(contentBody)
+            .Cast<Match>()
+            .Select(match =>
+            {
+                var url = match.Groups["url"].Value;
+                var alt = match.Groups["alt"].Value;
+                return (Url: url, Description: alt);
+            })
+            .Where(result => !string.IsNullOrWhiteSpace(result.Url) && !string.IsNullOrWhiteSpace(result.Description))
+            .ToList();
+
+        if (htmlResults.Count > 0)
+        {
+            mdxResults.AddRange(htmlResults);
+        }
+
+        if (markdownResults.Count == 0)
+        {
+            return mdxResults;
+        }
+
+        mdxResults.AddRange(markdownResults);
+        return mdxResults;
+    }
+
+    private async Task HandleContentSavedAsync(Content entity)
+    {
+        if (!string.IsNullOrEmpty(entity.Type))
+        {
+            await ClearCacheIfMdxType(entity.Type);
+        }
+
+        await UpdateMediaDescriptionsFromContentAsync(entity.Body);
+    }
+
+    private Dictionary<string, string> ParseMdxAttributes(string tag)
+    {
+        return MdxAttributeRegex.Matches(tag)
+            .Cast<Match>()
+            .Select(match => new
+            {
+                Name = match.Groups[1].Value,
+                Value = match.Groups[2].Value,
+            })
+            .Where(item => !string.IsNullOrWhiteSpace(item.Name))
+            .DistinctBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(item => item.Name, item => item.Value, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private bool TryParseMediaPath(string url, out string scopeUid, out string fileName)
+    {
+        scopeUid = string.Empty;
+        fileName = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return false;
+        }
+
+        var path = url;
+        if (Uri.TryCreate(url, UriKind.Absolute, out var absoluteUri))
+        {
+            path = absoluteUri.AbsolutePath;
+        }
+
+        var match = MediaPathRegex.Match(path);
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        var mediaPath = match.Value.Substring("/api/media/".Length);
+        var parts = mediaPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2)
+        {
+            return false;
+        }
+
+        scopeUid = parts[0];
+        fileName = string.Join('/', parts.Skip(1));
+        return true;
+    }
+
     /// <summary>
     /// Clears the MDX component cache for a content type if it's an MDX format type.
     /// </summary>
@@ -748,6 +873,52 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         {
             // Log the error but don't fail the main operation
             logger.LogWarning(ex, "Failed to clear MDX component cache for content type: {ContentType}", contentType);
+        }
+    }
+
+    private async Task UpdateMediaDescriptionsFromContentAsync(string? contentBody)
+    {
+        if (string.IsNullOrWhiteSpace(contentBody))
+        {
+            return;
+        }
+
+        try
+        {
+            var references = ExtractImageReferences(contentBody);
+            if (references.Count == 0)
+            {
+                return;
+            }
+
+            var updated = false;
+            foreach (var reference in references)
+            {
+                if (!TryParseMediaPath(reference.Url, out var scopeUid, out var fileName))
+                {
+                    continue;
+                }
+
+                var media = await dbContext.Media!
+                    .FirstOrDefaultAsync(m => m.ScopeUid == scopeUid && m.Name == fileName);
+
+                if (media == null || !string.IsNullOrWhiteSpace(media.Description))
+                {
+                    continue;
+                }
+
+                media.Description = reference.Description;
+                updated = true;
+            }
+
+            if (updated)
+            {
+                await dbContext.SaveChangesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to update media descriptions from content body");
         }
     }
 
