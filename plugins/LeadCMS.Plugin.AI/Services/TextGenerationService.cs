@@ -28,8 +28,20 @@ public class TextGenerationService : ITextGenerationService
 
         try
         {
+            Log.Debug(
+                "Starting text generation - SystemPrompt: {SystemPromptLength} chars, UserPrompt: {UserPromptLength} chars",
+                request.SystemPrompt?.Length ?? 0,
+                request.UserPrompt?.Length ?? 0);
+
             var response = await provider.GenerateTextAsync(request);
-            Log.Information("Successfully generated text using OpenAI");
+
+            Log.Information(
+                "Text generation completed - Model: {Model}, TotalTokens: {TokensUsed}, OutputLength: {OutputLength} chars, FinishReason: {FinishReason}",
+                response.Model,
+                response.TokensUsed,
+                response.GeneratedText?.Length ?? 0,
+                response.FinishReason);
+
             return response;
         }
         catch (Exception ex)

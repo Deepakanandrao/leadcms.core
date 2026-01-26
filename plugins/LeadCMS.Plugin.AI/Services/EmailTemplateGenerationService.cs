@@ -18,9 +18,14 @@ namespace LeadCMS.Plugin.AI.Services;
 
 public class EmailTemplateGenerationService : IEmailTemplateGenerationService
 {
-    private const string EditSystemPrompt = @"You are an email template editor assistant. Your task is to edit existing email templates based on user prompts while maintaining HTML structure and email best practices.
+    private const string EditSystemPrompt = @"You are an email template editor assistant for an AI-powered CMS. Your task is to edit existing email templates based on user prompts while strictly maintaining HTML structure and email best practices.
 
-CRITICAL EMAIL HTML REQUIREMENTS:
+CRITICAL RULES - READ CAREFULLY:
+1. PRESERVE STRUCTURE: Keep the exact same HTML structure and layout as the original template
+2. NO HALLUCINATION: Do not add new HTML elements, CSS properties, or structures not present in the original
+3. CONSERVATIVE EDITS: When the request is ambiguous, make the minimum changes necessary
+
+EMAIL HTML REQUIREMENTS:
 - Generate ONLY the email body content - DO NOT include <html>, <head>, or <body> wrapper tags
 - Use ONLY inline CSS styles (style=""..."") - email clients don't support external stylesheets or <style> blocks
 - Use table-based layouts for maximum email client compatibility (div layouts often break)
@@ -32,26 +37,20 @@ CRITICAL EMAIL HTML REQUIREMENTS:
 - Avoid CSS properties like: position, float, z-index, flexbox, grid (poorly supported)
 
 EMAIL TEMPLATE GUIDELINES:
-- Use ONLY ${{token}} format for all variables and placeholders (e.g., ${{name}}, ${{email}}, ${{company}})
-- Convert any other placeholder formats like <%token%>, {{token}}, {{{{token}}}}, or HTML-encoded versions to ${{token}} format
-- Apply the user's requested changes thoughtfully
+- Use ONLY ${token} format for all variables and placeholders (e.g., ${name}, ${email}, ${company})
+- Convert any other placeholder formats like <%token%>, {{token}}, {{{{token}}}}, or HTML-encoded versions to ${token} format
+- Apply the user's requested changes thoughtfully while preserving the original structure
 - Ensure the template is mobile-friendly with responsive design
 - Keep appropriate tone for email communication
 - Preserve sender information format
 - Test-friendly structure with clear content hierarchy
 
-Return your response as valid JSON with these fields:
-- name: Email template name/identifier
-- subject: Email subject line
-- bodyTemplate: Email body HTML content (NO html/head/body tags, inline CSS only)
-- fromName: Sender name
-
-Example format:
+OUTPUT FORMAT - Return ONLY valid JSON with this exact structure:
 {
-  ""name"": ""Updated_Template_Name"",
-  ""subject"": ""Updated Subject Line"",
-  ""bodyTemplate"": ""<table style='width:100%;max-width:600px;margin:0 auto;font-family:Arial,sans-serif;'><tr><td style='padding:20px;background-color:#ffffff;'>Updated content with ${{variables}}</td></tr></table>"",
-  ""fromName"": ""Updated Sender Name""
+  ""name"": ""Template_Name"",
+  ""subject"": ""Email Subject Line"",
+  ""bodyTemplate"": ""<table style='...'><tr><td>Content with ${variables}</td></tr></table>"",
+  ""fromName"": ""Sender Name""
 }";
 
     private readonly PgDbContext dbContext;
@@ -193,15 +192,22 @@ Example format:
 
     private static string BuildSystemPrompt(EmailTemplate sampleTemplate)
     {
-        return $@"You are an AI assistant specialized in creating email templates. Generate a new email template based on the provided example and user requirements.
+        return $@"You are an AI assistant for an AI-powered CMS, specialized in creating email templates. Generate a new email template that precisely matches the structure and style of the provided sample.
 
-SAMPLE EMAIL TEMPLATE FOR REFERENCE:
+SAMPLE EMAIL TEMPLATE (use this as your template - match its structure exactly):
 Name: {sampleTemplate.Name}
 Subject: {sampleTemplate.Subject}
 From Name: {sampleTemplate.FromName}
-Body Template: {sampleTemplate.BodyTemplate}
+Body Template:
+{sampleTemplate.BodyTemplate}
 
-CRITICAL EMAIL HTML REQUIREMENTS:
+CRITICAL RULES - READ CAREFULLY:
+1. MATCH THE SAMPLE: Generate an email template with the SAME structure, layout, and HTML patterns as the sample
+2. NO HALLUCINATION: Do not add new HTML elements, CSS properties, or structures not demonstrated in the sample
+3. REUSE PATTERNS: Only use HTML patterns, table structures, and CSS styles that appear in the sample template
+4. PRESERVE STYLE: Match the visual style, colors, fonts, and spacing of the sample
+
+EMAIL HTML REQUIREMENTS:
 1. Generate ONLY the email body content - DO NOT include <html>, <head>, or <body> wrapper tags
 2. Use ONLY inline CSS styles (style=""..."") - email clients don't support external stylesheets or <style> blocks
 3. Use table-based layouts for maximum email client compatibility (div layouts often break in email)
@@ -217,24 +223,23 @@ EMAIL TEMPLATE BEST PRACTICES:
 - Create professional, well-structured email templates with clear hierarchy
 - Use ONLY ${{token}} format for all variables and placeholders (e.g., ${{name}}, ${{email}}, ${{company}})
 - Convert any other placeholder formats (<%token%>, {{token}}, {{{{token}}}}, HTML-encoded versions) to ${{token}} format
-- Ensure mobile-friendly responsive design using media queries when supported
-- Maintain appropriate tone for email communication
-- Follow the structure and style of the sample template
+- Follow the structure and style of the sample template exactly
 - Include proper fallback colors and fonts
-- Use semantic HTML structure for accessibility
-- Test across major email clients (Outlook, Gmail, Apple Mail, etc.)
 
 PLACEHOLDER FORMAT REQUIREMENTS:
 - ALL variables must use ${{token}} syntax (dollar sign + curly braces)
 - Examples: ${{firstName}}, ${{lastName}}, ${{companyName}}, ${{productName}}, ${{unsubscribeLink}}
 - Replace any <%token%>, {{token}}, {{{{token}}}}, or encoded formats with ${{token}}
-- Maintain the semantic meaning of variables when converting formats
 
-RESPONSE FORMAT:
-Return valid JSON with exact field names: name, subject, bodyTemplate, fromName
-The bodyTemplate should contain ONLY the email content without html/head/body wrapper tags.
+OUTPUT FORMAT - Return ONLY valid JSON with this exact structure:
+{{
+  ""name"": ""Template_Name"",
+  ""subject"": ""Email Subject Line"",
+  ""bodyTemplate"": ""HTML content matching sample structure"",
+  ""fromName"": ""Sender Name""
+}}
 
-Return your response as valid JSON only.";
+The bodyTemplate should contain ONLY the email content without html/head/body wrapper tags.";
     }
 
     private static string BuildUserPrompt(string prompt, string language)
@@ -243,22 +248,13 @@ Return your response as valid JSON only.";
 
 {prompt}
 
-Generate a complete email template that includes:
-- A descriptive name (use underscores instead of spaces)
-- An engaging subject line
-- A professional email body using proper email HTML structure
-- An appropriate sender name
-
-SPECIFIC HTML FORMATTING REQUIREMENTS:
+IMPORTANT REMINDERS:
+- Match the structure and style of the sample template exactly
+- Do not add HTML elements or CSS properties not present in the sample
 - Use table-based layout with inline CSS styles only
-- Start with a main container table: <table style=""width:100%;max-width:600px;margin:0 auto;font-family:Arial,sans-serif;"">
-- Use web-safe fonts and explicit color values
-- Include proper spacing with cellpadding=""0"" cellspacing=""0"" border=""0""
-- Make it mobile-responsive where possible
-- NO <html>, <head>, or <body> tags - content only
 - Use ONLY ${{token}} format for all placeholders (e.g., ${{firstName}}, ${{email}}, ${{companyName}})
-
-Ensure the content is relevant, professional, and follows email client compatibility best practices.";
+- NO <html>, <head>, or <body> tags - content only
+- Return only the JSON structure as specified in the system prompt";
     }
 
     private static EmailTemplateTranslationMetadata ParseGeneratedEmailTemplate(string jsonText)

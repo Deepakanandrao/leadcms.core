@@ -21,4 +21,16 @@ public class ContentGenerationRequest
     public string Prompt { get; set; } = string.Empty;
 
     public int? ReferenceContentId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the target word count for the generated body content.
+    /// If both WordCount and CharacterCount are specified, CharacterCount takes priority.
+    /// </summary>
+    public int? WordCount { get; set; }
+
+    /// <summary>
+    /// Gets or sets the target character count for the generated body content.
+    /// Takes priority over WordCount if both are specified.
+    /// </summary>
+    public int? CharacterCount { get; set; }
 }

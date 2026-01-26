@@ -123,4 +123,115 @@ public class UsersTests : BaseTestAutoLogin
         // CreatedAt should match what was returned during creation (PostgreSQL has microsecond precision)
         retrievedUser.CreatedAt.Should().BeCloseTo(createdUser.CreatedAt, TimeSpan.FromMilliseconds(1));
     }
+
+    [Fact]
+    public async Task GetAllUsers_FilterByEmail_ShouldReturnMatchingUser()
+    {
+        // Arrange
+        var userCreateDto = new TestUser("filter-email")
+        {
+            Password = "TestPassword123!",
+            GeneratePassword = false,
+        };
+
+        var createdUser = await PostTest<UserDetailsDto>(usersUrl, userCreateDto);
+        createdUser.Should().NotBeNull();
+
+        try
+        {
+            // Act
+            var users = await GetTest<UserDetailsDto[]>($"{usersUrl}?filter[where][email][eq]={userCreateDto.Email}");
+
+            // Assert
+            users.Should().NotBeNull();
+            Array.Exists(users!, u => u.Email == userCreateDto.Email).Should().BeTrue();
+        }
+        finally
+        {
+            if (!string.IsNullOrWhiteSpace(createdUser!.Id))
+            {
+                await Request(HttpMethod.Delete, $"{usersUrl}/{createdUser.Id}", null);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task GetAllUsers_OrderAndPaging_ShouldReturnExpectedUser()
+    {
+        // Arrange
+        var userA = new TestUser("order-a")
+        {
+            DisplayName = "User A",
+            Password = "TestPassword123!",
+            GeneratePassword = false,
+        };
+
+        var userZ = new TestUser("order-z")
+        {
+            DisplayName = "User Z",
+            Password = "TestPassword123!",
+            GeneratePassword = false,
+        };
+
+        var createdUserA = await PostTest<UserDetailsDto>(usersUrl, userA);
+        var createdUserZ = await PostTest<UserDetailsDto>(usersUrl, userZ);
+        createdUserA.Should().NotBeNull();
+        createdUserZ.Should().NotBeNull();
+
+        try
+        {
+            // Act
+            var query = $"{usersUrl}?filter[ids]={createdUserA!.Id},{createdUserZ!.Id}&filter[order]=displayName desc&filter[limit]=1&filter[skip]=0";
+            var users = await GetTest<UserDetailsDto[]>(query);
+
+            // Assert
+            users.Should().NotBeNull();
+            users!.Length.Should().Be(1);
+            users[0].DisplayName.Should().Be("User Z");
+        }
+        finally
+        {
+            if (!string.IsNullOrWhiteSpace(createdUserA!.Id))
+            {
+                await Request(HttpMethod.Delete, $"{usersUrl}/{createdUserA.Id}", null);
+            }
+
+            if (!string.IsNullOrWhiteSpace(createdUserZ!.Id))
+            {
+                await Request(HttpMethod.Delete, $"{usersUrl}/{createdUserZ.Id}", null);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task GetAllUsers_SearchByDisplayName_ShouldReturnMatchingUser()
+    {
+        // Arrange
+        var userCreateDto = new TestUser("search")
+        {
+            DisplayName = "Search User",
+            Password = "TestPassword123!",
+            GeneratePassword = false,
+        };
+
+        var createdUser = await PostTest<UserDetailsDto>(usersUrl, userCreateDto);
+        createdUser.Should().NotBeNull();
+
+        try
+        {
+            // Act
+            var users = await GetTest<UserDetailsDto[]>($"{usersUrl}?query=Search%20User");
+
+            // Assert
+            users.Should().NotBeNull();
+            Array.Exists(users!, u => u.Email == userCreateDto.Email).Should().BeTrue();
+        }
+        finally
+        {
+            if (!string.IsNullOrWhiteSpace(createdUser!.Id))
+            {
+                await Request(HttpMethod.Delete, $"{usersUrl}/{createdUser.Id}", null);
+            }
+        }
+    }
 }

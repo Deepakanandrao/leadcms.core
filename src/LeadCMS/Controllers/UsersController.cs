@@ -13,7 +13,6 @@ using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace LeadCMS.Controllers;
@@ -27,19 +26,22 @@ public class UsersController : ControllerBase
     private readonly UserManager<User> userManager;
     private readonly IEmailFromTemplateService emailFromTemplateService;
     private readonly IdentityConfig identityConfig;
+    private readonly UserQueryProvider userQueryProvider;
 
     public UsersController(
         PgDbContext dbContext,
         IMapper mapper,
         UserManager<User> userManager,
         IEmailFromTemplateService emailFromTemplateService,
-        IOptions<IdentityConfig> identityOptions)
+        IOptions<IdentityConfig> identityOptions,
+        UserQueryProvider userQueryProvider)
     {
         this.dbContext = dbContext;
         this.mapper = mapper;
         this.userManager = userManager;
         this.emailFromTemplateService = emailFromTemplateService;
         identityConfig = identityOptions.Value;
+        this.userQueryProvider = userQueryProvider;
     }
 
     [HttpGet]
@@ -47,11 +49,11 @@ public class UsersController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<UserDetailsDto[]>> GetAll()
+    public async Task<ActionResult<UserDetailsDto[]>> GetAll([FromQuery] string? query)
     {
-        var allUsers = await userManager.Users.ToListAsync();
-        var resultsToClient = mapper.Map<UserDetailsDto[]>(allUsers).ToArray();
-        Response.Headers.Append(ResponseHeaderNames.TotalCount, resultsToClient.Count().ToString());
+        var result = await userQueryProvider.GetResult(userManager.Users);
+        var resultsToClient = mapper.Map<UserDetailsDto[]>(result.Records).ToArray();
+        Response.Headers.Append(ResponseHeaderNames.TotalCount, result.TotalCount.ToString());
         Response.Headers.Append(ResponseHeaderNames.AccessControlExposeHeader, ResponseHeaderNames.TotalCount);
         return Ok(resultsToClient);
     }

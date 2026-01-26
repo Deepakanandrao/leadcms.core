@@ -18,4 +18,16 @@ public class ContentEditRequest : ContentUpdateDto
     [Required(ErrorMessage = "Prompt is required")]
     [MinLength(1, ErrorMessage = "Prompt cannot be empty")]
     public string Prompt { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the target word count for the edited body content.
+    /// If both WordCount and CharacterCount are specified, CharacterCount takes priority.
+    /// </summary>
+    public int? WordCount { get; set; }
+
+    /// <summary>
+    /// Gets or sets the target character count for the edited body content.
+    /// Takes priority over WordCount if both are specified.
+    /// </summary>
+    public int? CharacterCount { get; set; }
 }

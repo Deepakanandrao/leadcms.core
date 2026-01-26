@@ -3,6 +3,7 @@
 // </copyright>
 
 using System.ClientModel;
+using System.Diagnostics;
 using LeadCMS.Plugin.AI.Configuration;
 using LeadCMS.Plugin.AI.DTOs;
 using LeadCMS.Plugin.AI.Exceptions;
@@ -39,25 +40,68 @@ public class OpenAIProviderService : IAIProviderService
 
             messages.Add(ChatMessage.CreateUserMessage(request.UserPrompt));
 
+            // Calculate input character counts for logging
+            var systemPromptChars = request.SystemPrompt?.Length ?? 0;
+            var userPromptChars = request.UserPrompt?.Length ?? 0;
+            var totalInputChars = systemPromptChars + userPromptChars;
+
+            Log.Information(
+                "AI Request - Input: SystemPrompt={SystemPromptChars} chars, UserPrompt={UserPromptChars} chars, Total={TotalInputChars} chars",
+                systemPromptChars,
+                userPromptChars,
+                totalInputChars);
+
             var chatRequest = new ChatCompletionOptions();
 
             // Always use the best available model
-            var modelToUse = "gpt-5";
+            var modelToUse = "gpt-5.2";
+
+            var stopwatch = Stopwatch.StartNew();
             var response = await client.GetChatClient(modelToUse).CompleteChatAsync(messages, chatRequest);
+            stopwatch.Stop();
+
+            var elapsedMs = stopwatch.ElapsedMilliseconds;
+            var generatedText = response.Value.Content.FirstOrDefault()?.Text ?? string.Empty;
+            var inputTokens = response.Value.Usage?.InputTokenCount ?? 0;
+            var outputTokens = response.Value.Usage?.OutputTokenCount ?? 0;
+            var totalTokens = response.Value.Usage?.TotalTokenCount ?? 0;
+            var outputChars = generatedText.Length;
+
+            Log.Information(
+                "AI Response - Duration: {ElapsedMs}ms, Input: {InputTokens} tokens ({InputChars} chars), Output: {OutputTokens} tokens ({OutputChars} chars), Total: {TotalTokens} tokens, Model: {Model}",
+                elapsedMs,
+                inputTokens,
+                totalInputChars,
+                outputTokens,
+                outputChars,
+                totalTokens,
+                modelToUse);
 
             return new TextGenerationResponse
             {
-                GeneratedText = response.Value.Content.FirstOrDefault()?.Text ?? string.Empty,
+                GeneratedText = generatedText,
                 Model = modelToUse,
-                TokensUsed = response.Value.Usage?.TotalTokenCount ?? 0,
+                TokensUsed = totalTokens,
                 FinishReason = response.Value.FinishReason.ToString(),
                 Metadata = new Dictionary<string, object>
                 {
                     ["usage"] = new
                     {
-                        prompt_tokens = response.Value.Usage?.InputTokenCount ?? 0,
-                        completion_tokens = response.Value.Usage?.OutputTokenCount ?? 0,
-                        total_tokens = response.Value.Usage?.TotalTokenCount ?? 0,
+                        prompt_tokens = inputTokens,
+                        completion_tokens = outputTokens,
+                        total_tokens = totalTokens,
+                    },
+                    ["char_counts"] = new
+                    {
+                        system_prompt_chars = systemPromptChars,
+                        user_prompt_chars = userPromptChars,
+                        total_input_chars = totalInputChars,
+                        output_chars = outputChars,
+                    },
+                    ["performance"] = new
+                    {
+                        duration_ms = elapsedMs,
+                        tokens_per_second = elapsedMs > 0 ? (double)outputTokens / elapsedMs * 1000 : 0,
                     },
                 },
             };

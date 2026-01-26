@@ -87,7 +87,7 @@ public class ContentGenerationService : IContentGenerationService
 
         // Step 4: Build prompts and generate content
         var systemPrompt = await BuildSystemPromptAsync(contentType, sampleContent, componentAnalysis);
-        var userPrompt = BuildUserPrompt(request.Prompt, request.Language);
+        var userPrompt = BuildUserPrompt(request.Prompt, request.Language, request.CharacterCount, request.WordCount);
 
         var textRequest = new TextGenerationRequest
         {
@@ -137,6 +137,14 @@ public class ContentGenerationService : IContentGenerationService
             Log.Information("Successfully generated content for type {ContentType} in language {Language}", request.ContentType, request.Language);
             return result;
         }
+        catch (AIProviderException)
+        {
+            throw;
+        }
+        catch (JsonException ex)
+        {
+            throw new AIProviderException("ContentGeneration", $"Failed to parse AI response as JSON: {ex.Message}", ex);
+        }
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to generate content for type {ContentType} in language {Language}", request.ContentType, request.Language);
@@ -147,7 +155,7 @@ public class ContentGenerationService : IContentGenerationService
     public async Task<ContentDetailsDto> GenerateContentEditAsync(ContentEditRequest request)
     {
         var systemPrompt = await BuildEditSystemPromptAsync();
-        var userPrompt = BuildEditUserPrompt(request, request.Prompt);
+        var userPrompt = BuildEditUserPrompt(request, request.Prompt, request.CharacterCount, request.WordCount);
 
         var textRequest = new TextGenerationRequest
         {
@@ -191,6 +199,10 @@ public class ContentGenerationService : IContentGenerationService
                 PublishedAt = request.PublishedAt,
             };
         }
+        catch (AIProviderException)
+        {
+            throw;
+        }
         catch (JsonException ex)
         {
             throw new AIProviderException("ContentGeneration", $"Failed to parse AI response as JSON: {ex.Message}", ex);
@@ -199,6 +211,27 @@ public class ContentGenerationService : IContentGenerationService
         {
             throw new AIProviderException("ContentGeneration", $"Failed to generate content edit: {ex.Message}", ex);
         }
+    }
+
+    private static string BuildLengthConstraintInstruction(int? characterCount, int? wordCount)
+    {
+        if (characterCount.HasValue && characterCount.Value > 0)
+        {
+            return $@"
+BODY LENGTH REQUIREMENT:
+- The body content MUST be approximately {characterCount.Value} characters (±10%)
+";
+        }
+
+        if (wordCount.HasValue && wordCount.Value > 0)
+        {
+            return $@"
+BODY LENGTH REQUIREMENT:
+- The body content MUST be approximately {wordCount.Value} words (±10%)
+";
+        }
+
+        return string.Empty;
     }
 
     private async Task<Content?> FindSampleContentAsync(string contentType, string language, int? referenceContentId)
@@ -267,9 +300,21 @@ public class ContentGenerationService : IContentGenerationService
 
         var siteProfileSection = await BuildSiteProfileSectionAsync();
 
-        var prompt = $@"You are an expert content creator generating new content for a CMS. Generate a new {contentType.Uid} content record based on the sample and user requirements.
+        // Truncate body sample to reasonable size while preserving structure
+        var bodySampleLength = Math.Min(50000, sampleContent.Body.Length);
+        var bodySample = sampleContent.Body.Length > bodySampleLength
+            ? sampleContent.Body.Substring(0, bodySampleLength) + "\n... [truncated]"
+            : sampleContent.Body;
 
-SAMPLE CONTENT STRUCTURE:
+        var prompt = $@"You are a content generation assistant for an AI-powered CMS designed to quickly generate landing pages, blog posts, and other content. Your task is to generate a new {contentType.Uid} content record that precisely matches the structure, style, and format of existing content in the CMS.
+
+CRITICAL RULES - READ CAREFULLY:
+1. DO NOT HALLUCINATE OR INVENT: Never create new structures, components, or attributes that are not present in the sample content or the provided component list.
+2. MATCH EXACT FORMAT: The generated content must match the exact format ({contentType.Format}) and structure of the sample content.
+3. REUSE PATTERNS: Only use patterns, structures, and conventions demonstrated in the sample content.
+4. When the user's prompt is ambiguous, use the SITE PROFILE and SAMPLE CONTENT to infer the most appropriate interpretation.
+
+SAMPLE CONTENT (use this as your template - match its structure exactly):
 Title: {sampleContent.Title}
 Description: {sampleContent.Description}
 Author: {sampleContent.Author}
@@ -278,63 +323,89 @@ Tags: {JsonHelper.Serialize(sampleContent.Tags)}
 Language: {sampleContent.Language}
 Cover Image Alt: {sampleContent.CoverImageAlt}
 Body Format: {contentType.Format}
-Body Sample (first 500 chars): {(sampleContent.Body.Length > 500 ? sampleContent.Body.Substring(0, 500) + "..." : sampleContent.Body)}";
+
+SAMPLE BODY CONTENT (replicate this structure and style):
+{bodySample}";
 
         if (!string.IsNullOrEmpty(siteProfileSection))
         {
             prompt += $@"
 
-    SITE PROFILE:
-    {siteProfileSection}";
+SITE PROFILE (use this to understand site context and resolve any ambiguity in user requests):
+{siteProfileSection}";
         }
 
-        if (componentAnalysis != null && componentAnalysis.Components.Any())
+        if (contentType.Format == ContentFormat.MDX || contentType.Format == ContentFormat.MD)
+        {
+            if (componentAnalysis != null && componentAnalysis.Components.Any())
+            {
+                prompt += $@"
+
+MDX COMPONENTS - STRICT ALLOWLIST:
+You may ONLY use the following MDX components. DO NOT invent or use any components not listed here:
+{string.Join("\n", componentAnalysis.Components.Select(c => FormatComponentInfo(c)))}
+
+IMPORTANT MDX RULES:
+- ONLY use components from the list above - do not invent new components
+- Follow the exact prop structure shown in the examples
+- If the sample content uses HTML elements, you may use the SAME HTML patterns - do not invent new HTML structures
+- Match the exact indentation and formatting style from the sample body";
+            }
+            else
+            {
+                prompt += $@"
+
+MDX/MARKDOWN RULES:
+- Use ONLY standard Markdown syntax and patterns present in the sample content
+- DO NOT use custom MDX components unless they appear in the sample content
+- If the sample uses any HTML, replicate only the EXACT same HTML patterns - do not invent new HTML structures";
+            }
+        }
+        else if (contentType.Format == ContentFormat.JSON)
         {
             prompt += $@"
 
-MDX COMPONENTS AVAILABLE:
-This content type supports the following MDX components. You can use these in the body content:
-{string.Join("\n", componentAnalysis.Components.Select(c => FormatComponentInfo(c)))}";
+JSON FORMAT RULES:
+- The body MUST be valid JSON matching the EXACT structure shown in the sample body
+- DO NOT add new properties that are not present in the sample
+- DO NOT omit required properties that exist in the sample
+- Preserve all property names exactly as shown
+- Match data types (strings, numbers, arrays, objects) exactly as in the sample";
         }
 
         // Add slug pattern guidance if we have examples
-        var slugPatternGuidance = string.Empty;
         if (existingSlugPatterns.Any())
         {
-            slugPatternGuidance = $@"
+            prompt += $@"
 
-SLUG PATTERN EXAMPLES:
-Existing {contentType.Uid} content uses these slug patterns - follow the same convention:
+SLUG PATTERN EXAMPLES (follow this convention):
 {string.Join("\n", existingSlugPatterns.Select(slug => $"- {slug}"))}";
         }
 
-        prompt += slugPatternGuidance;
-
         prompt += $@"
 
-REQUIREMENTS:
-1. Return ONLY valid JSON with the exact structure shown below
-2. Generate original, high-quality content that matches the style and format of the sample
-3. Ensure the body content is in {contentType.Format} format
-4. Generate a slug that follows the same pattern as existing {contentType.Uid} content shown above (URL-friendly, lowercase, hyphen-separated)
-5. Keep the same author, category structure, and tagging style as the sample
-6. If using MDX format, you may include the available components listed above
-
 CONTENT LENGTH REQUIREMENTS:
-- Title: Must be between {minTitleLength} and {maxTitleLength} characters (SEO optimized)
-- Description: Must be between {minDescriptionLength} and {maxDescriptionLength} characters (SEO optimized for meta descriptions)
+- Title: {minTitleLength}-{maxTitleLength} characters (SEO optimized)
+- Description: {minDescriptionLength}-{maxDescriptionLength} characters (SEO optimized for meta descriptions)
 
-REQUIRED JSON STRUCTURE:
+OUTPUT FORMAT - Return ONLY valid JSON with this exact structure:
 {{
-  ""title"": ""Generated title ({minTitleLength}-{maxTitleLength} characters)"",
-  ""description"": ""Generated description ({minDescriptionLength}-{maxDescriptionLength} characters)"",
+  ""title"": ""Generated title"",
+  ""description"": ""Generated description"",
   ""body"": ""Generated body content in {contentType.Format} format"",
   ""slug"": ""url-friendly-slug"",
   ""author"": ""Author name"",
   ""category"": ""Category name"",
   ""tags"": [""tag1"", ""tag2""],
   ""coverImageAlt"": ""Alt text for cover image""
-}}";
+}}
+
+DISAMBIGUATION STRATEGY:
+If the user's request is unclear or could be interpreted multiple ways:
+1. Refer to the SITE PROFILE for context about the site's topic, audience, and voice
+2. Use the SAMPLE CONTENT as a reference for appropriate style, tone, and structure
+3. Make reasonable inferences based on existing content patterns
+4. Prefer conservative choices that match existing content over creative inventions";
 
         return prompt;
     }
@@ -400,11 +471,19 @@ REQUIRED JSON STRUCTURE:
         return $"- {component.Name} ({props}) - Example: {example}";
     }
 
-    private string BuildUserPrompt(string userPrompt, string language)
+    private string BuildUserPrompt(string userPrompt, string language, int? characterCount, int? wordCount)
     {
-        return $@"Generate new content in {language} based on this request: {userPrompt}
+        var lengthConstraint = BuildLengthConstraintInstruction(characterCount, wordCount);
 
-Remember to return only the JSON structure as specified in the system prompt.";
+        return $@"Generate new content in {language} based on this request:
+
+{userPrompt}
+{lengthConstraint}
+IMPORTANT REMINDERS:
+- If any part of this request is unclear, use the site profile and sample content to make informed decisions
+- Match the exact structure and format demonstrated in the sample content
+- Do not invent new components, attributes, or patterns not shown in the sample
+- Return only the JSON structure as specified in the system prompt";
     }
 
     private ContentDetailsDto ParseGeneratedContent(string generatedJson)
@@ -509,56 +588,64 @@ Remember to return only the JSON structure as specified in the system prompt.";
 
         var siteProfileSection = await BuildSiteProfileSectionAsync();
 
-        var prompt = $@"You are a content editor assistant. Your task is to edit existing content based on user prompts while maintaining the original structure and improving quality.
+        var prompt = $@"You are a content editor assistant for an AI-powered CMS. Your task is to edit existing content based on user prompts while strictly preserving the original format and structure.
 
-    Guidelines:
-    - Preserve the core meaning and structure of the original content
-    - Apply the user's requested changes thoughtfully
-    - Maintain appropriate tone and style
-    - Ensure all content is factual and well-written
-    - Keep the same format (markdown, etc.) as the original
-    ";
+CRITICAL RULES - READ CAREFULLY:
+1. PRESERVE FORMAT: Keep the exact same format (MDX, JSON, Markdown, HTML) as the original content
+2. NO HALLUCINATION: Do not add new MDX components, HTML elements, or JSON attributes that are not present in the original content
+3. MAINTAIN STRUCTURE: Keep the overall structure and organization of the original content
+4. CONSERVATIVE EDITS: When the user's request is ambiguous, make the minimum changes necessary to fulfill the request
+5. If the content uses MDX components, preserve them exactly - do not invent new components
+
+EDITING GUIDELINES:
+- Apply the user's requested changes while preserving the core structure
+- Maintain the tone and style consistent with the original content
+- Ensure all content is factual and well-written
+- If content contains MDX components or special markup, keep them intact unless specifically asked to modify";
 
         if (!string.IsNullOrEmpty(siteProfileSection))
         {
             prompt += $@"
-    SITE PROFILE:
-    {siteProfileSection}
-    ";
+
+SITE PROFILE (use this to understand context and resolve ambiguity):
+{siteProfileSection}";
         }
 
         prompt += $@"
 
-    CONTENT LENGTH REQUIREMENTS:
-    - Title: Must be between {minTitleLength} and {maxTitleLength} characters (SEO optimized)
-    - Description: Must be between {minDescriptionLength} and {maxDescriptionLength} characters (SEO optimized for meta descriptions)
+CONTENT LENGTH REQUIREMENTS:
+- Title: {minTitleLength}-{maxTitleLength} characters (SEO optimized)
+- Description: {minDescriptionLength}-{maxDescriptionLength} characters (SEO optimized for meta descriptions)
 
-    Return your response as valid JSON with these fields:
-    - title: Edited article title ({minTitleLength}-{maxTitleLength} characters)
-    - slug: URL-friendly slug (lowercase, hyphens instead of spaces)
-    - description: Brief summary/meta description ({minDescriptionLength}-{maxDescriptionLength} characters)
-    - body: Main content body (preserve markdown formatting)
-    - tags: Array of relevant tags
-    - category: Relevant category
+DISAMBIGUATION STRATEGY:
+If the user's edit request is unclear:
+1. Refer to the SITE PROFILE for context about the site's topic, audience, and voice
+2. Preserve as much of the original content as possible
+3. Make the minimal changes needed to address the request
+4. Maintain consistency with the original content's style and format
 
-    Example format:
-    {{
-      ""title"": ""Updated Article Title"",
-      ""slug"": ""updated-article-title"",
-      ""description"": ""Brief description of the updated content"",
-      ""body"": ""# Main Heading\n\nUpdated content here..."",
-      ""tags"": [""tag1"", ""tag2""],
-      ""category"": ""category1""
-    }}";
+OUTPUT FORMAT - Return ONLY valid JSON with this exact structure:
+{{
+  ""title"": ""Edited article title"",
+  ""slug"": ""url-friendly-slug"",
+  ""description"": ""Brief summary/meta description"",
+  ""body"": ""Main content body (preserve original formatting)"",
+  ""tags"": [""tag1"", ""tag2""],
+  ""category"": ""category name""
+}}";
 
         return prompt;
     }
 
-    private string BuildEditUserPrompt(ContentEditRequest contentData, string userPrompt)
+    private string BuildEditUserPrompt(ContentEditRequest contentData, string userPrompt, int? characterCount, int? wordCount)
     {
-        return $@"Please edit the following content based on this request: {userPrompt}
+        var lengthConstraint = BuildLengthConstraintInstruction(characterCount, wordCount);
 
-Current Content:
+        return $@"Edit the following content based on this request:
+
+{userPrompt}
+{lengthConstraint}
+CURRENT CONTENT TO EDIT:
 Title: {contentData.Title ?? "[No title]"}
 Slug: {contentData.Slug ?? "[No slug]"}
 Description: {contentData.Description ?? "[No description]"}
@@ -568,6 +655,10 @@ Category: {contentData.Category ?? "[No category]"}
 Body:
 {contentData.Body ?? "[No content]"}
 
-Please provide the edited version in the specified JSON format.";
+IMPORTANT REMINDERS:
+- Preserve the exact format and structure of the original body content
+- Do not add new components, elements, or attributes not present in the original
+- If the request is unclear, use the site profile for context and make conservative changes
+- Return only the JSON structure as specified";
     }
 }

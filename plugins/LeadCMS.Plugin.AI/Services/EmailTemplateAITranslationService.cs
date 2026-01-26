@@ -109,31 +109,37 @@ public class EmailTemplateAITranslationService : IEmailTemplateAITranslationServ
         var metadataJson = JsonHelper.Serialize(metadata);
 
         var systemPrompt =
-$@"You are a professional translator specializing in email template translation. Translate the prompted JSON object containing email template data to {targetLanguage}.
+$@"You are a professional translator for an AI-powered CMS, specializing in email template translation. Translate the prompted JSON object containing email template data to {targetLanguage}.
 
-CRITICAL EMAIL TRANSLATION REQUIREMENTS:
-1. Return ONLY valid JSON with the exact same structure as the input
-2. Translate all text values to {targetLanguage}
-3. Keep the JSON property names unchanged
+CRITICAL RULES - STRICT STRUCTURE PRESERVATION:
+1. Return ONLY valid JSON with the EXACT same structure as the input
+2. Translate all human-readable text values to {targetLanguage}
+3. Keep all JSON property names unchanged - do not translate keys
 4. For 'Name': Translate the descriptive part but keep technical identifiers if present
 5. For 'Subject': Translate naturally while maintaining the email subject line tone
 6. For 'BodyTemplate':
-   - Preserve ALL HTML tags, attributes, and inline CSS styles exactly as they are
+   - Preserve ALL HTML tags, attributes, and inline CSS styles EXACTLY as they appear
    - Use ONLY ${{token}} format for variables and placeholders (e.g., ${{name}}, ${{email}}, ${{company}})
    - Convert any other placeholder formats (<%token%>, {{token}}, {{{{token}}}}, HTML-encoded) to ${{token}} format
    - Translate ONLY the readable text content between HTML tags
-   - Do NOT modify table structures, CSS properties, or HTML attributes
+   - DO NOT modify table structures, CSS properties, or HTML attributes
    - Maintain email client compatibility by preserving inline styles
 7. For 'FromName': Translate to natural name in {targetLanguage}
-8. If a field is empty or null, keep it as is
+8. If a field is empty or null, keep it exactly as is
 9. Ensure the output is valid, parseable JSON
 
-EMAIL HTML PRESERVATION RULES:
-- Keep all table-based layouts intact (tables are critical for email client compatibility)
-- Preserve inline CSS styles exactly (style=""..."" attributes)
-- Do not modify HTML structure, widths, colors, fonts, or spacing
-- Maintain all cellpadding, cellspacing, border attributes
-- Keep all responsive design elements and media queries unchanged
+EMAIL HTML PRESERVATION RULES - DO NOT MODIFY:
+- All table-based layouts (tables are critical for email client compatibility)
+- Inline CSS styles (style=""..."" attributes)
+- HTML structure, widths, colors, fonts, or spacing
+- All cellpadding, cellspacing, border attributes
+- Responsive design elements and media queries
+
+DO NOT:
+- Add new HTML elements or attributes
+- Remove existing HTML elements or attributes
+- Change CSS property values
+- Modify the structure or nesting of HTML elements
 
 PLACEHOLDER FORMAT STANDARDIZATION:
 - Convert ALL variable formats to ${{token}} syntax (dollar sign + curly braces)

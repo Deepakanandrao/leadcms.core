@@ -156,19 +156,20 @@ public class ContentAITranslationService : IContentAITranslationService
         var metadataJson = JsonHelper.Serialize(metadata);
 
         var systemPrompt =
-$@"You are a professional translator. Translate the prompted JSON object containing content metadata to {targetLanguage}.
+$@"You are a professional translator for an AI-powered CMS. Translate the prompted JSON object containing content metadata to {targetLanguage}.
 
-IMPORTANT RULES:
-1. Return ONLY valid JSON with the exact same structure as the input
+CRITICAL RULES - READ CAREFULLY:
+1. Return ONLY valid JSON with the EXACT same structure as the input
 2. Translate all text values to {targetLanguage}
-3. Keep the JSON property names unchanged
-4. For arrays like 'tags', translate each element
-5. If a field is empty or null, keep it as is
-6. Ensure the output is valid, parseable JSON
+3. Keep all JSON property names unchanged - do not translate keys
+4. For arrays like 'tags', translate each element while preserving the array structure
+5. If a field is empty or null, keep it exactly as is
+6. DO NOT add any new properties or remove existing properties
+7. Ensure the output is valid, parseable JSON
 
 CONTENT LENGTH REQUIREMENTS:
-- Title: Must be between {minTitleLength} and {maxTitleLength} characters (SEO optimized)
-- Description: Must be between {minDescriptionLength} and {maxDescriptionLength} characters (SEO optimized for meta descriptions)
+- Title: {minTitleLength}-{maxTitleLength} characters (SEO optimized)
+- Description: {minDescriptionLength}-{maxDescriptionLength} characters (SEO optimized for meta descriptions)
 
 The translated content must respect these length constraints while maintaining the meaning and quality of the original text.";
 
@@ -210,53 +211,81 @@ The translated content must respect these length constraints while maintaining t
             case ContentFormat.MDX:
                 formatType = "MDX";
                 systemPrompt =
-$@"You are a professional translator specializing in MDX content translation. Translate the following MDX content to {targetLanguage}.
-IMPORTANT RULES:
-1. Preserve ALL MDX syntax, components, and structure exactly
-2. Translate ONLY the readable text content
-3. Keep ALL import statements, export statements, and component declarations unchanged
-4. Keep ALL component props, attributes, and JSX syntax intact
-5. Preserve code blocks, inline code, and technical terms that shouldn't be translated
-6. Keep URLs, file paths, and technical identifiers unchanged
-7. Return valid MDX that can be parsed without errors
-8. Maintain the exact same formatting and indentation";
+$@"You are a professional translator for an AI-powered CMS, specializing in MDX content translation. Translate the following MDX content to {targetLanguage}.
+
+CRITICAL RULES - STRICT FORMAT PRESERVATION:
+1. Preserve ALL MDX components EXACTLY as they appear - do not modify, add, or remove any components
+2. Keep ALL component names, props, attributes, and JSX syntax completely unchanged
+3. Translate ONLY the human-readable text content (headings, paragraphs, button text, etc.)
+4. Keep ALL import statements and export statements unchanged
+5. Preserve code blocks and inline code exactly as they appear
+6. Keep URLs, file paths, variable names, and technical identifiers unchanged
+7. Maintain the EXACT same formatting, indentation, and whitespace structure
+8. Return valid MDX that matches the original structure precisely
+
+DO NOT:
+- Invent or add new MDX components
+- Modify component prop values unless they contain translatable text
+- Change the structure or order of components
+- Add or remove any elements
+
+The translated output must be identical in structure to the input, with only the human-readable text translated.";
                 break;
 
             case ContentFormat.JSON:
                 formatType = "JSON";
                 systemPrompt =
-$@"You are a professional translator specializing in JSON content translation. Translate the following JSON content to {targetLanguage}.
-IMPORTANT RULES:
-1. Return ONLY valid, parseable JSON
-2. Preserve the exact JSON structure and all property names
-3. Translate ONLY the string values that contain human-readable text
-4. Keep technical keys, IDs, URLs, and code values unchanged
-5. Maintain all data types (strings, numbers, booleans, arrays, objects)
-6. Do not add or remove any properties
-7. Ensure the output is valid JSON that can be parsed without errors";
+$@"You are a professional translator for an AI-powered CMS, specializing in JSON content translation. Translate the following JSON content to {targetLanguage}.
+
+CRITICAL RULES - STRICT STRUCTURE PRESERVATION:
+1. Return ONLY valid, parseable JSON with the EXACT same structure
+2. Preserve all property names EXACTLY as they appear - do not translate keys
+3. Translate ONLY string values that contain human-readable text
+4. Keep technical values unchanged: IDs, URLs, code, configuration values, enum values
+5. Maintain all data types exactly: strings remain strings, numbers remain numbers, etc.
+6. DO NOT add any new properties that don't exist in the original
+7. DO NOT remove any properties that exist in the original
+8. Preserve the exact nesting structure and array ordering
+
+DO NOT:
+- Invent new JSON properties or attributes
+- Omit any existing properties (even if they seem redundant)
+- Change the data type of any value
+- Modify technical or configuration values
+
+The translated output must have identical structure to the input JSON.";
                 break;
 
             case ContentFormat.HTML:
                 formatType = "HTML";
                 systemPrompt =
-$@"You are a professional translator specializing in HTML content translation. Translate the following HTML content to {targetLanguage}.
-IMPORTANT RULES:
-1. Preserve ALL HTML tags, attributes, and structure exactly
-2. Translate ONLY the text content between HTML tags
-3. Keep ALL HTML attributes, IDs, classes, and URLs unchanged
-4. Preserve code blocks and technical content that shouldn't be translated
-5. Return valid HTML that renders correctly
-6. Maintain the exact same formatting and structure";
+$@"You are a professional translator for an AI-powered CMS, specializing in HTML content translation. Translate the following HTML content to {targetLanguage}.
+
+CRITICAL RULES - STRICT STRUCTURE PRESERVATION:
+1. Preserve ALL HTML tags, attributes, and structure exactly as they appear
+2. Translate ONLY the visible text content between HTML tags
+3. Keep ALL attributes unchanged: IDs, classes, data-* attributes, URLs, inline styles
+4. Preserve code blocks and technical content exactly
+5. Maintain the exact same HTML structure and nesting
+6. Return valid HTML that matches the original structure precisely
+
+DO NOT:
+- Add new HTML elements or attributes
+- Remove existing elements or attributes
+- Modify class names, IDs, or other technical attributes
+- Change the structure or nesting of elements";
                 break;
 
             default:
                 systemPrompt =
-$@"You are a professional translator. Translate the following text content to {targetLanguage}.
-IMPORTANT RULES:
-1. Translate the text naturally and accurately
-2. Preserve the meaning and tone of the original
-3. Keep any technical terms that are commonly used in {targetLanguage}
-4. Maintain formatting like line breaks and spacing";
+$@"You are a professional translator for an AI-powered CMS. Translate the following text content to {targetLanguage}.
+
+TRANSLATION RULES:
+1. Translate the text naturally and accurately to {targetLanguage}
+2. Preserve the meaning, tone, and intent of the original
+3. Keep technical terms that are commonly used untranslated in {targetLanguage}
+4. Maintain formatting like line breaks, spacing, and text structure
+5. Preserve any markdown formatting elements (headers, lists, bold, italic, etc.)";
                 break;
         }
 

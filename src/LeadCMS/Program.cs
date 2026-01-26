@@ -83,6 +83,7 @@ public class Program
         builder.Services.AddSingleton<ActivityLogService, ActivityLogService>();
         builder.Services.AddTransient(typeof(QueryProviderFactory<>), typeof(QueryProviderFactory<>));
         builder.Services.AddTransient(typeof(ESOnlyQueryProviderFactory<>), typeof(ESOnlyQueryProviderFactory<>));
+        builder.Services.AddTransient<UserQueryProvider>();
         builder.Services.AddSingleton<IEmailService, EmailService>();
         builder.Services.AddTransient<CommentableControllerExtension, CommentableControllerExtension>();
         builder.Services.AddScoped<ILanguageValidationService, LanguageValidationService>();
