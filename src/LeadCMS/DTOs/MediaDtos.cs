@@ -62,6 +62,8 @@ public class MediaDetailsDto
 
     public string[] Tags { get; set; } = Array.Empty<string>();
 
+    public int UsageCount { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }

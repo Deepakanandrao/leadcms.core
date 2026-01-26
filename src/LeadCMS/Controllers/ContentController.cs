@@ -683,6 +683,19 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         }
     }
 
+    [HttpPost("refresh-media-metadata")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<object>> RefreshMediaDescriptions()
+    {
+        var (contentsProcessed, mediaUpdated) = await UpdateMediaDescriptionsFromAllContentAsync();
+        return Ok(new
+        {
+            ContentsProcessed = contentsProcessed,
+            MediaUpdated = mediaUpdated,
+        });
+    }
+
     /// <summary>
     /// Called after content is successfully created to clear MDX component cache if needed.
     /// </summary>
@@ -724,6 +737,11 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         {
             await ClearCacheIfMdxType(contentType);
         }
+    }
+
+    private static (string ScopeUid, string FileName) NormalizeMediaKey(string scopeUid, string fileName)
+    {
+        return (scopeUid.Trim().ToUpperInvariant(), fileName.Trim().ToUpperInvariant());
     }
 
     private List<(string Url, string Description)> ExtractImageReferences(string contentBody)
@@ -790,6 +808,48 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
 
         mdxResults.AddRange(markdownResults);
         return mdxResults;
+    }
+
+    private List<string> ExtractImageUrls(string contentBody)
+    {
+        var mdxUrls = MdxImageTagRegex.Matches(contentBody)
+            .Cast<Match>()
+            .Select(match =>
+            {
+                var attributes = ParseMdxAttributes(match.Value);
+                return attributes.TryGetValue("src", out var src) ? src : string.Empty;
+            })
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .ToList();
+
+        var htmlUrls = HtmlImageTagRegex.Matches(contentBody)
+            .Cast<Match>()
+            .Select(match =>
+            {
+                var attributes = ParseMdxAttributes(match.Value);
+                return attributes.TryGetValue("src", out var src) ? src : string.Empty;
+            })
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .ToList();
+
+        var markdownUrls = MarkdownImageRegex.Matches(contentBody)
+            .Cast<Match>()
+            .Select(match => match.Groups["url"].Value)
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .ToList();
+
+        if (htmlUrls.Count > 0)
+        {
+            mdxUrls.AddRange(htmlUrls);
+        }
+
+        if (markdownUrls.Count == 0)
+        {
+            return mdxUrls;
+        }
+
+        mdxUrls.AddRange(markdownUrls);
+        return mdxUrls;
     }
 
     private async Task HandleContentSavedAsync(Content entity)
@@ -920,6 +980,84 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         {
             logger.LogError(ex, "Failed to update media descriptions from content body");
         }
+    }
+
+    private async Task<(int ContentsProcessed, int MediaUpdated)> UpdateMediaDescriptionsFromAllContentAsync()
+    {
+        var contentBodies = await dbContext.Content!
+            .AsNoTracking()
+            .Where(c => c.Body != null && c.Body != string.Empty)
+            .Select(c => c.Body!)
+            .ToListAsync();
+
+        var contentsProcessed = 0;
+        var mediaUpdated = 0;
+        var mediaUsageCounts = new Dictionary<(string ScopeUid, string FileName), int>();
+        var descriptionCandidates = new Dictionary<(string ScopeUid, string FileName), string>();
+
+        foreach (var body in contentBodies)
+        {
+            contentsProcessed++;
+            var urls = ExtractImageUrls(body);
+            foreach (var url in urls)
+            {
+                if (!TryParseMediaPath(url, out var scopeUid, out var fileName))
+                {
+                    continue;
+                }
+
+                var key = NormalizeMediaKey(scopeUid, fileName);
+                mediaUsageCounts[key] = mediaUsageCounts.TryGetValue(key, out var count) ? count + 1 : 1;
+            }
+
+            var references = ExtractImageReferences(body);
+            foreach (var reference in references)
+            {
+                if (!TryParseMediaPath(reference.Url, out var scopeUid, out var fileName))
+                {
+                    continue;
+                }
+
+                var key = NormalizeMediaKey(scopeUid, fileName);
+                if (!descriptionCandidates.ContainsKey(key))
+                {
+                    descriptionCandidates[key] = reference.Description;
+                }
+            }
+        }
+
+        if (mediaUsageCounts.Count == 0)
+        {
+            return (contentsProcessed, 0);
+        }
+
+        var mediaItems = await dbContext.Media!
+            .ToListAsync();
+
+        foreach (var media in mediaItems)
+        {
+            var key = NormalizeMediaKey(media.ScopeUid, media.Name);
+            var count = mediaUsageCounts.TryGetValue(key, out var resolvedCount) ? resolvedCount : 0;
+
+            if (media.UsageCount != count)
+            {
+                media.UsageCount = count;
+                mediaUpdated++;
+            }
+
+            if (string.IsNullOrWhiteSpace(media.Description) && descriptionCandidates.TryGetValue(key, out var description))
+            {
+                media.Description = description;
+                mediaUpdated++;
+            }
+        }
+
+        if (mediaUpdated > 0)
+        {
+            await dbContext.SaveChangesAsync();
+        }
+
+        return (contentsProcessed, mediaUpdated);
     }
 
     private async Task<Dictionary<string, long>> GetContentTypeStatisticsWithQuery()

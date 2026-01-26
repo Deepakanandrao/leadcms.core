@@ -32,6 +32,8 @@ namespace LeadCMS.Entities
         [Searchable]
         public string[] Tags { get; set; } = Array.Empty<string>();
 
+        public int UsageCount { get; set; } = 0;
+
         public byte[] Data { get; set; } = Array.Empty<byte>();
     }
 }

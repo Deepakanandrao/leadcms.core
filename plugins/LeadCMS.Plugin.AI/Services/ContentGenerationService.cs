@@ -299,6 +299,7 @@ BODY LENGTH REQUIREMENT:
         var existingSlugPatterns = await AnalyzeSlugPatternsAsync(contentType.Uid);
 
         var siteProfileSection = await BuildSiteProfileSectionAsync();
+        var recentMediaSection = await BuildRecentMediaSectionAsync();
 
         // Truncate body sample to reasonable size while preserving structure
         var bodySampleLength = Math.Min(50000, sampleContent.Body.Length);
@@ -333,6 +334,17 @@ SAMPLE BODY CONTENT (replicate this structure and style):
 
 SITE PROFILE (use this to understand site context and resolve any ambiguity in user requests):
 {siteProfileSection}";
+        }
+
+        if (!string.IsNullOrEmpty(recentMediaSection))
+        {
+            prompt += $@"
+
+AVAILABLE MEDIA (recent, described):
+Each line is scopeUid|fileName|description
+If any item fits the new article, reuse it in the body where it makes sense.
+Build URLs as: /api/media/{{scopeUid}}/{{fileName}}
+{recentMediaSection}";
         }
 
         if (contentType.Format == ContentFormat.MDX || contentType.Format == ContentFormat.MD)
@@ -408,6 +420,31 @@ If the user's request is unclear or could be interpreted multiple ways:
 4. Prefer conservative choices that match existing content over creative inventions";
 
         return prompt;
+    }
+
+    private async Task<string> BuildRecentMediaSectionAsync()
+    {
+        var mediaItems = await dbContext.Media!
+            .Where(m => m.Description != null && m.Description != string.Empty)
+            .OrderByDescending(m => m.UsageCount)
+            .ThenByDescending(m => m.UpdatedAt ?? m.CreatedAt)
+            .Take(50)
+            .Select(m => new
+            {
+                m.ScopeUid,
+                m.Name,
+                m.Description,
+            })
+            .ToListAsync();
+
+        var itemsWithDescriptions = mediaItems
+            .Where(m => !string.IsNullOrWhiteSpace(m.Description))
+            .Select(m => $"{m.ScopeUid}|{m.Name}|{m.Description!.Trim()}")
+            .ToList();
+
+        return itemsWithDescriptions.Count == 0
+            ? string.Empty
+            : string.Join("\n", itemsWithDescriptions);
     }
 
     private async Task<(int minTitleLength, int maxTitleLength, int minDescriptionLength, int maxDescriptionLength)> GetContentLengthConstraintsAsync()
@@ -587,6 +624,7 @@ IMPORTANT REMINDERS:
         var (minTitleLength, maxTitleLength, minDescriptionLength, maxDescriptionLength) = await GetContentLengthConstraintsAsync();
 
         var siteProfileSection = await BuildSiteProfileSectionAsync();
+        var recentMediaSection = await BuildRecentMediaSectionAsync();
 
         var prompt = $@"You are a content editor assistant for an AI-powered CMS. Your task is to edit existing content based on user prompts while strictly preserving the original format and structure.
 
@@ -609,6 +647,17 @@ EDITING GUIDELINES:
 
 SITE PROFILE (use this to understand context and resolve ambiguity):
 {siteProfileSection}";
+        }
+
+        if (!string.IsNullOrEmpty(recentMediaSection))
+        {
+            prompt += $@"
+
+AVAILABLE MEDIA (recent, described):
+Each line is scopeUid|fileName|description
+If any item fits the edit request, reuse it in the body where it makes sense.
+Build URLs as: /api/media/{{scopeUid}}/{{fileName}}
+{recentMediaSection}";
         }
 
         prompt += $@"

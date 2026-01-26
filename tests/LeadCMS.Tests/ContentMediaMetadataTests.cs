@@ -75,6 +75,32 @@ public class ContentMediaMetadataTests : BaseTestAutoLogin
         markdown.Description.Should().Be("Markdown alt text");
     }
 
+    [Fact]
+    public async Task RefreshMediaDescriptions_ShouldUpdateUsageCountAcrossAllContent()
+    {
+        var mediaOne = await CreateMediaAsync("usage-one.png");
+        var mediaTwo = await CreateMediaAsync("usage-two.png");
+        var mediaUnused = await CreateMediaAsync("usage-unused.png");
+
+        var bodyOne = "<Image src=\"/api/media/" + mediaOne.ScopeUid + "/" + mediaOne.Name + "\" alt=\"First\" />\n" +
+                  "<img src=\"/api/media/" + mediaTwo.ScopeUid + "/" + mediaTwo.Name + "\" alt=\"Second\" />\n" +
+                  "![Again](/api/media/" + mediaOne.ScopeUid + "/" + mediaOne.Name + ")";
+        await CreateContentWithBodyAsync(bodyOne, "-usage-1");
+
+        var bodyTwo = $"<img src=\"/api/media/{mediaOne.ScopeUid}/{mediaOne.Name}\" alt=\"Third\" />";
+        await CreateContentWithBodyAsync(bodyTwo, "-usage-2");
+
+        await RefreshMediaDescriptionsAsync();
+
+        var refreshedOne = await GetMediaByNameAsync(mediaOne.ScopeUid, mediaOne.Name);
+        var refreshedTwo = await GetMediaByNameAsync(mediaTwo.ScopeUid, mediaTwo.Name);
+        var refreshedUnused = await GetMediaByNameAsync(mediaUnused.ScopeUid, mediaUnused.Name);
+
+        refreshedOne.UsageCount.Should().Be(3);
+        refreshedTwo.UsageCount.Should().Be(1);
+        refreshedUnused.UsageCount.Should().Be(0);
+    }
+
     protected override Task<HttpResponseMessage> Request(HttpMethod method, string url, object? payload)
     {
         if (payload is not TestMedia)
@@ -122,5 +148,11 @@ public class ContentMediaMetadataTests : BaseTestAutoLogin
         mediaList.Should().NotBeNull();
         mediaList!.Count.Should().Be(1);
         return mediaList[0];
+    }
+
+    private async Task RefreshMediaDescriptionsAsync()
+    {
+        var response = await Request(HttpMethod.Post, "/api/content/refresh-media-descriptions", new { });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 }
