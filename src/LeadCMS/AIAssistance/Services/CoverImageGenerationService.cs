@@ -468,15 +468,12 @@ public class CoverImageGenerationService : ICoverImageGenerationService
 
             foreach (var path in pathsToUse)
             {
-                var parts = path.Split('/', 2);
-                if (parts.Length != 2)
+                var (scopeUid, fileName) = ParseMediaUrl(path);
+                if (string.IsNullOrWhiteSpace(scopeUid) || string.IsNullOrWhiteSpace(fileName))
                 {
-                    Log.Warning("Invalid sample image path format: {Path}. Expected 'scopeUid/fileName'.", path);
+                    Log.Warning("Invalid sample image path format: {Path}. Expected 'scopeUid/fileName' or '/api/media/{scopeUid}/{fileName}'.", path);
                     continue;
                 }
-
-                var scopeUid = parts[0];
-                var fileName = parts[1];
 
                 var media = await dbContext.Media!
                     .FirstOrDefaultAsync(m => m.ScopeUid == scopeUid && m.Name == fileName);

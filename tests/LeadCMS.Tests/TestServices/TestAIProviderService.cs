@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Reflection;
 using System.Text;
 using LeadCMS.Core.AIAssistance.DTOs;
 using LeadCMS.Core.AIAssistance.Interfaces;
@@ -10,8 +11,7 @@ namespace LeadCMS.Tests.TestServices;
 
 public class TestAIProviderService : IAIProviderService
 {
-    private static readonly byte[] DefaultPngImage = Convert.FromBase64String(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAAWgmWQ0AAAAASUVORK5CYII=");
+    private static readonly byte[] DefaultPngImage = LoadEmbeddedResource("cover-sample.png");
 
     private static readonly object LogLock = new object();
     private static readonly List<RecordedRequest> RecordedRequests = new List<RecordedRequest>();
@@ -229,6 +229,21 @@ public class TestAIProviderService : IAIProviderService
         var mimeType = string.IsNullOrWhiteSpace(image.MimeType) ? "unknown" : image.MimeType;
         var byteCount = image.Data?.Length ?? 0;
         return $"{fileName} | {mimeType} | {byteCount} bytes";
+    }
+
+    private static byte[] LoadEmbeddedResource(string fileName)
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        var resourcePath = assembly.GetManifestResourceNames().Single(name => name.EndsWith(fileName));
+        using var stream = assembly.GetManifestResourceStream(resourcePath);
+        if (stream == null)
+        {
+            throw new FileNotFoundException($"Embedded resource '{fileName}' not found.");
+        }
+
+        using var memory = new MemoryStream();
+        stream.CopyTo(memory);
+        return memory.ToArray();
     }
 
     private static string ResolveLogFilePath()

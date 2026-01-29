@@ -2,15 +2,26 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using LeadCMS.Constants;
+using LeadCMS.Entities;
 using LeadCMS.Helpers;
+using Microsoft.AspNetCore.StaticFiles;
 
 namespace LeadCMS.Tests;
 
 public class MediaTests : BaseTestAutoLogin
 {
+    public MediaTests()
+    {
+        TrackEntityType<Media>();
+        TrackEntityType<Setting>();
+    }
+
     [Theory]
     [InlineData("test1.png", 1024000, false)]
     [InlineData("test2.png", 1024, true)]
@@ -83,6 +94,119 @@ public class MediaTests : BaseTestAutoLogin
         imageStream!.Length.Should().BeGreaterThan(0);
     }
 
+    [Fact]
+    public async Task GetMedia_ByOriginalName_ShouldReturnOriginalData()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "webp");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string originalFileName = "original-cover.png";
+        const string scopeUid = "media-original-fallback";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var created = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        created.Should().NotBeNull();
+        created!.OriginalName.Should().Be(originalFileName);
+        created.Name.Should().NotBe(originalFileName);
+        created.MimeType.Should().Be("image/webp");
+
+        var response = await GetTest($"/api/media/{scopeUid}/{originalFileName}", HttpStatusCode.OK);
+        response.Content.Headers.ContentType?.MediaType.Should().Be("image/png");
+
+        var downloadedBytes = await response.Content.ReadAsByteArrayAsync();
+        downloadedBytes.Should().Equal(imageBytes);
+    }
+
+    [Fact]
+    public async Task Reoptimize_ShouldUpdateImagesToPreferredFormat()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "png");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string originalFileName = "reoptimize-cover.png";
+        const string scopeUid = "media-reoptimize";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var created = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        created.Extension.Should().Be(".png");
+        created.MimeType.Should().Be("image/png");
+
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
+
+        var reoptimizeResponse = await Request(HttpMethod.Post, "/api/media/reoptimize", new { });
+        reoptimizeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var result = await reoptimizeResponse.Content.ReadFromJsonAsync<MediaReoptimizeResponseDto>();
+        result.Should().NotBeNull();
+        result!.Updated.Should().BeGreaterThan(0);
+
+        var mediaList = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?filter[where][scopeUid][eq]={scopeUid}",
+            HttpStatusCode.OK);
+
+        mediaList.Should().NotBeNull();
+        var updated = mediaList!.Single(m => m.OriginalName == originalFileName);
+        updated.Extension.Should().Be(".avif");
+        updated.MimeType.Should().Be("image/avif");
+        updated.Name.Should().EndWith(".avif");
+    }
+
+    [Fact]
+    public async Task Reoptimize_WhenDimensionsMissing_PopulatesDimensions()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "png");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string originalFileName = "reoptimize-missing-dimensions.png";
+        const string scopeUid = "media-reoptimize-missing-dimensions";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        var dbContext = App.GetDbContext();
+        var mediaEntity = dbContext!.Media!.Single(m => m.ScopeUid == scopeUid && m.Name == originalFileName);
+        mediaEntity.Width = null;
+        mediaEntity.Height = null;
+        mediaEntity.OriginalWidth = null;
+        mediaEntity.OriginalHeight = null;
+        await dbContext.SaveChangesAsync();
+
+        var beforeList = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?filter[where][scopeUid][eq]={scopeUid}",
+            HttpStatusCode.OK);
+
+        beforeList.Should().NotBeNull();
+        var before = beforeList!.Single(m => m.Name == originalFileName);
+        before.Width.Should().BeNull();
+        before.Height.Should().BeNull();
+        before.OriginalWidth.Should().BeNull();
+        before.OriginalHeight.Should().BeNull();
+
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
+
+        var reoptimizeResponse = await Request(HttpMethod.Post, "/api/media/reoptimize", new { });
+        reoptimizeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var afterList = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?filter[where][scopeUid][eq]={scopeUid}",
+            HttpStatusCode.OK);
+
+        afterList.Should().NotBeNull();
+        var after = afterList!.Single(m => m.OriginalName == originalFileName);
+        after.Extension.Should().Be(".avif");
+        after.MimeType.Should().Be("image/avif");
+        after.Width.Should().NotBeNull();
+        after.Height.Should().NotBeNull();
+        after.OriginalWidth.Should().NotBeNull();
+        after.OriginalHeight.Should().NotBeNull();
+    }
+
     public async Task<bool> CreateAndGetMedia(string fileName, int fileSize)
     {
         var testMedia = new TestMedia(fileName, fileSize);
@@ -138,6 +262,21 @@ public class MediaTests : BaseTestAutoLogin
         return mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static byte[] LoadEmbeddedResource(string fileName)
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        var resourcePath = assembly.GetManifestResourceNames().Single(name => name.EndsWith(fileName));
+        using var stream = assembly.GetManifestResourceStream(resourcePath);
+        if (stream == null)
+        {
+            throw new FileNotFoundException($"Embedded resource '{fileName}' not found.");
+        }
+
+        using var memory = new MemoryStream();
+        stream.CopyTo(memory);
+        return memory.ToArray();
+    }
+
     private bool CompareStreams(Stream s1, Stream s2)
     {
         if (s1.Length != s2.Length)
@@ -166,6 +305,40 @@ public class MediaTests : BaseTestAutoLogin
         }
 
         return (string.Empty, false);
+    }
+
+    private async Task SetSystemSettingAsync(string key, string value)
+    {
+        var url = $"/api/settings/system/{Uri.EscapeDataString(key)}?value={Uri.EscapeDataString(value)}";
+        var response = await Request(HttpMethod.Put, url, null);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    private async Task<MediaDetailsDto> UploadMediaAsync(byte[] bytes, string fileName, string scopeUid)
+    {
+        var contentTypeProvider = new FileExtensionContentTypeProvider();
+        contentTypeProvider.TryGetContentType(fileName, out var contentType);
+
+        var form = new MultipartFormDataContent();
+        var fileContent = new StreamContent(new MemoryStream(bytes));
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType ?? "application/octet-stream");
+        form.Add(fileContent, "File", fileName);
+        form.Add(new StringContent(scopeUid), "ScopeUid");
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/media")
+        {
+            Content = form,
+        };
+        request.Headers.Authorization = GetAuthenticationHeaderValue();
+
+        var response = await client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var media = await response.Content.ReadFromJsonAsync<MediaDetailsDto>();
+        media.Should().NotBeNull();
+        media!.Location.Should().NotBeNullOrWhiteSpace();
+
+        return media;
     }
 
     private async Task<Stream?> GetImageTest(string url, HttpStatusCode expectedCode = HttpStatusCode.OK)

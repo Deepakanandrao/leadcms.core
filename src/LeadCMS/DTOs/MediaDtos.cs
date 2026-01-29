@@ -84,3 +84,10 @@ public class MediaDetailsDto
 
     public DateTime? UpdatedAt { get; set; }
 }
+
+public class MediaReoptimizeResponseDto
+{
+    public int Updated { get; set; }
+
+    public string? Message { get; set; }
+}
