@@ -105,9 +105,56 @@ public class AIAssistanceTests : BaseTestAutoLogin
 
         var lastRequest = TestAIProviderService.GetLastImageRequest();
         lastRequest.Should().NotBeNull();
-        lastRequest!.Prompt.Should().Contain(editRequest.Prompt);
+        lastRequest!.Prompt.Should().Be(editRequest.Prompt);
         lastRequest.EditImage.Should().NotBeNull();
         lastRequest.EditImage!.FileName.Should().EndWith(".png");
+        lastRequest.EditImage.MimeType.Should().Be("image/png");
+    }
+
+    [Fact]
+    public async Task CoverImageEdit_UsesOriginalImageWhenAvailable()
+    {
+        var originalBytes = LoadEmbeddedResource("cover-sample.png");
+        var createdCover = await UploadMediaAsync(originalBytes, "optimized-cover.avif", "blog/article/original-edit");
+
+        var dbContext = App.GetDbContext();
+        var media = dbContext!.Media!
+            .First(m => m.ScopeUid == createdCover.ScopeUid && m.Name == createdCover.Name);
+
+        media.OriginalData = originalBytes;
+        media.OriginalExtension = ".png";
+        media.OriginalMimeType = "image/png";
+        media.OriginalName = "original-cover.png";
+        media.MimeType = "image/avif";
+        media.Extension = ".avif";
+        media.Name = "optimized-cover.avif";
+
+        await dbContext.SaveChangesAsync();
+
+        var editRequest = new CoverImageEditRequest
+        {
+            CoverImageUrl = createdCover.Location,
+            ContentTitle = "Edit Using Original",
+            ContentDescription = "Ensure edits send original image data.",
+            Prompt = "Add a subtle highlight",
+        };
+
+        var response = await PostTest<MediaDetailsDto>("/api/content/ai-cover/edit", editRequest, HttpStatusCode.OK);
+
+        response.Should().NotBeNull();
+        response!.OriginalName.Should().NotBeNullOrWhiteSpace();
+        response.OriginalExtension.Should().NotBeNullOrWhiteSpace();
+        response.OriginalMimeType.Should().NotBeNullOrWhiteSpace();
+        response.OriginalSize.Should().NotBeNull();
+        response.Width.Should().NotBeNull();
+        response.Height.Should().NotBeNull();
+        response.OriginalWidth.Should().NotBeNull();
+        response.OriginalHeight.Should().NotBeNull();
+
+        var lastRequest = TestAIProviderService.GetLastImageRequest();
+        lastRequest.Should().NotBeNull();
+        lastRequest!.EditImage.Should().NotBeNull();
+        lastRequest.EditImage!.FileName.Should().Be("original-cover.png");
         lastRequest.EditImage.MimeType.Should().Be("image/png");
     }
 
@@ -236,6 +283,17 @@ public class AIAssistanceTests : BaseTestAutoLogin
 
         var sampleBytes = LoadEmbeddedResource("cover-sample.png");
         var sampleMedia = await UploadMediaAsync(sampleBytes, "sample-cover.png", "blog/article/some-name");
+        var dbContext = App.GetDbContext();
+        var sampleEntity = dbContext!.Media!
+            .First(m => m.ScopeUid == sampleMedia.ScopeUid && m.Name == sampleMedia.Name);
+        sampleEntity.OriginalData = sampleBytes;
+        sampleEntity.OriginalExtension = ".png";
+        sampleEntity.OriginalMimeType = "image/png";
+        sampleEntity.OriginalName = "sample-cover-original.png";
+        sampleEntity.Data = new byte[] { 1, 2, 3, 4 };
+        sampleEntity.Extension = ".avif";
+        sampleEntity.MimeType = "image/avif";
+        await dbContext.SaveChangesAsync();
 
         var request = new CoverImageGenerationRequest
         {
@@ -254,10 +312,57 @@ public class AIAssistanceTests : BaseTestAutoLogin
 
         var lastRequest = TestAIProviderService.GetLastImageRequest();
         lastRequest.Should().NotBeNull();
+        lastRequest!.Prompt.Should().Contain(sampleEntity.OriginalName!);
         lastRequest!.SampleImages.Should().HaveCount(1);
-        lastRequest.SampleImages[0].FileName.Should().Be(sampleMedia.Name);
-        lastRequest.SampleImages[0].MimeType.Should().Be(sampleMedia.MimeType);
-        lastRequest.SampleImages[0].Data.Should().NotBeNullOrEmpty();
+        lastRequest.SampleImages[0].FileName.Should().Be(sampleEntity.OriginalName);
+        lastRequest.SampleImages[0].MimeType.Should().Be(sampleEntity.OriginalMimeType);
+        lastRequest.SampleImages[0].Data.Should().BeEquivalentTo(sampleBytes);
+    }
+
+    [Fact]
+    public async Task CoverImageGeneration_WithoutSampleImagePaths_UsesRecentCoverImages()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        TrackEntityType<Content>();
+
+        var sampleBytes = LoadEmbeddedResource("cover-sample.png");
+        var sampleMedia = await UploadMediaAsync(sampleBytes, "recent-cover.png", "recent-cover-scope");
+
+        var contentCreate = new ContentCreateDto
+        {
+            Title = "Recent Cover Content",
+            Description = "This content references a cover image for sampling.",
+            Body = "Body for recent cover content.",
+            Slug = "recent-cover-content",
+            Type = "blog-post",
+            Author = "Tester",
+            Language = "en",
+            Category = "Product",
+            Tags = new[] { "Tag1" },
+            AllowComments = true,
+            CoverImageUrl = $"/api/media/{sampleMedia.ScopeUid}/{sampleMedia.Name}",
+        };
+
+        await PostTest("/api/content", contentCreate, HttpStatusCode.Created);
+
+        var request = new CoverImageGenerationRequest
+        {
+            ContentTitle = "Auto Samples",
+            ContentDescription = "No sample paths provided, should use recent covers.",
+            ContentSlug = "ai-cover-auto-samples",
+        };
+
+        var response = await PostTest<MediaDetailsDto>("/api/content/ai-cover", request, HttpStatusCode.OK);
+
+        response.Should().NotBeNull();
+
+        var lastRequest = TestAIProviderService.GetLastImageRequest();
+        lastRequest.Should().NotBeNull();
+        lastRequest!.SampleImages.Should().NotBeEmpty();
+        lastRequest.SampleImages.Should().Contain(s => s.FileName == sampleMedia.Name);
+        lastRequest.Prompt.Should().Contain(sampleMedia.Name);
     }
 
     [Fact]
@@ -291,10 +396,63 @@ public class AIAssistanceTests : BaseTestAutoLogin
         var lastRequest = TestAIProviderService.GetLastImageRequest();
         lastRequest.Should().NotBeNull();
         lastRequest!.EditImage.Should().NotBeNull();
+        lastRequest.Prompt.Should().Contain(editRequest.Prompt);
+        lastRequest.Prompt.Should().Contain(sampleMedia.Name);
         lastRequest.SampleImages.Should().HaveCount(1);
         lastRequest.SampleImages[0].FileName.Should().Be(sampleMedia.Name);
         lastRequest.SampleImages[0].MimeType.Should().Be(sampleMedia.MimeType);
         lastRequest.SampleImages[0].Data.Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public async Task CoverImageEdit_WithoutSampleImagePaths_DoesNotUseRecentCoverImages()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        TrackEntityType<Content>();
+
+        var sampleBytes = LoadEmbeddedResource("cover-sample.png");
+        var recentMedia = await UploadMediaAsync(sampleBytes, "recent-cover.png", "recent-cover-scope");
+
+        var contentCreate = new ContentCreateDto
+        {
+            Title = "Recent Cover Content",
+            Description = "This content references a cover image for sampling.",
+            Body = "Body for recent cover content.",
+            Slug = "recent-cover-content-edit",
+            Type = "blog-post",
+            Author = "Tester",
+            Language = "en",
+            Category = "Product",
+            Tags = new[] { "Tag1" },
+            AllowComments = true,
+            CoverImageUrl = $"/api/media/{recentMedia.ScopeUid}/{recentMedia.Name}",
+        };
+
+        await PostTest("/api/content", contentCreate, HttpStatusCode.Created);
+
+        var coverBytes = LoadEmbeddedResource("cover-sample.png");
+        var createdCover = await UploadMediaAsync(coverBytes, "edit-cover.png", "blog/article/edit-no-samples");
+
+        var editRequest = new CoverImageEditRequest
+        {
+            CoverImageUrl = createdCover.Location,
+            ContentTitle = "Edit Without Samples",
+            ContentDescription = "Editing cover image without samples.",
+            Prompt = "Add subtle highlights",
+        };
+
+        var response = await PostTest<MediaDetailsDto>("/api/content/ai-cover/edit", editRequest, HttpStatusCode.OK);
+
+        response.Should().NotBeNull();
+
+        var lastRequest = TestAIProviderService.GetLastImageRequest();
+        lastRequest.Should().NotBeNull();
+        lastRequest!.EditImage.Should().NotBeNull();
+        lastRequest.SampleImages.Should().BeEmpty();
+        lastRequest.Prompt.Should().NotContain(recentMedia.Name);
+        lastRequest.Prompt.Should().Be(editRequest.Prompt);
     }
 
     [Fact]
@@ -311,7 +469,6 @@ public class AIAssistanceTests : BaseTestAutoLogin
   ""coverImageAlt"": ""Cover alt""
 }");
 
-        await EnsureContentTypeExists("blog-post");
         TrackEntityType<Content>();
         await PostTest("/api/content", new TestContent("-ai"));
 
@@ -347,7 +504,6 @@ public class AIAssistanceTests : BaseTestAutoLogin
   ""category"": ""Edited""
 }");
 
-        await EnsureContentTypeExists("blog-post");
         var request = new ContentEditRequest
         {
             Prompt = "Shorten the content",
@@ -388,27 +544,6 @@ public class AIAssistanceTests : BaseTestAutoLogin
         using var memory = new MemoryStream();
         stream.CopyTo(memory);
         return memory.ToArray();
-    }
-
-    private async Task EnsureContentTypeExists(string uid)
-    {
-        TrackEntityType<ContentType>();
-
-        var existing = await GetTest<List<ContentTypeDetailsDto>>("/api/content-types", HttpStatusCode.OK);
-        if (existing != null && existing.Exists(t => t.Uid == uid))
-        {
-            return;
-        }
-
-        var createRequest = new ContentTypeCreateDto
-        {
-            Uid = uid,
-            Format = ContentFormat.MD,
-            SupportsComments = true,
-            SupportsCoverImage = true,
-        };
-
-        await PostTest("/api/content-types", createRequest, HttpStatusCode.Created);
     }
 
     private async Task SetSystemSettingAsync(string key, string value)

@@ -5,6 +5,7 @@
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using ImageMagick;
 using LeadCMS.Core.AIAssistance.DTOs;
@@ -25,6 +26,9 @@ public class OpenAIProviderService : IAIProviderService
             "image/png",
             "image/webp",
         };
+
+    private static readonly object LogLock = new object();
+    private static readonly string LogFilePath = ResolveLogFilePath();
 
     private readonly HttpClient httpClient;
     private readonly string apiKey;
@@ -50,6 +54,8 @@ public class OpenAIProviderService : IAIProviderService
             {
                 throw new AIProviderException(ProviderName, "OpenAI API key is not configured.");
             }
+
+            RecordAndLog("Text", BuildTextRequestLog(request));
 
             // Calculate input character counts for logging
             var systemPromptChars = request.SystemPrompt?.Length ?? 0;
@@ -206,8 +212,11 @@ public class OpenAIProviderService : IAIProviderService
             }
 
             var quality = BuildQualityString(request.Quality);
-            var hasReferenceImages = (request.SampleImages != null && request.SampleImages.Count > 0) || request.EditImage != null;
-            var prompt = BuildPromptWithSizeGuidance(request.Prompt, request.Width, request.Height, hasReferenceImages);
+            var sizeValue = SelectOpenAiImageSize(request.Width, request.Height);
+            var prompt = BuildViewportGuidance(request.Prompt, request.Width, request.Height);
+
+            var includePrompt = !string.IsNullOrWhiteSpace(request.Prompt);
+            RecordAndLog("Image", BuildImageRequestLog(request, prompt, includePrompt));
 
             if (request.EditImage != null)
             {
@@ -215,16 +224,17 @@ public class OpenAIProviderService : IAIProviderService
                     prompt,
                     NormalizeImageInputForOpenAi(request.EditImage),
                     request.SampleImages ?? new List<ImageInput>(),
-                    quality);
+                    quality,
+                    sizeValue);
             }
 
             if (request.SampleImages != null && request.SampleImages.Count > 0)
             {
                 var normalizedSamples = request.SampleImages.Select(NormalizeImageInputForOpenAi).ToList();
-                return await GenerateImageEditAsync(prompt, null, normalizedSamples, quality);
+                return await GenerateImageEditAsync(prompt, null, normalizedSamples, quality, sizeValue);
             }
 
-            return await GenerateImageFromPromptAsync(prompt, quality);
+            return await GenerateImageFromPromptAsync(prompt, quality, sizeValue);
         }
         catch (Exception ex)
         {
@@ -276,6 +286,106 @@ public class OpenAIProviderService : IAIProviderService
         }
 
         return string.Join("\n", texts);
+    }
+
+    private static void RecordAndLog(string requestType, string logBody)
+    {
+        lock (LogLock)
+        {
+            try
+            {
+                var header = $"==== OpenAI Request ({requestType}) | {DateTimeOffset.UtcNow:O} ====";
+                var entry = string.Join(
+                    System.Environment.NewLine,
+                    string.Empty,
+                    string.Empty,
+                    header,
+                    logBody,
+                    "==== End Request ====",
+                    string.Empty,
+                    string.Empty);
+                System.IO.File.AppendAllText(LogFilePath, entry);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Failed to write OpenAI request log.");
+            }
+        }
+    }
+
+    private static string BuildTextRequestLog(TextGenerationRequest request)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("System Prompt:");
+        builder.AppendLine(string.IsNullOrWhiteSpace(request.SystemPrompt) ? "(empty)" : request.SystemPrompt);
+        builder.AppendLine();
+        builder.AppendLine("User Prompt:");
+        builder.AppendLine(string.IsNullOrWhiteSpace(request.UserPrompt) ? "(empty)" : request.UserPrompt);
+        builder.AppendLine();
+        var images = request.Images ?? new List<TextImageInput>();
+        if (images.Count == 0)
+        {
+            return builder.ToString();
+        }
+
+        builder.AppendLine("Attached Images:");
+
+        for (var i = 0; i < images.Count; i++)
+        {
+            builder.AppendLine($"- {FormatTextImageInput(images[i], i + 1)}");
+        }
+
+        return builder.ToString();
+    }
+
+    private static string BuildImageRequestLog(ImageGenerationRequest request, string prompt, bool includePrompt)
+    {
+        var builder = new StringBuilder();
+        if (includePrompt && !string.IsNullOrWhiteSpace(prompt))
+        {
+            builder.AppendLine("Prompt:");
+            builder.AppendLine(prompt);
+        }
+
+        if (request.EditImage != null)
+        {
+            builder.AppendLine();
+            builder.AppendLine("Edit Image:");
+            builder.AppendLine(FormatImageInput(request.EditImage));
+        }
+
+        var samples = request.SampleImages ?? new List<ImageInput>();
+        if (samples.Count == 0)
+        {
+            return builder.ToString();
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("Sample Images:");
+
+        for (var i = 0; i < samples.Count; i++)
+        {
+            builder.AppendLine($"- {FormatImageInput(samples[i], i + 1)}");
+        }
+
+        return builder.ToString();
+    }
+
+    private static string FormatImageInput(ImageInput image, int? index = null)
+    {
+        var defaultName = index.HasValue ? $"image_{index}" : "image";
+        var fileName = string.IsNullOrWhiteSpace(image.FileName) ? defaultName : image.FileName;
+        var mimeType = string.IsNullOrWhiteSpace(image.MimeType) ? "unknown" : image.MimeType;
+        var byteCount = image.Data?.Length ?? 0;
+        return $"{fileName} | {mimeType} | {byteCount} bytes";
+    }
+
+    private static string FormatTextImageInput(TextImageInput image, int index)
+    {
+        var fileName = string.IsNullOrWhiteSpace(image.FileName) ? $"image_{index}" : image.FileName;
+        var mimeType = string.IsNullOrWhiteSpace(image.MimeType) ? "unknown" : image.MimeType;
+        var byteCount = image.Data?.Length ?? 0;
+        return $"{fileName} | {mimeType} | {byteCount} bytes";
     }
 
     private static TextImageInput NormalizeVisionImage(TextImageInput image)
@@ -381,28 +491,6 @@ public class OpenAIProviderService : IAIProviderService
         return Path.ChangeExtension(originalFileName, extension);
     }
 
-    private static string BuildPromptWithSizeGuidance(string prompt, int? width, int? height, bool hasSampleImages)
-    {
-        var sizeHint = width.HasValue && height.HasValue ? $"{width.Value}x{height.Value}" : null;
-        if (string.IsNullOrWhiteSpace(sizeHint) && !hasSampleImages)
-        {
-            return prompt;
-        }
-
-        var guidance = new List<string>();
-        if (hasSampleImages)
-        {
-            guidance.Add("Match the output dimensions and aspect ratio of the provided sample images when possible.");
-        }
-
-        if (!string.IsNullOrWhiteSpace(sizeHint))
-        {
-            guidance.Add($"If no sample dimensions apply, target image size: {sizeHint}.");
-        }
-
-        return string.Join("\n\n", new[] { prompt, "Image size guidance:", string.Join(" ", guidance) }.Where(p => !string.IsNullOrWhiteSpace(p)));
-    }
-
     private static string BuildQualityString(string? quality)
     {
         if (string.IsNullOrWhiteSpace(quality))
@@ -436,6 +524,14 @@ public class OpenAIProviderService : IAIProviderService
             ".webp" => "image/webp",
             _ => "application/octet-stream",
         };
+    }
+
+    private static string ResolveLogFilePath()
+    {
+        var baseDirectory = Directory.GetCurrentDirectory();
+        var logDirectory = Path.Combine(baseDirectory, "TestOutputs");
+        Directory.CreateDirectory(logDirectory);
+        return Path.Combine(logDirectory, "openai-requests.log");
     }
 
     private static ImageGenerationResponse ParseImageResponse(string responseBody, string model)
@@ -507,7 +603,46 @@ public class OpenAIProviderService : IAIProviderService
         return responseBody;
     }
 
-    private async Task<ImageGenerationResponse> GenerateImageFromPromptAsync(string prompt, string quality)
+    private static string SelectOpenAiImageSize(int? width, int? height)
+    {
+        if (!width.HasValue || !height.HasValue || width <= 0 || height <= 0)
+        {
+            return "auto";
+        }
+
+        var ratio = (double)width.Value / height.Value;
+        var candidates = new Dictionary<string, double>
+        {
+            ["1024x1024"] = 1d,
+            ["1024x1536"] = 1024d / 1536d,
+            ["1536x1024"] = 1536d / 1024d,
+        };
+
+        return candidates
+            .OrderBy(pair => Math.Abs(ratio - pair.Value))
+            .First()
+            .Key;
+    }
+
+    private static string BuildViewportGuidance(string? prompt, int? width, int? height)
+    {
+        var basePrompt = prompt ?? string.Empty;
+        if (!width.HasValue || !height.HasValue || width <= 0 || height <= 0)
+        {
+            return basePrompt;
+        }
+
+        var guidance =
+            $"Compose the main subject so it stays fully inside a centered safe rectangle of {width.Value}x{height.Value} px. " +
+            $"This allows a {width.Value}x{height.Value} crop without cutting the subject.";
+
+        return string.Join("\n\n", new[] { basePrompt, guidance }.Where(part => !string.IsNullOrWhiteSpace(part)));
+    }
+
+    private async Task<ImageGenerationResponse> GenerateImageFromPromptAsync(
+        string prompt,
+        string quality,
+        string sizeValue)
     {
         var payload = new Dictionary<string, object>
         {
@@ -515,6 +650,9 @@ public class OpenAIProviderService : IAIProviderService
             ["prompt"] = prompt,
             ["output_format"] = "png",
             ["quality"] = quality,
+            ["moderation"] = "auto",
+            ["background"] = "auto",
+            ["size"] = sizeValue,
         };
 
         using var response = await httpClient.PostAsJsonAsync("images/generations", payload);
@@ -532,13 +670,17 @@ public class OpenAIProviderService : IAIProviderService
         string prompt,
         ImageInput? editImage,
         List<ImageInput> sampleImages,
-        string quality)
+        string quality,
+        string sizeValue)
     {
         using var content = new MultipartFormDataContent();
         content.Add(new StringContent(ImageModel), "model");
         content.Add(new StringContent(prompt), "prompt");
         content.Add(new StringContent("png"), "output_format");
         content.Add(new StringContent(quality), "quality");
+        content.Add(new StringContent("auto"), "moderation");
+        content.Add(new StringContent("auto"), "background");
+        content.Add(new StringContent(sizeValue), "size");
 
         if (editImage != null)
         {

@@ -22,9 +22,6 @@ public class CoverImageGenerationService : ICoverImageGenerationService
     private const int MaxSampleImages = 5;
     private const int DefaultSampleCount = 3;
     private const string DefaultFileName = "cover.png";
-    private const string DefaultCoverImageRequirements =
-        "Prefer compact file sizes suitable for web delivery; avoid fine noise and excessive detail that inflates PNG size.";
-
     private readonly PgDbContext dbContext;
     private readonly IImageGenerationService imageGenerationService;
     private readonly ISettingService settingService;
@@ -146,7 +143,7 @@ public class CoverImageGenerationService : ICoverImageGenerationService
             throw new AIProviderException("CoverImageEdit", "Existing cover image media was not found.");
         }
 
-        var sampleImages = await GetSampleImagesAsync(request.SampleImagePaths);
+        var sampleImages = await GetSampleImagesAsync(request.SampleImagePaths, allowRecentFallback: false);
         sampleImages = sampleImages
             .Where(s => !string.Equals(s.ScopeUid, existingMedia.ScopeUid, StringComparison.OrdinalIgnoreCase) ||
                         !string.Equals(s.FileName, existingMedia.Name, StringComparison.OrdinalIgnoreCase))
@@ -156,11 +153,16 @@ public class CoverImageGenerationService : ICoverImageGenerationService
         var coverImageSize = await GetCoverImageSizeAsync();
         var (width, height, quality) = DetermineImageSettings(coverImageSize, coverImageRequirements);
 
-        var prompt = BuildEditPrompt(request, sampleImages, coverImageRequirements);
+        var hasOriginal = existingMedia.OriginalData != null && existingMedia.OriginalData.Length > 0;
+        var editImageData = hasOriginal ? existingMedia.OriginalData! : existingMedia.Data;
+        var editImageMimeType = hasOriginal
+            ? (existingMedia.OriginalMimeType ?? existingMedia.MimeType)
+            : existingMedia.MimeType;
+        var editImageName = EnsureImageFileName(
+            hasOriginal ? existingMedia.OriginalName : existingMedia.Name,
+            editImageMimeType);
 
-        var editImageData = existingMedia.OriginalData ?? existingMedia.Data;
-        var editImageMimeType = existingMedia.OriginalMimeType ?? existingMedia.MimeType;
-        var editImageName = EnsureImageFileName(existingMedia.OriginalName ?? existingMedia.Name, editImageMimeType);
+        var prompt = BuildEditPrompt(request, sampleImages);
 
         var imageRequest = new ImageGenerationRequest
         {
@@ -210,10 +212,18 @@ public class CoverImageGenerationService : ICoverImageGenerationService
             Location = $"/api/media/{updatedMedia.ScopeUid}/{updatedMedia.Name}",
             ScopeUid = updatedMedia.ScopeUid,
             Name = updatedMedia.Name,
+            OriginalName = updatedMedia.OriginalName,
             Description = updatedMedia.Description,
             Size = updatedMedia.Size,
+            OriginalSize = updatedMedia.OriginalSize,
+            Width = updatedMedia.Width,
+            Height = updatedMedia.Height,
+            OriginalWidth = updatedMedia.OriginalWidth,
+            OriginalHeight = updatedMedia.OriginalHeight,
             Extension = updatedMedia.Extension,
+            OriginalExtension = updatedMedia.OriginalExtension,
             MimeType = updatedMedia.MimeType,
+            OriginalMimeType = updatedMedia.OriginalMimeType,
             Tags = updatedMedia.Tags,
             UsageCount = updatedMedia.UsageCount,
             CreatedAt = updatedMedia.CreatedAt,
@@ -243,14 +253,19 @@ public class CoverImageGenerationService : ICoverImageGenerationService
         if (sampleImages.Count > 0)
         {
             promptParts.Add("\nStyle guidance based on existing cover images in this blog:");
-            var descriptionsWithContent = sampleImages
-                .Where(s => !string.IsNullOrWhiteSpace(s.Description))
-                .Select((s, i) => $"- Sample {i + 1}: {s.Description}")
+            var references = sampleImages
+                .Select((s, i) =>
+                {
+                    var description = string.IsNullOrWhiteSpace(s.Description)
+                        ? string.Empty
+                        : $" — {s.Description}";
+                    return $"- Sample {i + 1}: {s.FileName}{description}";
+                })
                 .ToList();
 
-            if (descriptionsWithContent.Count > 0)
+            if (references.Count > 0)
             {
-                promptParts.AddRange(descriptionsWithContent);
+                promptParts.AddRange(references);
                 promptParts.Add("Please maintain visual consistency with these existing cover images.");
             }
             else
@@ -277,46 +292,35 @@ public class CoverImageGenerationService : ICoverImageGenerationService
 
     private static string BuildEditPrompt(
         CoverImageEditRequest request,
-        List<SampleImageInfo> sampleImages,
-        string? coverImageRequirements)
+        List<SampleImageInfo> sampleImages)
     {
-        var promptParts = new List<string>();
-
-        promptParts.Add("Edit the existing cover image for the following article:");
-        promptParts.Add($"Content Title: {request.ContentTitle}");
-        promptParts.Add($"Content Description: {request.ContentDescription}");
-
-        promptParts.Add($"\nEdit instructions from user: {request.Prompt}");
-
-        promptParts.Add("\nImage inputs:");
-        promptParts.Add("- The first provided image is the current cover image to edit.");
+        var promptParts = new List<string>
+        {
+            request.Prompt,
+        };
 
         if (sampleImages.Count > 0)
         {
-            promptParts.Add("- Additional images are style references only; do not copy or alter them.");
+            promptParts.Add(string.Empty);
+            promptParts.Add("Sample images:");
 
-            var descriptionsWithContent = sampleImages
-                .Where(s => !string.IsNullOrWhiteSpace(s.Description))
-                .Select((s, i) => $"- Reference {i + 1}: {s.Description}")
+            var references = sampleImages
+                .Select((s, i) =>
+                {
+                    var description = string.IsNullOrWhiteSpace(s.Description)
+                        ? string.Empty
+                        : $" — {s.Description}";
+                    return $"- Reference {i + 1}: {s.FileName}{description}";
+                })
                 .ToList();
 
-            if (descriptionsWithContent.Count > 0)
+            if (references.Count > 0)
             {
-                promptParts.AddRange(descriptionsWithContent);
+                promptParts.AddRange(references);
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(coverImageRequirements))
-        {
-            promptParts.Add($"\nBlog cover image style requirements: {coverImageRequirements}");
-        }
-
-        promptParts.Add("\nGeneral guidelines:");
-        promptParts.Add("- Preserve the main subject and composition unless the user requests otherwise");
-        promptParts.Add("- Keep the image suitable for a blog cover (clear focal point, readable overlays)");
-        promptParts.Add("- Ensure visual consistency with existing blog covers");
-
-        return string.Join("\n", promptParts);
+        return string.Join("\n", promptParts.Where(part => !string.IsNullOrWhiteSpace(part)));
     }
 
     private static (string ScopeUid, string FileName) ParseMediaUrl(string url)
@@ -457,7 +461,68 @@ public class CoverImageGenerationService : ICoverImageGenerationService
         };
     }
 
-    private async Task<List<SampleImageInfo>> GetSampleImagesAsync(List<string>? userProvidedPaths)
+    private static void TrySetImageDimensions(
+        Media media,
+        string originalMimeType,
+        byte[] originalData,
+        string optimizedMimeType,
+        byte[] optimizedData)
+    {
+        if (!originalMimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) &&
+            !optimizedMimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (originalMimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                using var originalImage = new MagickImage(originalData);
+                media.OriginalWidth = (int)originalImage.Width;
+                media.OriginalHeight = (int)originalImage.Height;
+            }
+            catch
+            {
+                // Ignore dimension extraction failures
+            }
+        }
+
+        if (optimizedMimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                using var optimizedImage = new MagickImage(optimizedData);
+                media.Width = (int)optimizedImage.Width;
+                media.Height = (int)optimizedImage.Height;
+            }
+            catch
+            {
+                // Ignore dimension extraction failures
+            }
+        }
+    }
+
+    private static SampleImageInfo CreateSampleImageInfo(Media media)
+    {
+        var hasOriginal = media.OriginalData != null && media.OriginalData.Length > 0;
+        var data = hasOriginal ? media.OriginalData! : media.Data;
+        var mimeType = hasOriginal ? (media.OriginalMimeType ?? media.MimeType) : media.MimeType;
+        var fileName = hasOriginal ? (media.OriginalName ?? media.Name) : media.Name;
+
+        return new SampleImageInfo
+        {
+            ScopeUid = media.ScopeUid,
+            FileName = fileName,
+            Description = media.Description,
+            MimeType = mimeType,
+            Data = data,
+        };
+    }
+
+    private async Task<List<SampleImageInfo>> GetSampleImagesAsync(
+        List<string>? userProvidedPaths,
+        bool allowRecentFallback = true)
     {
         var sampleImages = new List<SampleImageInfo>();
 
@@ -480,14 +545,7 @@ public class CoverImageGenerationService : ICoverImageGenerationService
 
                 if (media != null)
                 {
-                    sampleImages.Add(new SampleImageInfo
-                    {
-                        ScopeUid = media.ScopeUid,
-                        FileName = media.Name,
-                        Description = media.Description,
-                        MimeType = media.MimeType,
-                        Data = media.Data,
-                    });
+                    sampleImages.Add(CreateSampleImageInfo(media));
                 }
                 else
                 {
@@ -497,7 +555,7 @@ public class CoverImageGenerationService : ICoverImageGenerationService
         }
 
         // If no user-provided samples or none found, get from recent content with cover images
-        if (sampleImages.Count == 0)
+        if (sampleImages.Count == 0 && allowRecentFallback)
         {
             sampleImages = await GetRecentCoverImagesAsync(DefaultSampleCount);
         }
@@ -538,14 +596,7 @@ public class CoverImageGenerationService : ICoverImageGenerationService
 
             if (media != null)
             {
-                sampleImages.Add(new SampleImageInfo
-                {
-                    ScopeUid = media.ScopeUid,
-                    FileName = media.Name,
-                    Description = media.Description,
-                    MimeType = media.MimeType,
-                    Data = media.Data,
-                });
+                sampleImages.Add(CreateSampleImageInfo(media));
             }
         }
 
@@ -557,7 +608,7 @@ public class CoverImageGenerationService : ICoverImageGenerationService
     {
         var requirements = await settingService.GetSystemSettingAsync(AiSettingKeys.BlogCoverInstructions);
         return string.IsNullOrWhiteSpace(requirements)
-            ? DefaultCoverImageRequirements
+            ? null
             : requirements;
     }
 
@@ -682,17 +733,19 @@ public class CoverImageGenerationService : ICoverImageGenerationService
         }
         else
         {
-            existingMedia.OriginalData = null;
-            existingMedia.OriginalSize = null;
-            existingMedia.OriginalExtension = null;
-            existingMedia.OriginalMimeType = null;
-            existingMedia.OriginalName = null;
             existingMedia.Data = coverResult.Data;
             existingMedia.Size = coverResult.Size;
             existingMedia.Extension = originalExtension;
             existingMedia.MimeType = originalMimeType;
             existingMedia.Name = originalName;
         }
+
+        TrySetImageDimensions(
+            existingMedia,
+            originalMimeType,
+            imageData,
+            optimizationResult.MimeType,
+            coverResult.Data);
 
         existingMedia.Description = string.IsNullOrWhiteSpace(title) ? existingMedia.Description : title;
         existingMedia.Tags = new[] { "cover" };
