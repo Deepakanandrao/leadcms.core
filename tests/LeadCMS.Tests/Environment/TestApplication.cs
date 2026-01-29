@@ -147,6 +147,7 @@ public class TestApplication : WebApplicationFactory<Program>
 
     protected override IHost CreateHost(IHostBuilder builder)
     {
+        builder.UseEnvironment("Test");
         builder.ConfigureServices((context, services) =>
         {
             services.AddScoped<TestPluginDbContext, TestPluginDbContext>();

@@ -61,7 +61,7 @@ public class Program
         ConfigureLogs(builder);
         PluginManager.Init(builder.Configuration);
 
-        if (builder.Environment.IsDevelopment())
+        if (builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Test"))
         {
             builder.Configuration.AddUserSecrets<Program>(optional: true, reloadOnChange: true);
         }
@@ -649,7 +649,7 @@ public class Program
                     .AllowAnyMethod()
                     .AllowCredentials()
                     .AllowAnyHeader();
-                if (builder.Environment.IsDevelopment())
+                if (builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Test"))
                 {
                     policy.SetIsOriginAllowed(origin => true);
                     return;
