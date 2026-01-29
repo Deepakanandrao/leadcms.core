@@ -19,16 +19,5 @@ public static class AiSettingKeys
 
     public const string StyleExamples = "AI.SiteProfile.StyleExamples";
 
-    // AI file search sync metadata
-    public const string VectorStoreId = "AI.FileSearch.VectorStoreId";
-
-    public const string ContentFileId = "AI.FileSearch.ContentFileId";
-
-    public const string MediaFileId = "AI.FileSearch.MediaFileId";
-
-    public const string ContentLastSyncAt = "AI.FileSearch.ContentLastSyncAt";
-
-    public const string MediaLastSyncAt = "AI.FileSearch.MediaLastSyncAt";
-
-    public const string FileSyncStatus = "AI.FileSearch.FileSyncStatus";
+    public const string BlogCoverInstructions = "AI.SiteProfile.BlogCover.Instructions";
 }

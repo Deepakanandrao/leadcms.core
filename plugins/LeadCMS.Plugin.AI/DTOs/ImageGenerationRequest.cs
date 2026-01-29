@@ -12,9 +12,30 @@ public class ImageGenerationRequest
     [MinLength(1, ErrorMessage = "Prompt cannot be empty")]
     public string Prompt { get; set; } = string.Empty;
 
-    public string Size { get; set; } = "1024x1024";
+    public string Quality { get; set; } = "Auto";
 
-    public string Quality { get; set; } = "standard";
+    public string Style { get; set; } = "Auto";
 
-    public string Style { get; set; } = "vivid";
+    public int? Width { get; set; }
+
+    public int? Height { get; set; }
+
+    /// <summary>
+    /// Gets or sets the primary image to edit, when performing image edits.
+    /// </summary>
+    public ImageInput? EditImage { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional reference images used for style guidance.
+    /// </summary>
+    public List<ImageInput>? SampleImages { get; set; }
+}
+
+public sealed class ImageInput
+{
+    public byte[] Data { get; set; } = Array.Empty<byte>();
+
+    public string FileName { get; set; } = "image.png";
+
+    public string? MimeType { get; set; }
 }

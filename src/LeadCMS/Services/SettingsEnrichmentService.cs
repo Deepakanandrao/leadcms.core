@@ -95,6 +95,40 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
     }
 
     /// <summary>
+    /// Enriches settings dictionary with media optimization defaults.
+    /// </summary>
+    /// <param name="settings">Dictionary of settings to enrich.</param>
+    /// <param name="userId">Optional user ID for user-level settings.</param>
+    public async Task EnrichWithMediaSettingsAsync(Dictionary<string, string?> settings, string? userId = null)
+    {
+        var maxDimensions = await settingService.GetSettingWithFallbackAsync(
+            SettingKeys.MediaMaxDimensions,
+            ConfigurationPaths.GetConfigurationPath(SettingKeys.MediaMaxDimensions),
+            userId);
+        var coverDimensions = await settingService.GetSettingWithFallbackAsync(
+            SettingKeys.MediaCoverDimensions,
+            ConfigurationPaths.GetConfigurationPath(SettingKeys.MediaCoverDimensions),
+            userId);
+        var preferredFormat = await settingService.GetSettingWithFallbackAsync(
+            SettingKeys.MediaPreferredFormat,
+            ConfigurationPaths.GetConfigurationPath(SettingKeys.MediaPreferredFormat),
+            userId);
+
+        // MediaMaxFileSize: get from Media:MaxSize configuration with "default" extension, convert to kilobytes
+        var maxFileSizeInKb = GetDefaultMediaMaxFileSize();
+
+        // MediaEnableOptimisation: defaults to true if not set
+        var enableOptimisationConfig = configuration["Media:EnableOptimisation"] ?? "true";
+        var enableOptimisation = !bool.TryParse(enableOptimisationConfig, out var result) || result;
+
+        SetSettingIfNullOrEmpty(settings, SettingKeys.MediaMaxDimensions, string.IsNullOrWhiteSpace(maxDimensions) ? "1024x1024" : maxDimensions!);
+        SetSettingIfNullOrEmpty(settings, SettingKeys.MediaCoverDimensions, string.IsNullOrWhiteSpace(coverDimensions) ? "512x256" : coverDimensions!);
+        SetSettingIfNullOrEmpty(settings, SettingKeys.MediaPreferredFormat, string.IsNullOrWhiteSpace(preferredFormat) ? "avif" : preferredFormat!);
+        SetSettingIfNullOrEmpty(settings, SettingKeys.MediaMaxFileSize, maxFileSizeInKb.ToString());
+        SetSettingIfNullOrEmpty(settings, SettingKeys.MediaEnableOptimisation, enableOptimisation.ToString().ToLower());
+    }
+
+    /// <summary>
     /// Enriches settings dictionary with all known settings categories.
     /// This is a convenience method that calls all specific enrichment methods.
     /// </summary>
@@ -105,6 +139,7 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
         await EnrichWithContentValidationSettingsAsync(settings, userId);
         await EnrichWithIdentitySettingsAsync(settings, userId);
         await EnrichWithApiSettingsAsync(settings);
+        await EnrichWithMediaSettingsAsync(settings, userId);
     }
 
     /// <summary>
@@ -121,5 +156,69 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
         {
             settings[key] = value;
         }
+    }
+
+    /// <summary>
+    /// Converts a file size string (e.g., "5MB", "1GB", "512KB") to kilobytes.
+    /// If the value is already numeric, treats it as kilobytes.
+    /// </summary>
+    /// <param name="sizeString">Size string to convert (e.g., "5MB", "1024KB", "512").</param>
+    /// <returns>Size in kilobytes as a long.</returns>
+    private static long ConvertToKilobytes(string sizeString)
+    {
+        if (string.IsNullOrWhiteSpace(sizeString))
+        {
+            return 500; // Default 500KB
+        }
+
+        sizeString = sizeString.Trim().ToUpperInvariant();
+
+        // If it's just a number, assume it's already in kilobytes
+        if (long.TryParse(sizeString, out var kb))
+        {
+            return kb;
+        }
+
+        // Parse size with unit suffix
+        var numberPart = System.Text.RegularExpressions.Regex.Match(sizeString, @"[\d.]+").Value;
+        if (!double.TryParse(numberPart, System.Globalization.CultureInfo.InvariantCulture, out var number))
+        {
+            return 500; // Default 500KB
+        }
+
+        var unit = sizeString.Substring(numberPart.Length).Trim();
+
+        return unit switch
+        {
+            "B" => (long)(number / 1024),
+            "KB" => (long)number,
+            "MB" => (long)(number * 1024),
+            "GB" => (long)(number * 1024 * 1024),
+            _ => (long)number, // Assume KB if unit is unknown
+        };
+    }
+
+    /// <summary>
+    /// Gets the default media max file size from configuration.
+    /// Reads from Media:MaxSize configuration array, finds "default" extension entry, and converts to kilobytes.
+    /// </summary>
+    /// <returns>Max file size in kilobytes.</returns>
+    private long GetDefaultMediaMaxFileSize()
+    {
+        var mediaSection = configuration.GetSection("Media");
+        var maxSizeConfig = mediaSection.GetSection("MaxSize");
+
+        // Try to find the default entry
+        var defaultEntry = maxSizeConfig
+            .GetChildren()
+            .FirstOrDefault(item => item["Extension"] == "default");
+
+        if (defaultEntry != null && !string.IsNullOrWhiteSpace(defaultEntry["MaxSize"]))
+        {
+            return ConvertToKilobytes(defaultEntry["MaxSize"]!);
+        }
+
+        // Fallback: 500KB default
+        return 500;
     }
 }

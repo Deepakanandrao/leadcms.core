@@ -38,6 +38,17 @@ public static class SettingKeys
     public const string RequiredLength = "Identity.RequiredLength";
 
     public const string RequiredUniqueChars = "Identity.RequiredUniqueChars";
+
+    // Media optimization settings
+    public const string MediaCoverDimensions = "Media.Cover.Dimensions";
+
+    public const string MediaMaxDimensions = "Media.Max.Dimensions";
+
+    public const string MediaPreferredFormat = "Media.PreferredFormat";
+
+    public const string MediaMaxFileSize = "Media.Max.FileSize";
+
+    public const string MediaEnableOptimisation = "Media.EnableOptimisation";
 }
 
 public static class ConfigurationPaths

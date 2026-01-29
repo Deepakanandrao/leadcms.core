@@ -22,6 +22,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.AspNetCore.Mvc.Formatters;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.OpenApi.Models;
 using Quartz;
 using Serilog.Exceptions;
@@ -59,6 +60,11 @@ public class Program
         ConfigureLogs(builder);
         PluginManager.Init(builder.Configuration);
 
+        if (builder.Environment.IsDevelopment())
+        {
+            builder.Configuration.AddUserSecrets<Program>(optional: true, reloadOnChange: true);
+        }
+
         builder.Configuration.AddEnvironmentVariables();
 
         builder.Services.AddHttpContextAccessor();
@@ -93,6 +99,7 @@ public class Program
         builder.Services.AddTransient<IDiscountService, DiscountService>();
         builder.Services.AddTransient<IEmailSchedulingService, EmailSchedulingService>();
         builder.Services.AddSingleton<IMediaResolver, MediaResolver>();
+        builder.Services.AddScoped<IMediaOptimizationService, MediaOptimizationService>();
         builder.Services.AddScoped<IRedirectService, RedirectService>();
         builder.Services.AddScoped<IMdxComponentParserService, MdxComponentParserService>();
         builder.Services.AddScoped<IChangeLogService, ChangeLogService>();

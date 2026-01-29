@@ -37,6 +37,14 @@ public interface ISettingsEnrichmentService
     Task EnrichWithApiSettingsAsync(Dictionary<string, string?> settings);
 
     /// <summary>
+    /// Enriches settings dictionary with media optimization defaults.
+    /// </summary>
+    /// <param name="settings">Dictionary of settings to enrich.</param>
+    /// <param name="userId">Optional user ID for user-level settings.</param>
+    /// <returns>A task that represents the asynchronous enrichment operation.</returns>
+    Task EnrichWithMediaSettingsAsync(Dictionary<string, string?> settings, string? userId = null);
+
+    /// <summary>
     /// Enriches settings dictionary with all known settings categories.
     /// This is a convenience method that calls all specific enrichment methods.
     /// </summary>

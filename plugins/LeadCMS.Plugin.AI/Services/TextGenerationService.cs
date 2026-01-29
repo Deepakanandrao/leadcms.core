@@ -5,27 +5,21 @@
 using LeadCMS.Plugin.AI.DTOs;
 using LeadCMS.Plugin.AI.Exceptions;
 using LeadCMS.Plugin.AI.Interfaces;
-using Microsoft.Extensions.Configuration;
 using Serilog;
 
 namespace LeadCMS.Plugin.AI.Services;
 
 public class TextGenerationService : ITextGenerationService
 {
-    private readonly IAIProviderService? provider;
+    private readonly IAIProviderService provider;
 
-    public TextGenerationService(IConfiguration configuration)
+    public TextGenerationService(IAIProviderService provider)
     {
-        provider = InitializeProvider();
+        this.provider = provider;
     }
 
     public async Task<TextGenerationResponse> GenerateTextAsync(TextGenerationRequest request)
     {
-        if (provider == null)
-        {
-            throw new AIProviderException("OpenAI", "OpenAI provider is not configured. Please set the API key.");
-        }
-
         try
         {
             Log.Debug(
@@ -55,30 +49,6 @@ public class TextGenerationService : ITextGenerationService
             }
 
             throw;
-        }
-    }
-
-    private IAIProviderService? InitializeProvider()
-    {
-        try
-        {
-            // Initialize OpenAI provider if API key is configured
-            if (!string.IsNullOrEmpty(AIPlugin.Configuration.OpenAI.ApiKey))
-            {
-                var openAIProvider = new OpenAIProviderService(AIPlugin.Configuration.OpenAI);
-                Log.Information("OpenAI provider initialized successfully");
-                return openAIProvider;
-            }
-            else
-            {
-                Log.Warning("OpenAI API key not configured. Text generation will not be available.");
-                return null;
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Error initializing OpenAI provider");
-            return null;
         }
     }
 }

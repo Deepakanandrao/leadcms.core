@@ -52,12 +52,14 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\plugins\LeadCMS.Plugin.TestPlugin\LeadCMS.Plugin.TestPlugin.csproj" />
+    <ProjectReference Include="..\..\plugins\LeadCMS.Plugin.AI\LeadCMS.Plugin.AI.csproj" />
     <ProjectReference Include="..\..\src\LeadCMS\LeadCMS.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Resources\wavepoint.png" />
     <EmbeddedResource Include="Resources\wavepointModified.png" />
+    <EmbeddedResource Include="Resources\cover-sample.png" />
     <EmbeddedResource Include="Resources\Comments\commentsBasic.csv">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>

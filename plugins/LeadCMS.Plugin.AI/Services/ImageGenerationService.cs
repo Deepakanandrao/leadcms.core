@@ -3,29 +3,22 @@
 // </copyright>
 
 using LeadCMS.Plugin.AI.DTOs;
-using LeadCMS.Plugin.AI.Exceptions;
 using LeadCMS.Plugin.AI.Interfaces;
-using Microsoft.Extensions.Configuration;
 using Serilog;
 
 namespace LeadCMS.Plugin.AI.Services;
 
 public class ImageGenerationService : IImageGenerationService
 {
-    private readonly IAIProviderService? provider;
+    private readonly IAIProviderService provider;
 
-    public ImageGenerationService(IConfiguration configuration)
+    public ImageGenerationService(IAIProviderService provider)
     {
-        provider = InitializeProvider();
+        this.provider = provider;
     }
 
     public async Task<ImageGenerationResponse> GenerateImageAsync(ImageGenerationRequest request)
     {
-        if (provider == null)
-        {
-            throw new AIProviderException("OpenAI", "OpenAI provider is not configured. Please set the API key.");
-        }
-
         try
         {
             var response = await provider.GenerateImageAsync(request);
@@ -45,28 +38,5 @@ public class ImageGenerationService : IImageGenerationService
             throw;
         }
     }
-
-    private IAIProviderService? InitializeProvider()
-    {
-        try
-        {
-            // Initialize OpenAI provider if API key is configured
-            if (!string.IsNullOrEmpty(AIPlugin.Configuration.OpenAI.ApiKey))
-            {
-                var openAIProvider = new OpenAIProviderService(AIPlugin.Configuration.OpenAI);
-                Log.Information("OpenAI provider initialized successfully for image generation");
-                return openAIProvider;
-            }
-            else
-            {
-                Log.Warning("OpenAI API key not configured. Image generation will not be available.");
-                return null;
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Error initializing OpenAI provider for image generation");
-            return null;
-        }
-    }
 }
+

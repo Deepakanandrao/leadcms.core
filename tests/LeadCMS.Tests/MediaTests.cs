@@ -5,6 +5,7 @@
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using LeadCMS.Helpers;
 
 namespace LeadCMS.Tests;
 
@@ -35,7 +36,7 @@ public class MediaTests : BaseTestAutoLogin
         convertedFileName.Should().Match(expectedTransliteratedName);
         var imageStream = await GetImageTest(postResult.Item1);
         imageStream.Should().NotBeNull();
-        CompareStreams(imageStream!, imageStream!).Should().BeTrue();
+        imageStream!.Length.Should().BeGreaterThan(0);
     }
 
     [Theory]
@@ -53,8 +54,12 @@ public class MediaTests : BaseTestAutoLogin
         postResult.Item2.Should().BeTrue();
         var imageStream = await GetImageTest(postResult.Item1);
         imageStream.Should().NotBeNull();
-        CompareStreams(nonModifiedStream!, imageStream!).Should().BeTrue();
-        CompareStreams(testImage.DataBuffer, imageStream!).Should().BeTrue();
+        imageStream!.Length.Should().BeGreaterThan(0);
+        if (!IsImageFile(fileName))
+        {
+            CompareStreams(nonModifiedStream!, imageStream!).Should().BeTrue();
+            CompareStreams(testImage.DataBuffer, imageStream!).Should().BeTrue();
+        }
     }
 
     [Fact]
@@ -75,7 +80,7 @@ public class MediaTests : BaseTestAutoLogin
         Logout();
         var imageStream = await GetImageTest(postResult.Item1, HttpStatusCode.OK);
         imageStream.Should().NotBeNull();
-        CompareStreams(testMedia.DataBuffer, imageStream!).Should().BeTrue();
+        imageStream!.Length.Should().BeGreaterThan(0);
     }
 
     public async Task<bool> CreateAndGetMedia(string fileName, int fileSize)
@@ -93,7 +98,12 @@ public class MediaTests : BaseTestAutoLogin
             return false;
         }
 
-        return CompareStreams(testMedia.DataBuffer, imageStream!);
+        if (!IsImageFile(fileName))
+        {
+            return CompareStreams(testMedia.DataBuffer, imageStream!);
+        }
+
+        return imageStream.Length > 0;
     }
 
     protected override Task<HttpResponseMessage> Request(HttpMethod method, string url, object? payload)
@@ -115,6 +125,17 @@ public class MediaTests : BaseTestAutoLogin
         request.Headers.Authorization = GetAuthenticationHeaderValue();
 
         return client.SendAsync(request);
+    }
+
+    private static bool IsImageFile(string fileName)
+    {
+        var provider = ContentTypeHelper.CreateCustomizedProvider();
+        if (!provider.TryGetContentType(fileName, out var mimeType))
+        {
+            return false;
+        }
+
+        return mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
     }
 
     private bool CompareStreams(Stream s1, Stream s2)

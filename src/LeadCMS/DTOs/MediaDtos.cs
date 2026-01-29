@@ -52,13 +52,29 @@ public class MediaDetailsDto
 
     public string Name { get; set; } = string.Empty;
 
+    public string? OriginalName { get; set; }
+
     public string? Description { get; set; }
 
     public long Size { get; set; } = 0;
 
+    public long? OriginalSize { get; set; }
+
+    public int? Width { get; set; }
+
+    public int? Height { get; set; }
+
+    public int? OriginalWidth { get; set; }
+
+    public int? OriginalHeight { get; set; }
+
     public string Extension { get; set; } = string.Empty;
 
+    public string? OriginalExtension { get; set; }
+
     public string MimeType { get; set; } = string.Empty;
+
+    public string? OriginalMimeType { get; set; }
 
     public string[] Tags { get; set; } = Array.Empty<string>();
 

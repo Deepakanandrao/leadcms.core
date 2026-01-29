@@ -23,11 +23,24 @@ public class AIPlugin : IPlugin, ICapabilityProvider
             Configuration = pluginConfig;
         }
 
+        var hasApiKey = !string.IsNullOrWhiteSpace(Configuration.OpenAI.ApiKey) &&
+            !Configuration.OpenAI.ApiKey.StartsWith("$", StringComparison.Ordinal);
+
+        if (hasApiKey)
+        {
+            services.AddSingleton<IAIProviderService>(_ => new OpenAIProviderService(Configuration.OpenAI));
+        }
+        else
+        {
+            services.AddSingleton<IAIProviderService, NullAIProviderService>();
+        }
+
         // Register AI services
         services.AddSingleton<ITextGenerationService, TextGenerationService>();
         services.AddSingleton<IImageGenerationService, ImageGenerationService>();
         services.AddScoped<IContentAITranslationService, ContentAITranslationService>();
         services.AddScoped<IContentGenerationService, ContentGenerationService>();
+        services.AddScoped<ICoverImageGenerationService, CoverImageGenerationService>();
         services.AddScoped<IEmailTemplateAITranslationService, EmailTemplateAITranslationService>();
         services.AddScoped<IEmailTemplateGenerationService, EmailTemplateGenerationService>();
     }

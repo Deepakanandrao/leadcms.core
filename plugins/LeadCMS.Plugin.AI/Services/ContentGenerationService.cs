@@ -86,13 +86,16 @@ public class ContentGenerationService : IContentGenerationService
         }
 
         // Step 4: Build prompts and generate content
-        var systemPrompt = await BuildSystemPromptAsync(contentType, sampleContent, componentAnalysis);
-        var userPrompt = BuildUserPrompt(request.Prompt, request.Language, request.CharacterCount, request.WordCount);
+        var requiredMediaSection = await BuildRequiredMediaSectionAsync(request.RequiredMediaPaths);
+        var systemPrompt = await BuildSystemPromptAsync(contentType, sampleContent, componentAnalysis, requiredMediaSection);
+        var userPrompt = BuildUserPrompt(request.Prompt, request.Language, request.CharacterCount, request.WordCount, requiredMediaSection);
 
+        var requiredMediaInputs = await BuildRequiredMediaInputsAsync(request.RequiredMediaPaths);
         var textRequest = new TextGenerationRequest
         {
             SystemPrompt = systemPrompt,
             UserPrompt = userPrompt,
+            Images = requiredMediaInputs,
         };
 
         try
@@ -154,13 +157,16 @@ public class ContentGenerationService : IContentGenerationService
 
     public async Task<ContentDetailsDto> GenerateContentEditAsync(ContentEditRequest request)
     {
-        var systemPrompt = await BuildEditSystemPromptAsync();
-        var userPrompt = BuildEditUserPrompt(request, request.Prompt, request.CharacterCount, request.WordCount);
+        var requiredMediaSection = await BuildRequiredMediaSectionAsync(request.RequiredMediaPaths);
+        var systemPrompt = await BuildEditSystemPromptAsync(requiredMediaSection);
+        var userPrompt = BuildEditUserPrompt(request, request.Prompt, request.CharacterCount, request.WordCount, requiredMediaSection);
 
+        var requiredMediaInputs = await BuildRequiredMediaInputsAsync(request.RequiredMediaPaths);
         var textRequest = new TextGenerationRequest
         {
             SystemPrompt = systemPrompt,
             UserPrompt = userPrompt,
+            Images = requiredMediaInputs,
         };
 
         try
@@ -234,6 +240,52 @@ BODY LENGTH REQUIREMENT:
         return string.Empty;
     }
 
+    private static (string ScopeUid, string FileName, string ResolvedUrl) ParseMediaUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return (string.Empty, string.Empty, string.Empty);
+        }
+
+        var path = url.Trim();
+        var resolvedUrl = path;
+
+        if (Uri.TryCreate(path, UriKind.Absolute, out var uri))
+        {
+            path = uri.AbsolutePath;
+            resolvedUrl = path;
+        }
+
+        const string apiMediaPrefix = "/api/media/";
+        if (path.StartsWith(apiMediaPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            path = path.Substring(apiMediaPrefix.Length);
+            resolvedUrl = "/api/media/" + path;
+        }
+
+        const string apiMediaPrefixNoSlash = "api/media/";
+        if (path.StartsWith(apiMediaPrefixNoSlash, StringComparison.OrdinalIgnoreCase))
+        {
+            path = path.Substring(apiMediaPrefixNoSlash.Length);
+            resolvedUrl = "/api/media/" + path;
+        }
+
+        var lastSlash = path.LastIndexOf('/');
+        if (lastSlash <= 0)
+        {
+            return (string.Empty, string.Empty, resolvedUrl);
+        }
+
+        var scopeUid = path.Substring(0, lastSlash);
+        var fileName = path.Substring(lastSlash + 1);
+
+        resolvedUrl = string.IsNullOrWhiteSpace(resolvedUrl)
+            ? $"/api/media/{scopeUid}/{fileName}"
+            : resolvedUrl;
+
+        return (scopeUid, fileName, resolvedUrl);
+    }
+
     private async Task<Content?> FindSampleContentAsync(string contentType, string language, int? referenceContentId)
     {
         if (referenceContentId.HasValue)
@@ -290,7 +342,7 @@ BODY LENGTH REQUIREMENT:
         return existingSlugs;
     }
 
-    private async Task<string> BuildSystemPromptAsync(ContentType contentType, Content sampleContent, MdxComponentAnalysisDto? componentAnalysis)
+    private async Task<string> BuildSystemPromptAsync(ContentType contentType, Content sampleContent, MdxComponentAnalysisDto? componentAnalysis, string requiredMediaSection)
     {
         // Get content length constraints from settings/configuration
         var (minTitleLength, maxTitleLength, minDescriptionLength, maxDescriptionLength) = await GetContentLengthConstraintsAsync();
@@ -345,6 +397,17 @@ Each line is scopeUid|fileName|description
 If any item fits the new article, reuse it in the body where it makes sense.
 Build URLs as: /api/media/{{scopeUid}}/{{fileName}}
 {recentMediaSection}";
+        }
+
+        if (!string.IsNullOrEmpty(requiredMediaSection))
+        {
+            prompt += $@"
+
+REQUIRED MEDIA (must include ALL of these in the body):
+Each line is url|description
+You MUST place each image in the body using the same formatting style as the sample content.
+If no image format is shown in the sample, use Markdown image syntax: ![alt](url)
+{requiredMediaSection}";
         }
 
         if (contentType.Format == ContentFormat.MDX || contentType.Format == ContentFormat.MD)
@@ -508,11 +571,11 @@ If the user's request is unclear or could be interpreted multiple ways:
         return $"- {component.Name} ({props}) - Example: {example}";
     }
 
-    private string BuildUserPrompt(string userPrompt, string language, int? characterCount, int? wordCount)
+    private string BuildUserPrompt(string userPrompt, string language, int? characterCount, int? wordCount, string requiredMediaSection)
     {
         var lengthConstraint = BuildLengthConstraintInstruction(characterCount, wordCount);
 
-        return $@"Generate new content in {language} based on this request:
+        var prompt = $@"Generate new content in {language} based on this request:
 
 {userPrompt}
 {lengthConstraint}
@@ -521,6 +584,15 @@ IMPORTANT REMINDERS:
 - Match the exact structure and format demonstrated in the sample content
 - Do not invent new components, attributes, or patterns not shown in the sample
 - Return only the JSON structure as specified in the system prompt";
+
+        if (!string.IsNullOrEmpty(requiredMediaSection))
+        {
+            prompt += $@"
+
+You MUST include all REQUIRED MEDIA in the body. Do not omit any required image URLs.";
+        }
+
+        return prompt;
     }
 
     private ContentDetailsDto ParseGeneratedContent(string generatedJson)
@@ -618,7 +690,7 @@ IMPORTANT REMINDERS:
         return string.Join("\n", items.Select(i => $"- {i}"));
     }
 
-    private async Task<string> BuildEditSystemPromptAsync()
+    private async Task<string> BuildEditSystemPromptAsync(string requiredMediaSection)
     {
         // Get content length constraints from settings/configuration
         var (minTitleLength, maxTitleLength, minDescriptionLength, maxDescriptionLength) = await GetContentLengthConstraintsAsync();
@@ -660,6 +732,17 @@ Build URLs as: /api/media/{{scopeUid}}/{{fileName}}
 {recentMediaSection}";
         }
 
+        if (!string.IsNullOrEmpty(requiredMediaSection))
+        {
+            prompt += $@"
+
+REQUIRED MEDIA (must include ALL of these in the body):
+Each line is url|description
+You MUST place each image in the body using the same formatting style as the existing content.
+If no image format is shown, use Markdown image syntax: ![alt](url)
+{requiredMediaSection}";
+        }
+
         prompt += $@"
 
 CONTENT LENGTH REQUIREMENTS:
@@ -686,11 +769,11 @@ OUTPUT FORMAT - Return ONLY valid JSON with this exact structure:
         return prompt;
     }
 
-    private string BuildEditUserPrompt(ContentEditRequest contentData, string userPrompt, int? characterCount, int? wordCount)
+    private string BuildEditUserPrompt(ContentEditRequest contentData, string userPrompt, int? characterCount, int? wordCount, string requiredMediaSection)
     {
         var lengthConstraint = BuildLengthConstraintInstruction(characterCount, wordCount);
 
-        return $@"Edit the following content based on this request:
+        var prompt = $@"Edit the following content based on this request:
 
 {userPrompt}
 {lengthConstraint}
@@ -709,5 +792,84 @@ IMPORTANT REMINDERS:
 - Do not add new components, elements, or attributes not present in the original
 - If the request is unclear, use the site profile for context and make conservative changes
 - Return only the JSON structure as specified";
+
+        if (!string.IsNullOrEmpty(requiredMediaSection))
+        {
+            prompt += $@"
+
+You MUST include all REQUIRED MEDIA in the body. Do not omit any required image URLs.";
+        }
+
+        return prompt;
+    }
+
+    private async Task<string> BuildRequiredMediaSectionAsync(List<string>? mediaPaths)
+    {
+        if (mediaPaths == null || mediaPaths.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var items = new List<string>();
+
+        foreach (var path in mediaPaths.Where(p => !string.IsNullOrWhiteSpace(p)))
+        {
+            var (scopeUid, fileName, resolvedUrl) = ParseMediaUrl(path.Trim());
+
+            if (string.IsNullOrWhiteSpace(scopeUid) || string.IsNullOrWhiteSpace(fileName))
+            {
+                items.Add($"{resolvedUrl}|(unresolved)");
+                continue;
+            }
+
+            var media = await dbContext.Media!
+                .FirstOrDefaultAsync(m => m.ScopeUid == scopeUid && m.Name == fileName);
+
+            var description = media?.Description?.Trim();
+            items.Add(string.IsNullOrWhiteSpace(description)
+                ? $"{resolvedUrl}|"
+                : $"{resolvedUrl}|{description}");
+        }
+
+        return items.Count == 0
+            ? string.Empty
+            : string.Join("\n", items);
+    }
+
+    private async Task<List<TextImageInput>?> BuildRequiredMediaInputsAsync(List<string>? mediaPaths)
+    {
+        if (mediaPaths == null || mediaPaths.Count == 0)
+        {
+            return null;
+        }
+
+        var inputs = new List<TextImageInput>();
+
+        foreach (var path in mediaPaths.Where(p => !string.IsNullOrWhiteSpace(p)))
+        {
+            var (scopeUid, fileName, resolvedUrl) = ParseMediaUrl(path.Trim());
+
+            if (string.IsNullOrWhiteSpace(scopeUid) || string.IsNullOrWhiteSpace(fileName))
+            {
+                throw new AIProviderException("ContentGeneration", $"Invalid required media path: '{resolvedUrl}'.");
+            }
+
+            var media = await dbContext.Media!
+                .FirstOrDefaultAsync(m => m.ScopeUid == scopeUid && m.Name == fileName);
+
+            if (media == null || media.Data == null || media.Data.Length == 0)
+            {
+                throw new AIProviderException("ContentGeneration", $"Required media not found or empty: '{resolvedUrl}'.");
+            }
+
+            inputs.Add(new TextImageInput
+            {
+                Data = media.Data,
+                MimeType = media.MimeType,
+                FileName = media.Name,
+            });
+        }
+
+        return inputs;
     }
 }

@@ -6,6 +6,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using AutoMapper;
+using LeadCMS.Constants;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
@@ -27,19 +28,25 @@ public class MediaController : ControllerBase
     private readonly ISyncService syncService;
     private readonly IMapper mapper;
     private readonly IMediaResolver mediaResolver;
+    private readonly IMediaOptimizationService mediaOptimizationService;
+    private readonly ISettingService settingService;
 
     public MediaController(
         PgDbContext pgDbContext,
         QueryProviderFactory<Media> queryProviderFactory,
         ISyncService syncService,
         IMapper mapper,
-        IMediaResolver mediaResolver)
+        IMediaResolver mediaResolver,
+        IMediaOptimizationService mediaOptimizationService,
+        ISettingService settingService)
     {
         this.pgDbContext = pgDbContext;
         this.queryProviderFactory = queryProviderFactory;
         this.syncService = syncService;
         this.mapper = mapper;
         this.mediaResolver = mediaResolver;
+        this.mediaOptimizationService = mediaOptimizationService;
+        this.settingService = settingService;
     }
 
     /// <summary>
@@ -60,19 +67,68 @@ public class MediaController : ControllerBase
 
         using var fileStream = imageCreateDto.File.OpenReadStream();
         var imageInBytes = new byte[incomingFileSize];
-        fileStream.Read(imageInBytes, 0, (int)imageCreateDto.File.Length);
+        await fileStream.ReadAsync(imageInBytes, 0, (int)imageCreateDto.File.Length);
+
+        var optimizationResult = await mediaOptimizationService.OptimizeAsync(new MediaOptimizationRequest
+        {
+            Data = imageInBytes,
+            FileName = incomingFileName,
+            Extension = incomingFileExtension,
+            MimeType = incomingFileMimeType,
+        });
+
+        var settings = await mediaOptimizationService.GetSettingsAsync();
+        var normalizedTags = NormalizeTags(imageCreateDto.Tags);
+        var hasCoverTag = HasCoverTag(normalizedTags);
+        var processedResult = await ApplyCoverDimensionsIfNeeded(
+            optimizationResult.Data,
+            optimizationResult.MimeType,
+            hasCoverTag);
 
         var scopeAndFileExists = from i in pgDbContext!.Media!
-                                 where i.ScopeUid == imageCreateDto.ScopeUid.Trim() && i.Name == incomingFileName
+                                 where i.ScopeUid == imageCreateDto.ScopeUid.Trim() &&
+                                     (i.Name == incomingFileName || i.OriginalName == incomingFileName)
                                  select i;
 
         Media uploadedMedia;
 
-        if (scopeAndFileExists.Any())
+        if (scopeAndFileExists.Count() > 0)
         {
             uploadedMedia = scopeAndFileExists!.FirstOrDefault()!;
-            uploadedMedia!.Data = imageInBytes;
-            uploadedMedia!.Size = incomingFileSize;
+            var optimizedName = GetOptimizedFileName(incomingFileName, optimizationResult.Extension);
+
+            // If optimization is enabled, store both original and optimized
+            if (settings.EnableOptimisation)
+            {
+                uploadedMedia!.OriginalData = imageInBytes;
+                uploadedMedia!.OriginalSize = incomingFileSize;
+                uploadedMedia!.OriginalExtension = incomingFileExtension;
+                uploadedMedia!.OriginalMimeType = incomingFileMimeType;
+                uploadedMedia!.OriginalName = incomingFileName;
+                uploadedMedia!.Data = processedResult.Data;
+                uploadedMedia!.Size = processedResult.Size;
+                uploadedMedia!.Extension = optimizationResult.Extension;
+                uploadedMedia!.MimeType = optimizationResult.MimeType;
+                uploadedMedia!.Name = optimizedName;
+            }
+            else
+            {
+                // If optimization is disabled, just save as main data, no Original fields
+                uploadedMedia!.Data = processedResult.Data;
+                uploadedMedia!.Size = processedResult.Size;
+                uploadedMedia!.Extension = incomingFileExtension;
+                uploadedMedia!.MimeType = incomingFileMimeType;
+                uploadedMedia!.Name = incomingFileName;
+            }
+
+            TrySetImageDimensionsForUpload(
+                uploadedMedia,
+                settings.EnableOptimisation,
+                hasCoverTag,
+                incomingFileMimeType,
+                imageInBytes,
+                optimizationResult.MimeType,
+                processedResult.Data);
 
             // Update optional description if provided
             if (!string.IsNullOrWhiteSpace(imageCreateDto.Description))
@@ -82,24 +138,55 @@ public class MediaController : ControllerBase
 
             if (imageCreateDto.Tags != null)
             {
-                uploadedMedia.Tags = NormalizeTags(imageCreateDto.Tags);
+                uploadedMedia.Tags = normalizedTags;
             }
 
             pgDbContext.Media!.Update(uploadedMedia);
         }
         else
         {
-            uploadedMedia = new Media()
+            if (settings.EnableOptimisation)
             {
-                Name = incomingFileName,
-                Size = incomingFileSize,
-                Data = imageInBytes,
-                MimeType = incomingFileMimeType!,
-                ScopeUid = imageCreateDto.ScopeUid.Trim(),
-                Extension = incomingFileExtension,
-                Description = string.IsNullOrWhiteSpace(imageCreateDto.Description) ? null : imageCreateDto.Description!.Trim(),
-                Tags = NormalizeTags(imageCreateDto.Tags),
-            };
+                uploadedMedia = new Media()
+                {
+                    Name = GetOptimizedFileName(incomingFileName, optimizationResult.Extension),
+                    OriginalName = incomingFileName,
+                    Size = processedResult.Size,
+                    Data = processedResult.Data,
+                    MimeType = optimizationResult.MimeType,
+                    ScopeUid = imageCreateDto.ScopeUid.Trim(),
+                    Extension = optimizationResult.Extension,
+                    OriginalData = imageInBytes,
+                    OriginalSize = incomingFileSize,
+                    OriginalExtension = incomingFileExtension,
+                    OriginalMimeType = incomingFileMimeType,
+                    Description = string.IsNullOrWhiteSpace(imageCreateDto.Description) ? null : imageCreateDto.Description!.Trim(),
+                    Tags = normalizedTags,
+                };
+            }
+            else
+            {
+                uploadedMedia = new Media()
+                {
+                    Name = incomingFileName,
+                    Size = processedResult.Size,
+                    Data = processedResult.Data,
+                    MimeType = incomingFileMimeType,
+                    ScopeUid = imageCreateDto.ScopeUid.Trim(),
+                    Extension = incomingFileExtension,
+                    Description = string.IsNullOrWhiteSpace(imageCreateDto.Description) ? null : imageCreateDto.Description!.Trim(),
+                    Tags = normalizedTags,
+                };
+            }
+
+            TrySetImageDimensionsForUpload(
+                uploadedMedia,
+                settings.EnableOptimisation,
+                hasCoverTag,
+                incomingFileMimeType,
+                imageInBytes,
+                optimizationResult.MimeType,
+                processedResult.Data);
             await pgDbContext.Media!.AddAsync(uploadedMedia);
         }
 
@@ -113,10 +200,18 @@ public class MediaController : ControllerBase
             Id = uploadedMedia.Id,
             ScopeUid = uploadedMedia.ScopeUid,
             Name = uploadedMedia.Name,
+            OriginalName = uploadedMedia.OriginalName,
             Description = uploadedMedia.Description,
             Size = uploadedMedia.Size,
             Extension = uploadedMedia.Extension,
             MimeType = uploadedMedia.MimeType,
+            OriginalSize = uploadedMedia.OriginalSize,
+            OriginalExtension = uploadedMedia.OriginalExtension,
+            OriginalMimeType = uploadedMedia.OriginalMimeType,
+            Width = uploadedMedia.Width,
+            Height = uploadedMedia.Height,
+            OriginalWidth = uploadedMedia.OriginalWidth,
+            OriginalHeight = uploadedMedia.OriginalHeight,
             Tags = uploadedMedia.Tags,
             UsageCount = uploadedMedia.UsageCount,
             CreatedAt = uploadedMedia.CreatedAt,
@@ -232,10 +327,15 @@ public class MediaController : ControllerBase
                 Id = m.Id,
                 ScopeUid = m.ScopeUid,
                 Name = m.Name,
+                OriginalName = m.OriginalName,
                 Description = m.Description,
                 Size = m.Size,
                 Extension = m.Extension,
                 MimeType = m.MimeType,
+                Width = m.Width,
+                Height = m.Height,
+                OriginalWidth = m.OriginalWidth,
+                OriginalHeight = m.OriginalHeight,
                 Tags = m.Tags,
                 UsageCount = m.UsageCount,
                 CreatedAt = m.CreatedAt,
@@ -275,6 +375,7 @@ public class MediaController : ControllerBase
                         Id = m.Id,
                         ScopeUid = m.ScopeUid,
                         Name = m.Name,
+                        OriginalName = m.OriginalName,
                         Description = m.Description,
                         Size = m.Size,
                         Extension = m.Extension,
@@ -312,6 +413,7 @@ public class MediaController : ControllerBase
                         Id = m.Id,
                         ScopeUid = m.ScopeUid,
                         Name = m.Name,
+                        OriginalName = m.OriginalName,
                         Description = m.Description,
                         Size = m.Size,
                         Extension = m.Extension,
@@ -377,10 +479,15 @@ public class MediaController : ControllerBase
                 Id = m.Id,
                 ScopeUid = m.ScopeUid,
                 Name = m.Name,
+                OriginalName = m.OriginalName,
                 Description = m.Description,
                 Size = m.Size,
                 Extension = m.Extension,
                 MimeType = m.MimeType,
+                Width = m.Width,
+                Height = m.Height,
+                OriginalWidth = m.OriginalWidth,
+                OriginalHeight = m.OriginalHeight,
                 Tags = m.Tags,
                 UsageCount = m.UsageCount,
                 CreatedAt = m.CreatedAt,
@@ -417,26 +524,66 @@ public class MediaController : ControllerBase
         // If a file is provided, update the binary keeping name/extension; otherwise only update metadata
         if (mediaUpdateDto.File != null)
         {
-            // Validate that the new file has the same extension as the existing one
-            var incomingFileExtension = Path.GetExtension(mediaUpdateDto.File.FileName);
-            if (!string.Equals(existingMedia.Extension, incomingFileExtension, StringComparison.OrdinalIgnoreCase))
-            {
-                ModelState.AddModelError("File", $"File extension must match the existing media extension '{existingMedia.Extension}'.");
-                throw new InvalidModelStateException(ModelState);
-            }
-
             // Process the new file content
+            var incomingFileExtension = Path.GetExtension(mediaUpdateDto.File.FileName);
             var incomingFileSize = mediaUpdateDto.File.Length;
-            var incomingFileMimeType = ContentTypeHelper.GetMimeTypeOrThrow(existingMedia.Name, ModelState);
+            var incomingFileMimeType = ContentTypeHelper.GetMimeTypeOrThrow(mediaUpdateDto.File.FileName, ModelState);
 
             using var fileStream = mediaUpdateDto.File.OpenReadStream();
             var imageInBytes = new byte[incomingFileSize];
             await fileStream.ReadAsync(imageInBytes, 0, (int)mediaUpdateDto.File.Length);
 
+            var optimizationResult = await mediaOptimizationService.OptimizeAsync(new MediaOptimizationRequest
+            {
+                Data = imageInBytes,
+                FileName = existingMedia.Name,
+                Extension = incomingFileExtension,
+                MimeType = incomingFileMimeType,
+            });
+
+            var settings = await mediaOptimizationService.GetSettingsAsync();
+            var normalizedTags = mediaUpdateDto.Tags != null ? NormalizeTags(mediaUpdateDto.Tags) : existingMedia.Tags;
+            var hasCoverTag = HasCoverTag(normalizedTags);
+            var processedResult = await ApplyCoverDimensionsIfNeeded(
+                optimizationResult.Data,
+                optimizationResult.MimeType,
+                hasCoverTag);
+
             // Update only the binary content and size, preserve other properties (ScopeUid, Name, Extension)
-            existingMedia.Data = imageInBytes;
-            existingMedia.Size = incomingFileSize;
-            existingMedia.MimeType = incomingFileMimeType;
+            var optimizedName = GetOptimizedFileName(mediaUpdateDto.File.FileName.ToTranslit().Slugify(), optimizationResult.Extension);
+
+            // If optimization is enabled, store both original and optimized
+            if (settings.EnableOptimisation)
+            {
+                existingMedia.OriginalData = imageInBytes;
+                existingMedia.OriginalSize = incomingFileSize;
+                existingMedia.OriginalExtension = incomingFileExtension;
+                existingMedia.OriginalMimeType = incomingFileMimeType;
+                existingMedia.OriginalName = mediaUpdateDto.File.FileName.ToTranslit().Slugify();
+                existingMedia.Data = processedResult.Data;
+                existingMedia.Size = processedResult.Size;
+                existingMedia.Extension = optimizationResult.Extension;
+                existingMedia.MimeType = optimizationResult.MimeType;
+                existingMedia.Name = optimizedName;
+            }
+            else
+            {
+                // If optimization is disabled, just save as main data, no Original fields
+                existingMedia.Data = processedResult.Data;
+                existingMedia.Size = processedResult.Size;
+                existingMedia.Extension = incomingFileExtension;
+                existingMedia.MimeType = incomingFileMimeType;
+                existingMedia.Name = mediaUpdateDto.File.FileName.ToTranslit().Slugify();
+            }
+
+            TrySetImageDimensionsForUpload(
+                existingMedia,
+                settings.EnableOptimisation,
+                hasCoverTag,
+                incomingFileMimeType,
+                imageInBytes,
+                optimizationResult.MimeType,
+                processedResult.Data);
         }
 
         // Update description if provided (can be set to empty to clear)
@@ -466,10 +613,18 @@ public class MediaController : ControllerBase
             Id = existingMedia.Id,
             ScopeUid = existingMedia.ScopeUid,
             Name = existingMedia.Name,
+            OriginalName = existingMedia.OriginalName,
             Description = existingMedia.Description,
             Size = existingMedia.Size,
             Extension = existingMedia.Extension,
             MimeType = existingMedia.MimeType,
+            OriginalSize = existingMedia.OriginalSize,
+            OriginalExtension = existingMedia.OriginalExtension,
+            OriginalMimeType = existingMedia.OriginalMimeType,
+            Width = existingMedia.Width,
+            Height = existingMedia.Height,
+            OriginalWidth = existingMedia.OriginalWidth,
+            OriginalHeight = existingMedia.OriginalHeight,
             Tags = existingMedia.Tags,
             UsageCount = existingMedia.UsageCount,
             CreatedAt = existingMedia.CreatedAt,
@@ -478,6 +633,158 @@ public class MediaController : ControllerBase
         };
 
         return Ok(updatedMediaDto);
+    }
+
+    /// <summary>
+    /// Re-optimizes all existing image media using current media optimization settings.
+    /// </summary>
+    [HttpPost("reoptimize")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<object>> ReOptimizeAllImages()
+    {
+        const int batchSize = 10;
+        var updatedCount = 0;
+        var offset = 0;
+        var settings = await mediaOptimizationService.GetSettingsAsync();
+
+        // If optimization is disabled, return early
+        if (!settings.EnableOptimisation)
+        {
+            return Ok(new
+            {
+                Updated = 0,
+                Message = "Media optimization is disabled",
+            });
+        }
+
+        var preferredFormat = settings.PreferredFormat.Trim().TrimStart('.');
+        var (maxWidth, maxHeight) = MediaSizeHelper.ParseSize(settings.MaxDimensions);
+
+        while (true)
+        {
+            var mediaItems = await pgDbContext.Media!
+                .OrderBy(m => m.Id)
+                .Skip(offset)
+                .Take(batchSize)
+                .ToListAsync();
+
+            if (mediaItems.Count == 0)
+            {
+                break;
+            }
+
+            foreach (var media in mediaItems)
+            {
+                if (string.IsNullOrWhiteSpace(media.MimeType) || !media.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (media.Data == null || media.Data.Length == 0)
+                {
+                    continue;
+                }
+
+                if (media.OriginalData == null || media.OriginalData.Length == 0)
+                {
+                    media.OriginalData = media.Data;
+                    media.OriginalSize = media.Size;
+                    media.OriginalExtension = media.Extension;
+                    media.OriginalMimeType = media.MimeType;
+                    if (string.IsNullOrWhiteSpace(media.OriginalName))
+                    {
+                        media.OriginalName = media.Name;
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(media.OriginalName))
+                {
+                    media.OriginalName = media.Name;
+                }
+
+                var shouldReoptimize = false;
+
+                if (!string.IsNullOrWhiteSpace(preferredFormat))
+                {
+                    var currentFormat = (media.Extension ?? string.Empty).Trim().TrimStart('.');
+                    if (string.IsNullOrWhiteSpace(currentFormat) ||
+                        !string.Equals(currentFormat, preferredFormat, StringComparison.OrdinalIgnoreCase))
+                    {
+                        shouldReoptimize = true;
+                    }
+                }
+
+                if (!shouldReoptimize && (maxWidth.HasValue || maxHeight.HasValue))
+                {
+                    if (!media.Width.HasValue || !media.Height.HasValue)
+                    {
+                        shouldReoptimize = true;
+                    }
+                    else
+                    {
+                        if (maxWidth.HasValue && media.Width > maxWidth)
+                        {
+                            shouldReoptimize = true;
+                        }
+
+                        if (maxHeight.HasValue && media.Height > maxHeight)
+                        {
+                            shouldReoptimize = true;
+                        }
+                    }
+                }
+
+                if (!shouldReoptimize)
+                {
+                    continue;
+                }
+
+                var sourceData = media.OriginalData ?? media.Data;
+                var sourceExtension = media.OriginalExtension ?? media.Extension ?? string.Empty;
+                var sourceMimeType = media.OriginalMimeType ?? media.MimeType ?? string.Empty;
+
+                var optimizationResult = await mediaOptimizationService.OptimizeAsync(new MediaOptimizationRequest
+                {
+                    Data = sourceData,
+                    FileName = media.Name ?? string.Empty,
+                    Extension = sourceExtension,
+                    MimeType = sourceMimeType,
+                });
+
+                var hasCoverTag = HasCoverTag(media.Tags);
+                var processedResult = await ApplyCoverDimensionsIfNeeded(
+                    optimizationResult.Data,
+                    optimizationResult.MimeType,
+                    hasCoverTag);
+
+                TrySetImageDimensions(media, sourceMimeType, sourceData, optimizationResult.MimeType, processedResult.Data);
+
+                var baseName = media.OriginalName ?? media.Name ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(baseName))
+                {
+                    media.Name = GetOptimizedFileName(baseName, optimizationResult.Extension);
+                }
+
+                media.Data = processedResult.Data;
+                media.Size = processedResult.Size;
+                media.Extension = optimizationResult.Extension;
+                media.MimeType = optimizationResult.MimeType;
+                media.UpdatedAt = DateTime.UtcNow;
+                updatedCount++;
+            }
+
+            await pgDbContext.SaveChangesAsync();
+            offset += mediaItems.Count;
+        }
+
+        return Ok(new
+        {
+            Updated = updatedCount,
+        });
     }
 
     /// <summary>
@@ -512,6 +819,73 @@ public class MediaController : ControllerBase
         return result;
     }
 
+    /// <summary>
+    /// Returns the supported image formats that can be used as preferred media format.
+    /// </summary>
+    [HttpGet("formats")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(string[]), StatusCodes.Status200OK)]
+    public ActionResult<string[]> GetSupportedImageFormats()
+    {
+        var allowedFormats = new[] { "jpeg", "jpg", "png", "webp", "avif" };
+        var supportedFormats = ImageMagick.MagickNET.SupportedFormats
+            .Where(format => format.SupportsWriting)
+            .Select(format => format.Format.ToString().ToLowerInvariant())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var result = allowedFormats
+            .Where(format => supportedFormats.Contains(format))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return Ok(result);
+    }
+
+    private static byte[] ResizeToCover(byte[] data, int targetWidth, int targetHeight)
+    {
+        using var image = new ImageMagick.MagickImage(data);
+
+        var scale = Math.Max((double)targetWidth / image.Width, (double)targetHeight / image.Height);
+        var resizedWidth = (int)Math.Ceiling(image.Width * scale);
+        var resizedHeight = (int)Math.Ceiling(image.Height * scale);
+
+        image.Resize((uint)resizedWidth, (uint)resizedHeight);
+
+        var cropX = Math.Max(0, (resizedWidth - targetWidth) / 2);
+        var cropY = Math.Max(0, (resizedHeight - targetHeight) / 2);
+
+        image.Crop(new ImageMagick.MagickGeometry(cropX, cropY, (uint)targetWidth, (uint)targetHeight));
+        image.Page = new ImageMagick.MagickGeometry(0, 0, 0, 0);
+
+        return image.ToByteArray();
+    }
+
+    private static void TrySetImageDimensionsForUpload(
+        Media media,
+        bool optimisationEnabled,
+        bool hasCoverTag,
+        string originalMimeType,
+        byte[] originalData,
+        string optimizedMimeType,
+        byte[] optimizedData)
+    {
+        if (optimisationEnabled)
+        {
+            TrySetImageDimensions(media, originalMimeType, originalData, optimizedMimeType, optimizedData, true);
+            return;
+        }
+
+        if (hasCoverTag)
+        {
+            TrySetImageDimensions(media, string.Empty, Array.Empty<byte>(), optimizedMimeType, optimizedData, true);
+        }
+    }
+
+    private static bool HasCoverTag(string[]? tags)
+    {
+        return tags != null && Array.Exists(tags, tag => string.Equals(tag, "cover", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static string[] NormalizeTags(string[]? tags)
     {
         if (tags == null)
@@ -526,6 +900,99 @@ public class MediaController : ControllerBase
             .ToArray();
     }
 
+    private static void TrySetImageDimensions(
+        Media media,
+        string originalMimeType,
+        byte[] originalData,
+        string optimizedMimeType,
+        byte[] optimizedData,
+        bool enableOptimisation = true)
+    {
+        // If optimization is disabled, don't extract any dimensions
+        if (!enableOptimisation)
+        {
+            return;
+        }
+
+        if (!originalMimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) &&
+            !optimizedMimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (originalMimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                using var originalImage = new ImageMagick.MagickImage(originalData);
+                media.OriginalWidth = (int)originalImage.Width;
+                media.OriginalHeight = (int)originalImage.Height;
+            }
+            catch
+            {
+                // Ignore dimension extraction failures
+            }
+        }
+
+        if (optimizedMimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                using var optimizedImage = new ImageMagick.MagickImage(optimizedData);
+                media.Width = (int)optimizedImage.Width;
+                media.Height = (int)optimizedImage.Height;
+            }
+            catch
+            {
+                // Ignore dimension extraction failures
+            }
+        }
+    }
+
+    private static string GetOptimizedFileName(string originalName, string optimizedExtension)
+    {
+        var extension = optimizedExtension;
+        if (string.IsNullOrWhiteSpace(extension))
+        {
+            return originalName;
+        }
+
+        if (!extension.StartsWith('.'))
+        {
+            extension = "." + extension;
+        }
+
+        return Path.ChangeExtension(originalName, extension);
+    }
+
+    private async Task<CoverResizeResult> ApplyCoverDimensionsIfNeeded(byte[] data, string mimeType, bool hasCoverTag)
+    {
+        if (!hasCoverTag || string.IsNullOrWhiteSpace(mimeType) ||
+            !mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return new CoverResizeResult(data);
+        }
+
+        var coverDimensions = await settingService.GetSettingWithFallbackAsync(
+            SettingKeys.MediaCoverDimensions,
+            ConfigurationPaths.GetConfigurationPath(SettingKeys.MediaCoverDimensions));
+        var (targetWidth, targetHeight) = MediaSizeHelper.ParseSize(coverDimensions);
+
+        if (!targetWidth.HasValue || !targetHeight.HasValue || targetWidth <= 0 || targetHeight <= 0)
+        {
+            return new CoverResizeResult(data);
+        }
+
+        try
+        {
+            return new CoverResizeResult(ResizeToCover(data, targetWidth.Value, targetHeight.Value));
+        }
+        catch
+        {
+            return new CoverResizeResult(data);
+        }
+    }
+
     /// <summary>
     /// Calculates the media location URL using the media resolver with resolution mode from headers/query parameters.
     /// </summary>
@@ -536,5 +1003,18 @@ public class MediaController : ControllerBase
     {
         var relativePath = Path.Combine("/api/media", scopeUid ?? string.Empty, fileName ?? string.Empty).Replace("\\", "/");
         return mediaResolver.Resolve(relativePath, HttpContext, MediaResolutionHelper.GetResolutionMode(HttpContext));
+    }
+
+    private readonly struct CoverResizeResult
+    {
+        public CoverResizeResult(byte[] data)
+        {
+            Data = data;
+            Size = data.LongLength;
+        }
+
+        public byte[] Data { get; }
+
+        public long Size { get; }
     }
 }
