@@ -2,11 +2,9 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
-using System.Configuration;
 using AutoMapper;
+using LeadCMS.Core.AIAssistance.Interfaces;
 using LeadCMS.Data;
-using LeadCMS.Infrastructure;
-using LeadCMS.Plugin.AI.Interfaces;
 using LeadCMS.Plugin.TestPlugin.Data;
 using LeadCMS.Tests.TestServices;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -149,18 +147,6 @@ public class TestApplication : WebApplicationFactory<Program>
 
     protected override IHost CreateHost(IHostBuilder builder)
     {
-        builder.ConfigureAppConfiguration((context, config) =>
-        {
-            var projectDir = Directory.GetCurrentDirectory();
-            var configPath = Path.Combine(projectDir, "appsettings.tests.json");
-            config.AddJsonFile(configPath, optional: false, reloadOnChange: true);
-
-            if (config is ConfigurationManager configurationManager)
-            {
-                PluginManager.Init(configurationManager);
-            }
-        });
-
         builder.ConfigureServices((context, services) =>
         {
             services.AddScoped<TestPluginDbContext, TestPluginDbContext>();
@@ -168,7 +154,7 @@ public class TestApplication : WebApplicationFactory<Program>
             services.AddScoped<IEmailService, TestEmailService>();
             services.AddScoped<IEmailValidationExternalService, TestEmailValidationExternalService>();
             services.AddScoped<IAccountExternalService, TestAccountExternalService>();
-            services.AddSingleton<IAIProviderService, TestOpenAIProviderService>();
+            services.AddSingleton<IAIProviderService, TestAIProviderService>();
         });
 
         return base.CreateHost(builder);

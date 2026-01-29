@@ -2,7 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
-namespace LeadCMS.Plugin.AI.Configuration;
+namespace LeadCMS.Plugins.AI.Configuration;
 
 public class PluginConfig
 {

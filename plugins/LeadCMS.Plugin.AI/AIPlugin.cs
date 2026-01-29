@@ -2,13 +2,14 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
-using LeadCMS.Plugin.AI.Configuration;
-using LeadCMS.Plugin.AI.Interfaces;
-using LeadCMS.Plugin.AI.Services;
+using LeadCMS.Core.AIAssistance.Interfaces;
+using LeadCMS.Core.AIAssistance.Services;
+using LeadCMS.Plugins.AI.Configuration;
+using LeadCMS.Plugins.AI.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace LeadCMS.Plugin.AI;
+namespace LeadCMS.Plugins.AI;
 
 public class AIPlugin : IPlugin, ICapabilityProvider
 {
@@ -34,15 +35,6 @@ public class AIPlugin : IPlugin, ICapabilityProvider
         {
             services.AddSingleton<IAIProviderService, NullAIProviderService>();
         }
-
-        // Register AI services
-        services.AddSingleton<ITextGenerationService, TextGenerationService>();
-        services.AddSingleton<IImageGenerationService, ImageGenerationService>();
-        services.AddScoped<IContentAITranslationService, ContentAITranslationService>();
-        services.AddScoped<IContentGenerationService, ContentGenerationService>();
-        services.AddScoped<ICoverImageGenerationService, CoverImageGenerationService>();
-        services.AddScoped<IEmailTemplateAITranslationService, EmailTemplateAITranslationService>();
-        services.AddScoped<IEmailTemplateGenerationService, EmailTemplateGenerationService>();
     }
 
     public IEnumerable<string> GetCapabilities()

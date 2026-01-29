@@ -4,6 +4,8 @@
 
 using LeadCMS.Configuration;
 using LeadCMS.Controllers;
+using LeadCMS.Core.AIAssistance.Interfaces;
+using LeadCMS.Core.AIAssistance.Services;
 using LeadCMS.Data;
 using LeadCMS.Enrichment.Interfaces;
 using LeadCMS.Enrichment.Services;
@@ -22,7 +24,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.AspNetCore.Mvc.Formatters;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.OpenApi.Models;
 using Quartz;
 using Serilog.Exceptions;
@@ -112,6 +113,15 @@ public class Program
         builder.Services.AddScoped<IEnrichmentQuotaService, EnrichmentQuotaService>();
         builder.Services.AddScoped<IEnrichmentAuditService, EnrichmentAuditService>();
 
+        // Register AI services
+        builder.Services.AddSingleton<ITextGenerationService, TextGenerationService>();
+        builder.Services.AddSingleton<IImageGenerationService, ImageGenerationService>();
+        builder.Services.AddScoped<IContentAITranslationService, ContentAITranslationService>();
+        builder.Services.AddScoped<IContentGenerationService, ContentGenerationService>();
+        builder.Services.AddScoped<ICoverImageGenerationService, CoverImageGenerationService>();
+        builder.Services.AddScoped<IEmailTemplateAITranslationService, EmailTemplateAITranslationService>();
+        builder.Services.AddScoped<IEmailTemplateGenerationService, EmailTemplateGenerationService>();
+
         // Add token and device authentication services
         builder.Services.AddScoped<ITokenService, TokenService>();
         builder.Services.AddScoped<IDeviceAuthService, DeviceAuthService>();
@@ -197,10 +207,16 @@ public class Program
         app.UseCookiePolicy();
         app.MapControllers();
 
-        app.UseSpa(spa =>
+        var webRoot = app.Environment.WebRootPath ?? Path.Combine(AppContext.BaseDirectory, "wwwroot");
+        var spaIndex = Path.Combine(webRoot, "index.html");
+
+        if (System.IO.File.Exists(spaIndex))
         {
-            // works out of the box, no configuration required
-        });
+            app.UseSpa(spa =>
+            {
+                // works out of the box, no configuration required
+            });
+        }
 
         app.Run();
     }

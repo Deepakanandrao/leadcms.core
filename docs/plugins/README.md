@@ -4,10 +4,12 @@ This directory contains comprehensive documentation for all LeadCMS plugins. Eac
 
 ## Available Plugin Documentation
 
-### [🤖 AI Plugin](../../plugins/LeadCMS.Plugin.AI/README.md)
+### [🤖 AI Plugin](../../plugins/LeadCMS.Core.AIAssistance/README.md)
+
 **Purpose**: Integrates OpenAI services for AI-powered content generation, translation, and image creation.
 
 **Key Features**:
+
 - Content generation using GPT models
 - Image generation with DALL-E
 - Multi-language content translation
@@ -19,9 +21,11 @@ This directory contains comprehensive documentation for all LeadCMS plugins. Eac
 ---
 
 ### [📱 SMS Plugin](../../plugins/LeadCMS.Plugin.Sms/README.md)
+
 **Purpose**: Multi-gateway SMS messaging with intelligent country-specific routing.
 
 **Key Features**:
+
 - Support for 6 SMS gateways (Amazon SNS, SMSC, Twilio, etc.)
 - Country-specific routing optimization
 - Delivery tracking and status monitoring
@@ -33,9 +37,11 @@ This directory contains comprehensive documentation for all LeadCMS plugins. Eac
 ---
 
 ### [📧 SendGrid Plugin](../../plugins/LeadCMS.Plugin.SendGrid/README.md)
+
 **Purpose**: Enterprise-grade email delivery with comprehensive tracking and analytics.
 
 **Key Features**:
+
 - High-volume email sending
 - Real-time delivery tracking
 - Email engagement analytics
@@ -47,9 +53,11 @@ This directory contains comprehensive documentation for all LeadCMS plugins. Eac
 ---
 
 ### [📬 Email Sync Plugin](../../plugins/LeadCMS.Plugin.EmailSync/README.md)
+
 **Purpose**: Synchronizes emails from IMAP accounts for lead management and communication tracking.
 
 **Key Features**:
+
 - Multi-IMAP account support
 - Automatic lead creation from emails
 - Email classification (internal/external)
@@ -61,9 +69,11 @@ This directory contains comprehensive documentation for all LeadCMS plugins. Eac
 ---
 
 ### [🌐 Site Plugin](../../plugins/LeadCMS.Plugin.Site/README.md)
+
 **Purpose**: Essential website functionality including contact forms and newsletter management.
 
 **Key Features**:
+
 - Contact form processing with file attachments
 - Automatic lead creation from website visitors
 - Newsletter subscription management
@@ -75,9 +85,11 @@ This directory contains comprehensive documentation for all LeadCMS plugins. Eac
 ---
 
 ### [📊 VSTO Plugin](../../plugins/LeadCMS.Plugin.Vsto/README.md)
+
 **Purpose**: Hosts and serves Visual Studio Tools for Office add-ins with version management.
 
 **Key Features**:
+
 - Office add-in hosting and distribution
 - Version management and user tracking
 - Dynamic content injection
@@ -89,9 +101,11 @@ This directory contains comprehensive documentation for all LeadCMS plugins. Eac
 ---
 
 ### [🔄 Reverse Proxy Plugin](../../plugins/LeadCMS.Plugin.ReverseProxy/README.md)
+
 **Purpose**: Provides secure, authenticated access to external services like Elasticsearch and Kibana.
 
 **Key Features**:
+
 - Request routing with authentication
 - Path transformation capabilities
 - Load balancing across backend services
@@ -110,7 +124,7 @@ Plugins are controlled through the main application configuration:
 
 ```bash
 # Enable specific plugins
-PLUGINS__0=LeadCMS.Plugin.AI
+PLUGINS__0=LeadCMS.Core.AIAssistance
 PLUGINS__1=LeadCMS.Plugin.Sms
 PLUGINS__2=LeadCMS.Plugin.SendGrid
 PLUGINS__3=LeadCMS.Plugin.EmailSync
@@ -122,6 +136,7 @@ PLUGINS__6=LeadCMS.Plugin.ReverseProxy
 ### Configuration Files
 
 Each plugin includes:
+
 - **Source Code**: Plugin implementation in `plugins/LeadCMS.Plugin.{Name}/`
 - **Settings File**: `pluginsettings.json` with default configuration
 - **Documentation**: `README.md` file in each plugin's root directory
@@ -144,6 +159,7 @@ Each plugin includes:
 ## Plugin Development
 
 For information on developing custom plugins:
+
 - Review the `IPlugin` and `IPluginApplication` interfaces
 - Study existing plugin implementations
 - Follow the plugin architecture patterns
@@ -152,6 +168,7 @@ For information on developing custom plugins:
 ---
 
 Each plugin documentation file contains detailed information about:
+
 - **Purpose and Overview**: What the plugin does and why you'd use it
 - **Configuration**: Complete setup instructions with examples
 - **API Endpoints**: Available endpoints and their functionality

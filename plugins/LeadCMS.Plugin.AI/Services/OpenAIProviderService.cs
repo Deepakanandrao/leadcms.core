@@ -7,13 +7,13 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using ImageMagick;
-using LeadCMS.Plugin.AI.Configuration;
-using LeadCMS.Plugin.AI.DTOs;
-using LeadCMS.Plugin.AI.Exceptions;
-using LeadCMS.Plugin.AI.Interfaces;
+using LeadCMS.Core.AIAssistance.DTOs;
+using LeadCMS.Core.AIAssistance.Exceptions;
+using LeadCMS.Core.AIAssistance.Interfaces;
+using LeadCMS.Plugins.AI.Configuration;
 using Serilog;
 
-namespace LeadCMS.Plugin.AI.Services;
+namespace LeadCMS.Plugins.AI.Services;
 
 public class OpenAIProviderService : IAIProviderService
 {
@@ -441,7 +441,7 @@ public class OpenAIProviderService : IAIProviderService
     private static ImageGenerationResponse ParseImageResponse(string responseBody, string model)
     {
         using var document = JsonDocument.Parse(responseBody);
-        var images = new List<DTOs.GeneratedImage>();
+        var images = new List<GeneratedImage>();
 
         if (document.RootElement.TryGetProperty("data", out var dataElement) &&
             dataElement.ValueKind == JsonValueKind.Array)
@@ -465,7 +465,7 @@ public class OpenAIProviderService : IAIProviderService
                     revisedPrompt = revisedElement.GetString();
                 }
 
-                images.Add(new DTOs.GeneratedImage
+                images.Add(new GeneratedImage
                 {
                     ImageData = imageBytes,
                     RevisedPrompt = revisedPrompt,

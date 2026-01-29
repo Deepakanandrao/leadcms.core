@@ -3,9 +3,9 @@
 ## 1) What already exists in this codebase
 
 - **AI plugin**: The plugin already provides content generation, translation, and image generation.
-  - [plugins/LeadCMS.Plugin.AI/Services/ContentGenerationService.cs](plugins/LeadCMS.Plugin.AI/Services/ContentGenerationService.cs)
-  - [plugins/LeadCMS.Plugin.AI/Services/OpenAIProviderService.cs](plugins/LeadCMS.Plugin.AI/Services/OpenAIProviderService.cs)
-  - [plugins/LeadCMS.Plugin.AI/Controllers/ContentGenerationController.cs](plugins/LeadCMS.Plugin.AI/Controllers/ContentGenerationController.cs)
+  - [plugins/LeadCMS.Core.AIAssistance/Services/ContentGenerationService.cs](plugins/LeadCMS.Core.AIAssistance/Services/ContentGenerationService.cs)
+  - [plugins/LeadCMS.Core.AIAssistance/Services/OpenAIProviderService.cs](plugins/LeadCMS.Core.AIAssistance/Services/OpenAIProviderService.cs)
+  - [plugins/LeadCMS.Core.AIAssistance/Controllers/ContentGenerationController.cs](plugins/LeadCMS.Core.AIAssistance/Controllers/ContentGenerationController.cs)
 - **MDX analysis**: There is an MDX component analyzer that can extract supported components per content type.
   - [src/LeadCMS/Services/MdxComponentParserService.cs](src/LeadCMS/Services/MdxComponentParserService.cs)
 - **Content types and formats**: Content format is already enumerated and used in prompts.
@@ -156,7 +156,7 @@ This can be implemented as a new **ContextBuilderService** and re-used by the ex
 
 ### Phase 4: Content generation flow upgrades
 
-- Extend [plugins/LeadCMS.Plugin.AI/Services/ContentGenerationService.cs](plugins/LeadCMS.Plugin.AI/Services/ContentGenerationService.cs) to:
+- Extend [plugins/LeadCMS.Core.AIAssistance/Services/ContentGenerationService.cs](plugins/LeadCMS.Core.AIAssistance/Services/ContentGenerationService.cs) to:
   - fetch site profile
   - call `KnowledgeSyncService` then `FileSearchService` for related knowledge chunks
   - pass media suggestions
