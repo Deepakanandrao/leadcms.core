@@ -654,6 +654,9 @@ public class MediaController : ControllerBase
                 break;
             }
 
+            // Collect all rename operations for batch content update
+            var deferredUpdates = new List<ContentReferenceUpdate>();
+
             foreach (var media in mediaItems)
             {
                 if (string.IsNullOrWhiteSpace(media.MimeType) || !media.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
@@ -698,7 +701,7 @@ public class MediaController : ControllerBase
                         if (!string.IsNullOrWhiteSpace(originalName) &&
                             !string.Equals(media.Name, originalName, StringComparison.OrdinalIgnoreCase))
                         {
-                            await RenameMediaAsync(media, media.ScopeUid, originalName);
+                            await RenameMediaAsync(media, media.ScopeUid, originalName, deferredUpdates);
                         }
 
                         updatedCount++;
@@ -795,11 +798,14 @@ public class MediaController : ControllerBase
                 if (!string.IsNullOrWhiteSpace(newName) &&
                     !string.Equals(media.Name, newName, StringComparison.OrdinalIgnoreCase))
                 {
-                    await RenameMediaAsync(media, media.ScopeUid, newName);
+                    await RenameMediaAsync(media, media.ScopeUid, newName, deferredUpdates);
                 }
 
                 updatedCount++;
             }
+
+            // Apply all deferred content reference updates in a single batch
+            await ApplyDeferredContentUpdatesAsync(deferredUpdates);
 
             await pgDbContext.SaveChangesAsync();
             offset += mediaItems.Count;
@@ -1351,7 +1357,11 @@ public class MediaController : ControllerBase
         return dto;
     }
 
-    private async Task<int> RenameMediaAsync(Media media, string newScopeUid, string newFileName)
+    private async Task<int> RenameMediaAsync(
+        Media media,
+        string newScopeUid,
+        string newFileName,
+        List<ContentReferenceUpdate>? deferredUpdates = null)
     {
         var currentScope = media.ScopeUid;
         var currentName = media.Name;
@@ -1380,6 +1390,18 @@ public class MediaController : ControllerBase
 
         media.ScopeUid = newScopeUid;
         media.Name = newFileName;
+
+        // If deferring updates, add to collection and skip immediate processing
+        if (deferredUpdates != null)
+        {
+            deferredUpdates.Add(new ContentReferenceUpdate(
+                currentScope,
+                currentName,
+                currentOriginalName,
+                newScopeUid,
+                newFileName));
+            return 0;
+        }
 
         var linksUpdated = await UpdateContentReferencesAsync(
             currentScope,
@@ -1542,6 +1564,61 @@ public class MediaController : ControllerBase
         return mediaResolver.Resolve(relativePath, HttpContext, MediaResolutionHelper.GetResolutionMode(HttpContext));
     }
 
+    private async Task<int> ApplyDeferredContentUpdatesAsync(List<ContentReferenceUpdate> updates)
+    {
+        if (updates.Count == 0)
+        {
+            return 0;
+        }
+
+        // Build all path pairs for searching
+        var pathMappings = new List<(string OldPath, string NewPath)>();
+        foreach (var update in updates)
+        {
+            var oldPath = BuildMediaPath(update.OldScopeUid, update.OldName);
+            var newPath = BuildMediaPath(update.NewScopeUid, update.NewName);
+            pathMappings.Add((oldPath, newPath));
+
+            if (!string.IsNullOrWhiteSpace(update.OldOriginalName))
+            {
+                var oldOriginalPath = BuildMediaPath(update.OldScopeUid, update.OldOriginalName);
+                pathMappings.Add((oldOriginalPath, newPath));
+            }
+        }
+
+        // Build a single query to find all affected content
+        var allOldPaths = pathMappings.Select(p => p.OldPath).Distinct().ToList();
+        var contents = await pgDbContext.Content!
+            .Where(c =>
+                (c.CoverImageUrl != null && allOldPaths.Any(p => c.CoverImageUrl.Contains(p))) ||
+                (c.Body != null && allOldPaths.Any(p => c.Body.Contains(p))))
+            .ToListAsync();
+
+        var totalLinksUpdated = 0;
+
+        foreach (var content in contents)
+        {
+            var updated = false;
+            var coverImageUrl = content.CoverImageUrl;
+            var body = content.Body;
+
+            foreach (var (oldPath, newPath) in pathMappings)
+            {
+                totalLinksUpdated += ReplaceOccurrences(coverImageUrl, oldPath, newPath, ref coverImageUrl, ref updated);
+                totalLinksUpdated += ReplaceOccurrences(body, oldPath, newPath, ref body, ref updated);
+            }
+
+            if (updated)
+            {
+                content.CoverImageUrl = coverImageUrl;
+                content.Body = body ?? content.Body;
+                pgDbContext.Content!.Update(content);
+            }
+        }
+
+        return totalLinksUpdated;
+    }
+
     private readonly struct CoverResizeResult
     {
         public CoverResizeResult(byte[] data)
@@ -1553,5 +1630,32 @@ public class MediaController : ControllerBase
         public byte[] Data { get; }
 
         public long Size { get; }
+    }
+
+    private sealed class ContentReferenceUpdate
+    {
+        public ContentReferenceUpdate(
+            string oldScopeUid,
+            string oldName,
+            string? oldOriginalName,
+            string newScopeUid,
+            string newName)
+        {
+            OldScopeUid = oldScopeUid;
+            OldName = oldName;
+            OldOriginalName = oldOriginalName;
+            NewScopeUid = newScopeUid;
+            NewName = newName;
+        }
+
+        public string OldScopeUid { get; }
+
+        public string OldName { get; }
+
+        public string? OldOriginalName { get; }
+
+        public string NewScopeUid { get; }
+
+        public string NewName { get; }
     }
 }
