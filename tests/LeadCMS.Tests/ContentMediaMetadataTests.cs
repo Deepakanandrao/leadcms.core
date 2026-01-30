@@ -104,7 +104,7 @@ public class ContentMediaMetadataTests : BaseTestAutoLogin
     }
 
     [Fact]
-    public async Task RefreshMediaDescriptions_ShouldUpdateUsageCountAcrossAllContent()
+    public async Task ExecuteMediaMetaUpdateTask_ShouldUpdateUsageCountAcrossAllContent()
     {
         var mediaOne = await CreateMediaAsync("usage-one.png");
         var mediaTwo = await CreateMediaAsync("usage-two.png");
@@ -118,7 +118,7 @@ public class ContentMediaMetadataTests : BaseTestAutoLogin
         var bodyTwo = $"<img src=\"/api/media/{mediaOne.ScopeUid}/{mediaOne.Name}\" alt=\"Third\" />";
         await CreateContentWithBodyAsync(bodyTwo, "-usage-2");
 
-        await RefreshMediaDescriptionsAsync();
+        await ExecuteMediaMetaUpdateTaskAsync();
 
         var refreshedOne = await GetMediaByNameAsync(mediaOne.ScopeUid, mediaOne.Name);
         var refreshedTwo = await GetMediaByNameAsync(mediaTwo.ScopeUid, mediaTwo.Name);
@@ -178,9 +178,9 @@ public class ContentMediaMetadataTests : BaseTestAutoLogin
         return mediaList[0];
     }
 
-    private async Task RefreshMediaDescriptionsAsync()
+    private async Task ExecuteMediaMetaUpdateTaskAsync()
     {
-        var response = await Request(HttpMethod.Post, "/api/content/refresh-media-metadata", new { });
+        var response = await GetRequest("/api/tasks/execute/MediaMetaUpdateTask");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 }

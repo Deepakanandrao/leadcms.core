@@ -30,8 +30,10 @@ public class EnrichmentSchedulerTask(
         return providerResolver.All.Any(p => p.SupportedEntityTypes.Contains(typeName, StringComparer.OrdinalIgnoreCase));
     }
 
-    protected override void ExecuteLogTask(List<ChangeLog> nextBatch, Type loggedType)
+    protected override string? ExecuteLogTask(List<ChangeLog> nextBatch, Type loggedType)
     {
+        var enqueuedCount = 0;
+
         foreach (var change in nextBatch)
         {
             var trigger = change.EntityState switch
@@ -49,7 +51,10 @@ public class EnrichmentSchedulerTask(
             foreach (var provider in providerResolver.All.Where(p => p.SupportedEntityTypes.Contains(loggedType.Name, StringComparer.OrdinalIgnoreCase) && p.SupportedTriggers.Contains(trigger.Value)))
             {
                 workItemService.EnqueueAsync(provider.ProviderKey, loggedType.Name, change.ObjectId, trigger.Value).GetAwaiter().GetResult();
+                enqueuedCount++;
             }
         }
+
+        return enqueuedCount > 0 ? $"Enqueued {enqueuedCount} enrichment work items" : null;
     }
 }

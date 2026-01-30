@@ -36,12 +36,12 @@ namespace LeadCMS.Tasks
             this.esDbContext = esDbContext;
         }
 
-        protected override void ExecuteLogTask(List<ChangeLog> nextBatch, Type loggedType)
+        protected override string? ExecuteLogTask(List<ChangeLog> nextBatch, Type loggedType)
         {
             // Skip processing if Elasticsearch is disabled
             if (!esDbContext.IsElasticsearchEnabled)
             {
-                return;
+                return null;
             }
 
             var bulkPayload = new StringBuilder();
@@ -115,6 +115,8 @@ namespace LeadCMS.Tasks
             }
 
             Log.Information("ES Sync Bulk Saved : {0}", bulkResponse.ToString());
+
+            return $"Synced to Elasticsearch: {addedCount} added, {modifiedCount} modified, {deletedCount} deleted";
         }
 
         protected override int GetMinLogId(ChangeLogTaskLog lastProcessedTask, Type loggedType)

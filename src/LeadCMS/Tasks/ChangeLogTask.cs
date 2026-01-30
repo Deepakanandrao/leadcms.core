@@ -50,6 +50,7 @@ public abstract class ChangeLogTask : BaseTask
     {
         int totalProcessed = 0;
         var processedTypes = new List<string>();
+        var taskResults = new List<string>();
 
         foreach (var loggedType in loggedTypes)
         {
@@ -69,7 +70,12 @@ public abstract class ChangeLogTask : BaseTask
 
                 try
                 {
-                    ExecuteLogTask(changeLogBatch!, loggedType);
+                    var batchResult = ExecuteLogTask(changeLogBatch!, loggedType);
+                    if (!string.IsNullOrWhiteSpace(batchResult))
+                    {
+                        taskResults.Add(batchResult);
+                    }
+
                     typeProcessed += changeLogBatch.Count;
                     totalProcessed += changeLogBatch.Count;
 
@@ -94,14 +100,28 @@ public abstract class ChangeLogTask : BaseTask
             }
         }
 
-        currentJob.Result = totalProcessed > 0 
-            ? $"Processed {totalProcessed} changes across {processedTypes.Count} entity types: {string.Join(", ", processedTypes)}"
-            : "No changes to process";
+        // Use task-specific results if provided, otherwise use default summary
+        if (taskResults.Count > 0)
+        {
+            currentJob.Result = string.Join("; ", taskResults);
+        }
+        else
+        {
+            currentJob.Result = totalProcessed > 0
+                ? $"Processed {totalProcessed} changes across {processedTypes.Count} entity types: {string.Join(", ", processedTypes)}"
+                : "No changes to process";
+        }
 
         return Task.FromResult(true);
     }
 
-    protected abstract void ExecuteLogTask(List<ChangeLog> nextBatch, Type loggedType);
+    /// <summary>
+    /// Executes the task logic for a batch of change log entries.
+    /// </summary>
+    /// <param name="nextBatch">The batch of change log entries to process.</param>
+    /// <param name="loggedType">The entity type being processed.</param>
+    /// <returns>A summary string describing what was done in this batch, or null/empty for default summary.</returns>
+    protected abstract string? ExecuteLogTask(List<ChangeLog> nextBatch, Type loggedType);
 
     protected HashSet<Type> GetTypes(PgDbContext context)
     {

@@ -20,7 +20,7 @@ public class SyncIpDetailsTask : ChangeLogTask
         this.ipDetailsService = ipDetailsService;
     }
 
-    protected override void ExecuteLogTask(List<ChangeLog> nextBatch, Type loggedType)
+    protected override string? ExecuteLogTask(List<ChangeLog> nextBatch, Type loggedType)
     {
         var ipDetailsCollection = new List<IpDetails>();
         var ipList = GetDistinctIps(nextBatch);
@@ -64,6 +64,10 @@ public class SyncIpDetailsTask : ChangeLogTask
             dbContext.IpDetails!.AddRange(ipDetailsCollection);
             dbContext.SaveChanges();
         }
+
+        return detailsRetrieved > 0 || detailsNotFound > 0
+            ? $"Retrieved {detailsRetrieved} IP details, {detailsNotFound} not found"
+            : null;
     }
 
     protected override bool IsTypeSupported(Type type)

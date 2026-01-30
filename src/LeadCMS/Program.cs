@@ -101,6 +101,7 @@ public class Program
         builder.Services.AddTransient<IEmailSchedulingService, EmailSchedulingService>();
         builder.Services.AddSingleton<IMediaResolver, MediaResolver>();
         builder.Services.AddScoped<IMediaOptimizationService, MediaOptimizationService>();
+        builder.Services.AddScoped<IMediaUsageService, MediaUsageService>();
         builder.Services.AddScoped<IRedirectService, RedirectService>();
         builder.Services.AddScoped<IMdxComponentParserService, MdxComponentParserService>();
         builder.Services.AddScoped<IChangeLogService, ChangeLogService>();
@@ -626,6 +627,7 @@ public class Program
         builder.Services.AddScoped<ITask, SyncEmailLogTask>();
         builder.Services.AddScoped<ITask, EnrichmentSchedulerTask>();
         builder.Services.AddScoped<ITask, EnrichmentExecutorTask>();
+        builder.Services.AddScoped<ITask, MediaMetaUpdateTask>();
     }
 
     private static void ConfigureCORS(WebApplicationBuilder builder)

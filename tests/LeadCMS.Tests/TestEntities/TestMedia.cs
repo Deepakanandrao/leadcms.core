@@ -9,7 +9,7 @@ namespace LeadCMS.Tests.TestEntities
 {
     public class TestMedia : MediaCreateDto
     {
-        public static string Scope = "test-scope-ui";
+        public static string Scope = "test-scope-ui/subscope/test-media";
 
         public readonly string FilePath;
 
