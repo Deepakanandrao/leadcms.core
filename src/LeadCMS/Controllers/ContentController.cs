@@ -860,6 +860,54 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         }
 
         await UpdateMediaDescriptionsFromContentAsync(entity.Body);
+        await UpdateCoverImageMetadataAsync(entity);
+    }
+
+    private async Task UpdateCoverImageMetadataAsync(Content entity)
+    {
+        if (string.IsNullOrWhiteSpace(entity.CoverImageUrl))
+        {
+            return;
+        }
+
+        if (!TryParseMediaPath(entity.CoverImageUrl, out var scopeUid, out var fileName))
+        {
+            return;
+        }
+
+        var media = await dbContext.Media!
+            .FirstOrDefaultAsync(m => m.ScopeUid == scopeUid &&
+                                      (m.Name == fileName || m.OriginalName == fileName));
+
+        if (media == null)
+        {
+            return;
+        }
+
+        var updated = false;
+
+        if (string.IsNullOrWhiteSpace(media.Description) && !string.IsNullOrWhiteSpace(entity.Title))
+        {
+            media.Description = entity.Title;
+            updated = true;
+        }
+
+        var tags = media.Tags ?? Array.Empty<string>();
+        if (!Array.Exists(tags, tag => string.Equals(tag, "cover", StringComparison.OrdinalIgnoreCase)))
+        {
+            media.Tags = tags.Concat(new[] { "cover" })
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            updated = true;
+        }
+
+        if (!updated)
+        {
+            return;
+        }
+
+        dbContext.Media!.Update(media);
+        await dbContext.SaveChangesAsync();
     }
 
     private Dictionary<string, string> ParseMdxAttributes(string tag)

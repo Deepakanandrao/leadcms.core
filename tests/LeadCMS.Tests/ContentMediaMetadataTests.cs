@@ -76,6 +76,34 @@ public class ContentMediaMetadataTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task CreateContent_WithCoverImage_ShouldUpdateCoverMediaMetadata()
+    {
+        var coverMedia = await CreateMediaAsync("cover-media.png");
+
+        var content = new ContentCreateDto
+        {
+            Title = "Cover Title",
+            Description = "Cover description long enough",
+            Body = "Body for cover metadata test.",
+            Slug = "cover-metadata-test",
+            Type = "blog-post",
+            Author = "Tester",
+            Language = "en",
+            Category = "Product",
+            Tags = new[] { "Tag1" },
+            AllowComments = true,
+            CoverImageUrl = $"/api/media/{coverMedia.ScopeUid}/{coverMedia.Name}",
+        };
+
+        var createdContent = await PostTest<ContentDetailsDto>("/api/content", content);
+        createdContent.Should().NotBeNull();
+
+        var media = await GetMediaByNameAsync(coverMedia.ScopeUid, coverMedia.Name);
+        media.Description.Should().Be(content.Title);
+        media.Tags.Should().Contain(tag => string.Equals(tag, "cover", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task RefreshMediaDescriptions_ShouldUpdateUsageCountAcrossAllContent()
     {
         var mediaOne = await CreateMediaAsync("usage-one.png");
