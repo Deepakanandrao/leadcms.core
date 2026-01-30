@@ -50,10 +50,9 @@ public class MediaUsageService : IMediaUsageService
     /// <inheritdoc/>
     public async Task<(int ContentsProcessed, int MediaUpdated)> UpdateMediaUsageFromAllContentAsync()
     {
-        var contentBodies = await dbContext.Content!
+        var contentItems = await dbContext.Content!
             .AsNoTracking()
-            .Where(c => c.Body != null && c.Body != string.Empty)
-            .Select(c => c.Body!)
+            .Select(c => new { c.Body, c.CoverImageUrl })
             .ToListAsync();
 
         var contentsProcessed = 0;
@@ -61,10 +60,25 @@ public class MediaUsageService : IMediaUsageService
         var mediaUsageCounts = new Dictionary<(string ScopeUid, string FileName), int>();
         var descriptionCandidates = new Dictionary<(string ScopeUid, string FileName), string>();
 
-        foreach (var body in contentBodies)
+        foreach (var content in contentItems)
         {
             contentsProcessed++;
-            var urls = ExtractImageUrls(body);
+
+            // Count cover image usage
+            if (!string.IsNullOrWhiteSpace(content.CoverImageUrl) &&
+                TryParseMediaPath(content.CoverImageUrl, out var coverScopeUid, out var coverFileName))
+            {
+                var coverKey = NormalizeMediaKey(coverScopeUid, coverFileName);
+                mediaUsageCounts[coverKey] = mediaUsageCounts.TryGetValue(coverKey, out var coverCount) ? coverCount + 1 : 1;
+            }
+
+            // Count body image usages
+            if (string.IsNullOrWhiteSpace(content.Body))
+            {
+                continue;
+            }
+
+            var urls = ExtractImageUrls(content.Body);
             foreach (var url in urls)
             {
                 if (!TryParseMediaPath(url, out var scopeUid, out var fileName))
@@ -76,7 +90,7 @@ public class MediaUsageService : IMediaUsageService
                 mediaUsageCounts[key] = mediaUsageCounts.TryGetValue(key, out var count) ? count + 1 : 1;
             }
 
-            var references = ExtractImageReferences(body);
+            var references = ExtractImageReferences(content.Body);
             foreach (var reference in references)
             {
                 if (!TryParseMediaPath(reference.Url, out var scopeUid, out var fileName))

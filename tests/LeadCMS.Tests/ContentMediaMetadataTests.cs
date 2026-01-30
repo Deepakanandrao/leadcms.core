@@ -108,6 +108,7 @@ public class ContentMediaMetadataTests : BaseTestAutoLogin
     {
         var mediaOne = await CreateMediaAsync("usage-one.png");
         var mediaTwo = await CreateMediaAsync("usage-two.png");
+        var mediaCover = await CreateMediaAsync("usage-cover.png");
         var mediaUnused = await CreateMediaAsync("usage-unused.png");
 
         var bodyOne = "<Image src=\"/api/media/" + mediaOne.ScopeUid + "/" + mediaOne.Name + "\" alt=\"First\" />\n" +
@@ -116,16 +117,21 @@ public class ContentMediaMetadataTests : BaseTestAutoLogin
         await CreateContentWithBodyAsync(bodyOne, "-usage-1");
 
         var bodyTwo = $"<img src=\"/api/media/{mediaOne.ScopeUid}/{mediaOne.Name}\" alt=\"Third\" />";
-        await CreateContentWithBodyAsync(bodyTwo, "-usage-2");
+        await CreateContentWithCoverImageAsync(bodyTwo, $"/api/media/{mediaCover.ScopeUid}/{mediaCover.Name}", "-usage-2");
+
+        // Another content using the same cover image
+        await CreateContentWithCoverImageAsync("Simple body", $"/api/media/{mediaCover.ScopeUid}/{mediaCover.Name}", "-usage-3");
 
         await ExecuteMediaMetaUpdateTaskAsync();
 
         var refreshedOne = await GetMediaByNameAsync(mediaOne.ScopeUid, mediaOne.Name);
         var refreshedTwo = await GetMediaByNameAsync(mediaTwo.ScopeUid, mediaTwo.Name);
+        var refreshedCover = await GetMediaByNameAsync(mediaCover.ScopeUid, mediaCover.Name);
         var refreshedUnused = await GetMediaByNameAsync(mediaUnused.ScopeUid, mediaUnused.Name);
 
         refreshedOne.UsageCount.Should().Be(3);
         refreshedTwo.UsageCount.Should().Be(1);
+        refreshedCover.UsageCount.Should().Be(2); // Used as cover image in 2 content items
         refreshedUnused.UsageCount.Should().Be(0);
     }
 
@@ -164,6 +170,18 @@ public class ContentMediaMetadataTests : BaseTestAutoLogin
         var content = new TestContent(suffix)
         {
             Body = body,
+        };
+
+        var createdContent = await PostTest<ContentDetailsDto>("/api/content", content);
+        createdContent.Should().NotBeNull();
+    }
+
+    private async Task CreateContentWithCoverImageAsync(string body, string coverImageUrl, string suffix)
+    {
+        var content = new TestContent(suffix)
+        {
+            Body = body,
+            CoverImageUrl = coverImageUrl,
         };
 
         var createdContent = await PostTest<ContentDetailsDto>("/api/content", content);
