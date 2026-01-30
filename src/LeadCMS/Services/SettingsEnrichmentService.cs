@@ -117,9 +117,9 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
         // MediaMaxFileSize: get from Media:MaxSize configuration with "default" extension, convert to kilobytes
         var maxFileSizeInKb = GetDefaultMediaMaxFileSize();
 
-        // MediaEnableOptimisation: defaults to true if not set
-        var enableOptimisationConfig = configuration["Media:EnableOptimisation"] ?? "true";
-        var enableOptimisation = !bool.TryParse(enableOptimisationConfig, out var result) || result;
+        // MediaEnableOptimisation: defaults to false if not set
+        var enableOptimisationConfig = configuration["Media:EnableOptimisation"] ?? "false";
+        var enableOptimisation = bool.TryParse(enableOptimisationConfig, out var result) && result;
 
         SetSettingIfNullOrEmpty(settings, SettingKeys.MediaMaxDimensions, string.IsNullOrWhiteSpace(maxDimensions) ? "1024x1024" : maxDimensions!);
         SetSettingIfNullOrEmpty(settings, SettingKeys.MediaCoverDimensions, string.IsNullOrWhiteSpace(coverDimensions) ? "512x256" : coverDimensions!);

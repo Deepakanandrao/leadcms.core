@@ -37,7 +37,7 @@ public class MediaOptimizationService : IMediaOptimizationService
             ConfigurationPaths.GetConfigurationPath(SettingKeys.MediaPreferredFormat));
         var enableOptimisation = await settingService.GetBoolSettingWithFallbackAsync(
             SettingKeys.MediaEnableOptimisation,
-            true);
+            false);
 
         var formatValue = string.IsNullOrWhiteSpace(preferredFormat)
             ? DefaultPreferredFormat

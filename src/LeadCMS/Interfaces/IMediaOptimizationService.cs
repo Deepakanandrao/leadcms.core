@@ -34,7 +34,7 @@ public sealed class MediaOptimizationSettings
 
     public string PreferredFormat { get; set; } = string.Empty;
 
-    public bool EnableOptimisation { get; set; } = true;
+    public bool EnableOptimisation { get; set; } = false;
 }
 
 public interface IMediaOptimizationService
