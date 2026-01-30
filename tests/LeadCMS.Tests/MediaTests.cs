@@ -337,6 +337,88 @@ public class MediaTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task RenameMedia_ShouldReplaceBothOriginalAndCurrentLinksWithNewCurrentLink()
+    {
+        TrackEntityType<Content>();
+
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "webp");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string scopeUid = "media-rename-both";
+        const string originalFileName = "both-links.png";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var media = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        // Verify we have both original and current names
+        media.OriginalName.Should().Be(originalFileName);
+        media.Name.Should().EndWith(".webp");
+        media.Name.Should().NotBe(originalFileName);
+
+        // Create content with references to BOTH the original name and the current (optimized) name
+        var content = new ContentCreateDto
+        {
+            Title = "Both Links Content",
+            Description = "Description long enough for both links test",
+            Body = $"Original link: /api/media/{scopeUid}/{media.OriginalName} and current link: /api/media/{scopeUid}/{media.Name}.",
+            Slug = "both-links-content",
+            Type = "blog-post",
+            Author = "Tester",
+            Language = "en",
+            Category = "Product",
+            Tags = new[] { "Tag1" },
+            AllowComments = true,
+            CoverImageUrl = $"/api/media/{scopeUid}/{media.OriginalName}",
+        };
+
+        var createdContent = await PostTest<ContentDetailsDto>("/api/content", content, HttpStatusCode.Created);
+        createdContent.Should().NotBeNull();
+
+        // Verify the content has both types of links
+        createdContent!.Body.Should().Contain($"/api/media/{scopeUid}/{media.OriginalName}");
+        createdContent.Body.Should().Contain($"/api/media/{scopeUid}/{media.Name}");
+        createdContent.CoverImageUrl.Should().Be($"/api/media/{scopeUid}/{media.OriginalName}");
+
+        // Rename the media
+        var renameRequest = new MediaRenameRequestDto
+        {
+            ScopeUid = scopeUid,
+            FileName = media.Name,
+            NewScopeUid = "media-rename-both-new",
+            NewFileName = "renamed-both.webp",
+        };
+
+        var renameResponse = await PostTest<MediaDetailsDto>("/api/media/rename", renameRequest, HttpStatusCode.OK);
+        renameResponse.Should().NotBeNull();
+
+        // The new OriginalName should be the new file name with the original extension
+        renameResponse!.OriginalName.Should().Be("renamed-both.png");
+        renameResponse.Name.Should().Be(renameRequest.NewFileName);
+
+        // Verify both old links (original and current) are replaced with the NEW CURRENT link
+        var updatedContent = await GetTest<ContentDetailsDto>($"/api/content/{createdContent.Id}", HttpStatusCode.OK);
+        updatedContent.Should().NotBeNull();
+
+        // CoverImageUrl (which had original name) should now have new current name
+        updatedContent!.CoverImageUrl.Should().Be($"/api/media/{renameRequest.NewScopeUid}/{renameRequest.NewFileName}");
+
+        // Body should NOT contain old original link
+        updatedContent.Body.Should().NotContain($"/api/media/{scopeUid}/{media.OriginalName}");
+
+        // Body should NOT contain old current link
+        updatedContent.Body.Should().NotContain($"/api/media/{scopeUid}/{media.Name}");
+
+        // Body SHOULD contain the new current link (both old links replaced with new current)
+        updatedContent.Body.Should().Contain($"/api/media/{renameRequest.NewScopeUid}/{renameRequest.NewFileName}");
+
+        // Verify we have exactly 2 occurrences of the new link in the body (both old links replaced)
+        var newLinkPattern = $"/api/media/{renameRequest.NewScopeUid}/{renameRequest.NewFileName}";
+        var occurrences = updatedContent.Body!.Split(newLinkPattern).Length - 1;
+        occurrences.Should().Be(2, "both the original name link and current name link should be replaced with new current link");
+    }
+
+    [Fact]
     public async Task OptimizeMedia_ShouldUpdateDimensionsAndRespectLogin()
     {
         await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");

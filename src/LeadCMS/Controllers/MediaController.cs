@@ -102,7 +102,6 @@ public class MediaController : ControllerBase
             var optimizedName = GetOptimizedFileName(incomingFileName, optimizationResult.Extension);
             var newScope = imageCreateDto.ScopeUid.Trim();
             string newName;
-            string? newOriginalName;
 
             // If optimization is enabled, store both original and optimized
             if (settings.EnableOptimisation)
@@ -111,8 +110,7 @@ public class MediaController : ControllerBase
                 uploadedMedia!.OriginalSize = incomingFileSize;
                 uploadedMedia!.OriginalExtension = incomingFileExtension;
                 uploadedMedia!.OriginalMimeType = incomingFileMimeType;
-                newOriginalName = incomingFileName;
-                uploadedMedia!.OriginalName = newOriginalName;
+                uploadedMedia!.OriginalName = incomingFileName;
                 uploadedMedia!.Data = processedResult.Data;
                 uploadedMedia!.Size = processedResult.Size;
                 uploadedMedia!.Extension = optimizationResult.Extension;
@@ -128,7 +126,6 @@ public class MediaController : ControllerBase
                 uploadedMedia!.Extension = incomingFileExtension;
                 uploadedMedia!.MimeType = incomingFileMimeType;
                 newName = incomingFileName;
-                newOriginalName = null;
                 uploadedMedia!.Name = newName;
                 uploadedMedia!.OriginalData = null;
                 uploadedMedia!.OriginalSize = null;
@@ -158,16 +155,12 @@ public class MediaController : ControllerBase
             if (!string.Equals(oldScope, newScope, StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase))
             {
-                var renameOriginal = !string.IsNullOrWhiteSpace(oldOriginalName)
-                    ? (newOriginalName ?? newName)
-                    : newOriginalName;
                 await UpdateContentReferencesAsync(
                     oldScope,
                     oldName,
                     oldOriginalName,
                     newScope,
-                    newName,
-                    renameOriginal);
+                    newName);
             }
 
             pgDbContext.Media!.Update(uploadedMedia);
@@ -564,7 +557,6 @@ public class MediaController : ControllerBase
                 existingMedia.Extension = incomingFileExtension;
                 existingMedia.MimeType = incomingFileMimeType;
                 newName = baseFileName;
-                newOriginalName = null;
                 existingMedia.Name = newName;
                 existingMedia.OriginalData = null;
                 existingMedia.OriginalSize = null;
@@ -583,16 +575,12 @@ public class MediaController : ControllerBase
             if (!string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(oldScope, existingMedia.ScopeUid, StringComparison.OrdinalIgnoreCase))
             {
-                var renameOriginal = !string.IsNullOrWhiteSpace(oldOriginalName)
-                    ? (newOriginalName ?? newName)
-                    : newOriginalName;
                 await UpdateContentReferencesAsync(
                     oldScope,
                     oldName,
                     oldOriginalName,
                     existingMedia.ScopeUid,
-                    newName,
-                    renameOriginal);
+                    newName);
             }
         }
 
@@ -1357,8 +1345,7 @@ public class MediaController : ControllerBase
             currentName,
             currentOriginalName,
             newScopeUid,
-            newFileName,
-            media.OriginalName);
+            newFileName);
 
         media.UsageCount = linksUpdated;
         pgDbContext.Media!.Update(media);
@@ -1372,8 +1359,7 @@ public class MediaController : ControllerBase
         string oldFileName,
         string? oldOriginalName,
         string newScopeUid,
-        string newFileName,
-        string? newOriginalName)
+        string newFileName)
     {
         var oldRelativePath = BuildMediaPath(oldScopeUid, oldFileName);
         var newRelativePath = BuildMediaPath(newScopeUid, newFileName);
@@ -1381,9 +1367,6 @@ public class MediaController : ControllerBase
         var oldRelativeOriginal = string.IsNullOrWhiteSpace(oldOriginalName)
             ? null
             : BuildMediaPath(oldScopeUid, oldOriginalName);
-        var newRelativeOriginal = string.IsNullOrWhiteSpace(newOriginalName)
-            ? null
-            : BuildMediaPath(newScopeUid, newOriginalName);
 
         var contents = await pgDbContext.Content!
             .Where(c =>
@@ -1405,16 +1388,18 @@ public class MediaController : ControllerBase
 
             linksUpdated += ReplaceOccurrences(coverImageUrl, oldRelativePath, newRelativePath, ref coverImageUrl, ref updated);
 
-            if (oldRelativeOriginal != null && newRelativeOriginal != null)
+            // Replace old original name links with new current name (not new original)
+            // Both old paths should point to the new current (optimized) file
+            if (oldRelativeOriginal != null)
             {
-                linksUpdated += ReplaceOccurrences(coverImageUrl, oldRelativeOriginal, newRelativeOriginal, ref coverImageUrl, ref updated);
+                linksUpdated += ReplaceOccurrences(coverImageUrl, oldRelativeOriginal, newRelativePath, ref coverImageUrl, ref updated);
             }
 
             linksUpdated += ReplaceOccurrences(body, oldRelativePath, newRelativePath, ref body, ref updated);
 
-            if (oldRelativeOriginal != null && newRelativeOriginal != null)
+            if (oldRelativeOriginal != null)
             {
-                linksUpdated += ReplaceOccurrences(body, oldRelativeOriginal, newRelativeOriginal, ref body, ref updated);
+                linksUpdated += ReplaceOccurrences(body, oldRelativeOriginal, newRelativePath, ref body, ref updated);
             }
 
             if (updated)
