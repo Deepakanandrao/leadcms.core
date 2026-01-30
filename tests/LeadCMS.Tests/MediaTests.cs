@@ -231,6 +231,8 @@ public class MediaTests : BaseTestAutoLogin
         after.Height.Should().NotBeNull();
         after.OriginalWidth.Should().NotBeNull();
         after.OriginalHeight.Should().NotBeNull();
+        after.OriginalWidth.Should().Be(736);
+        after.OriginalHeight.Should().Be(404);
     }
 
     [Fact]
@@ -536,6 +538,8 @@ public class MediaTests : BaseTestAutoLogin
         resized.OriginalMimeType.Should().Be("image/png");
         resized.OriginalWidth.Should().NotBeNull();
         resized.OriginalHeight.Should().NotBeNull();
+        resized.OriginalWidth.Should().Be(736);
+        resized.OriginalHeight.Should().Be(404);
 
         var mediaList = await GetTest<List<MediaDetailsDto>>(
             $"/api/media?filter[where][scopeUid][eq]={scopeUid}",
@@ -549,6 +553,8 @@ public class MediaTests : BaseTestAutoLogin
         persisted.OriginalMimeType.Should().Be("image/png");
         persisted.OriginalWidth.Should().NotBeNull();
         persisted.OriginalHeight.Should().NotBeNull();
+        persisted.OriginalWidth.Should().Be(736);
+        persisted.OriginalHeight.Should().Be(404);
     }
 
     [Fact]

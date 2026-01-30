@@ -150,18 +150,23 @@ public class AIAssistanceTests : BaseTestAutoLogin
         response.Height.Should().NotBeNull();
         response.OriginalWidth.Should().NotBeNull();
         response.OriginalHeight.Should().NotBeNull();
+        response.OriginalWidth.Should().Be(736);
+        response.OriginalHeight.Should().Be(404);
 
         var lastRequest = TestAIProviderService.GetLastImageRequest();
         lastRequest.Should().NotBeNull();
         lastRequest!.EditImage.Should().NotBeNull();
         lastRequest.EditImage!.FileName.Should().Be("original-cover.png");
         lastRequest.EditImage.MimeType.Should().Be("image/png");
+        using var originalImage = new MagickImage(lastRequest.EditImage.Data);
+        originalImage.Width.Should().Be(736);
+        originalImage.Height.Should().Be(404);
     }
 
     [Fact]
     public async Task CoverImageGeneration_WithOptimisationEnabled_UsesPreferredFormatAndCoverDimensions()
     {
-        await SetSystemSettingAsync(SettingKeys.MediaCoverDimensions, "300x150");
+        await SetSystemSettingAsync(SettingKeys.MediaCoverDimensions, "100x50");
         await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
         await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "webp");
         await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
@@ -179,16 +184,18 @@ public class AIAssistanceTests : BaseTestAutoLogin
         response!.Name.Should().EndWith(".webp");
         response.Extension.Should().Be(".webp");
         response.MimeType.Should().Be("image/webp");
+        response.OriginalWidth.Should().Be(736);
+        response.OriginalHeight.Should().Be(404);
 
         var lastRequest = TestAIProviderService.GetLastImageRequest();
         lastRequest.Should().NotBeNull();
-        lastRequest!.Width.Should().Be(300);
-        lastRequest.Height.Should().Be(150);
+        lastRequest!.Width.Should().Be(100);
+        lastRequest.Height.Should().Be(50);
 
         var mediaBytes = await GetMediaBytesAsync(response.Location);
         using var image = new MagickImage(mediaBytes);
-        image.Width.Should().Be(300);
-        image.Height.Should().Be(150);
+        image.Width.Should().Be(100);
+        image.Height.Should().Be(50);
     }
 
     [Fact]
@@ -317,6 +324,9 @@ public class AIAssistanceTests : BaseTestAutoLogin
         lastRequest.SampleImages[0].FileName.Should().Be(sampleEntity.OriginalName);
         lastRequest.SampleImages[0].MimeType.Should().Be(sampleEntity.OriginalMimeType);
         lastRequest.SampleImages[0].Data.Should().BeEquivalentTo(sampleBytes);
+        using var sampleImage = new MagickImage(lastRequest.SampleImages[0].Data);
+        sampleImage.Width.Should().Be(736);
+        sampleImage.Height.Should().Be(404);
     }
 
     [Fact]
@@ -402,6 +412,9 @@ public class AIAssistanceTests : BaseTestAutoLogin
         lastRequest.SampleImages[0].FileName.Should().Be(sampleMedia.Name);
         lastRequest.SampleImages[0].MimeType.Should().Be(sampleMedia.MimeType);
         lastRequest.SampleImages[0].Data.Should().NotBeNullOrEmpty();
+        using var editSampleImage = new MagickImage(lastRequest.SampleImages[0].Data);
+        editSampleImage.Width.Should().Be(736);
+        editSampleImage.Height.Should().Be(404);
     }
 
     [Fact]

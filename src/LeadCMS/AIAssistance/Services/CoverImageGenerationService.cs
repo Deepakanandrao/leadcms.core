@@ -639,6 +639,13 @@ public class CoverImageGenerationService : ICoverImageGenerationService
                 existingMedia.Name = fileName;
             }
 
+            TrySetImageDimensions(
+                existingMedia,
+                settings.EnableOptimisation ? originalMimeType : string.Empty,
+                settings.EnableOptimisation ? imageData : Array.Empty<byte>(),
+                optimizationResult.MimeType,
+                coverResult.Data);
+
             existingMedia.Description = string.IsNullOrWhiteSpace(title) ? existingMedia.Description : title;
             existingMedia.Tags = new[] { "cover" };
             dbContext.Media!.Update(existingMedia);
@@ -667,6 +674,13 @@ public class CoverImageGenerationService : ICoverImageGenerationService
                 Tags = new[] { "cover" },
             };
 
+            TrySetImageDimensions(
+                newMedia,
+                settings.EnableOptimisation ? originalMimeType : string.Empty,
+                settings.EnableOptimisation ? imageData : Array.Empty<byte>(),
+                optimizationResult.MimeType,
+                coverResult.Data);
+
             await dbContext.Media!.AddAsync(newMedia);
             await dbContext.SaveChangesAsync();
 
@@ -680,6 +694,7 @@ public class CoverImageGenerationService : ICoverImageGenerationService
         var originalExtension = existingMedia.OriginalExtension ?? existingMedia.Extension;
         var originalMimeType = existingMedia.OriginalMimeType ?? existingMedia.MimeType;
         var originalName = existingMedia.OriginalName ?? existingMedia.Name;
+        var hasOriginalData = existingMedia.OriginalData != null && existingMedia.OriginalData.Length > 0;
         var settings = await mediaOptimizationService.GetSettingsAsync();
         var optimizationResult = await mediaOptimizationService.OptimizeAsync(new MediaOptimizationRequest
         {
@@ -689,6 +704,14 @@ public class CoverImageGenerationService : ICoverImageGenerationService
             MimeType = originalMimeType,
         });
         var coverResult = await ApplyCoverDimensionsIfNeeded(optimizationResult.Data, optimizationResult.MimeType);
+
+        if (hasOriginalData)
+        {
+            existingMedia.OriginalSize ??= existingMedia.OriginalData!.Length;
+            existingMedia.OriginalExtension ??= originalExtension;
+            existingMedia.OriginalMimeType ??= originalMimeType;
+            existingMedia.OriginalName ??= originalName;
+        }
 
         if (settings.EnableOptimisation)
         {
