@@ -8,7 +8,6 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using LeadCMS.Constants;
-using LeadCMS.Entities;
 using LeadCMS.Helpers;
 using Microsoft.AspNetCore.StaticFiles;
 
@@ -207,6 +206,211 @@ public class MediaTests : BaseTestAutoLogin
         after.OriginalHeight.Should().NotBeNull();
     }
 
+    [Fact]
+    public async Task Patch_WhenOptimisationEnabled_ShouldRenameAndUpdateContentReferences()
+    {
+        TrackEntityType<Content>();
+
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "png");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string scopeUid = "media-patch-rename";
+        const string originalFileName = "patch-rename.png";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var media = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        var content = new ContentCreateDto
+        {
+            Title = "Patch Rename Content",
+            Description = "Description long enough for patch rename test",
+            Body = $"Body reference /api/media/{scopeUid}/{media.Name}",
+            Slug = "patch-rename-content",
+            Type = "blog-post",
+            Author = "Tester",
+            Language = "en",
+            Category = "Product",
+            Tags = new[] { "Tag1" },
+            AllowComments = true,
+            CoverImageUrl = $"/api/media/{scopeUid}/{media.Name}",
+        };
+
+        var createdContent = await PostTest<ContentDetailsDto>("/api/content", content, HttpStatusCode.Created);
+        createdContent.Should().NotBeNull();
+
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "webp");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "120x80");
+
+        var patched = await PatchMediaAsync(imageBytes, "patch-rename.webp", scopeUid, media.Name);
+        patched.Name.Should().EndWith(".webp");
+
+        var updatedContent = await GetTest<ContentDetailsDto>($"/api/content/{createdContent!.Id}", HttpStatusCode.OK);
+        updatedContent.Should().NotBeNull();
+        updatedContent!.CoverImageUrl.Should().Be($"/api/media/{scopeUid}/{patched.Name}");
+        updatedContent.Body.Should().Contain($"/api/media/{scopeUid}/{patched.Name}");
+    }
+
+    [Fact]
+    public async Task RenameMedia_ShouldUpdateContentReferencesAndOriginalName()
+    {
+        TrackEntityType<Content>();
+
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "webp");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string scopeUid = "media-rename";
+        const string originalFileName = "rename-cover.png";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var media = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        media.OriginalName.Should().Be(originalFileName);
+
+        var content = new ContentCreateDto
+        {
+            Title = "Rename Media Content",
+            Description = "Description long enough for rename test",
+            Body = $"Cover link /api/media/{scopeUid}/{media.Name} and /media/{scopeUid}/{media.Name}.",
+            Slug = "rename-media-content",
+            Type = "blog-post",
+            Author = "Tester",
+            Language = "en",
+            Category = "Product",
+            Tags = new[] { "Tag1" },
+            AllowComments = true,
+            CoverImageUrl = $"/api/media/{scopeUid}/{media.Name}",
+        };
+
+        var createdContent = await PostTest<ContentDetailsDto>("/api/content", content, HttpStatusCode.Created);
+        createdContent.Should().NotBeNull();
+
+        var renameRequest = new MediaRenameRequestDto
+        {
+            ScopeUid = scopeUid,
+            FileName = media.Name,
+            NewScopeUid = "media-rename-new",
+            NewFileName = "rename-cover.webp",
+        };
+
+        var renameResponse = await PostTest<MediaDetailsDto>("/api/media/rename", renameRequest, HttpStatusCode.OK);
+        renameResponse.Should().NotBeNull();
+        renameResponse!.UsageCount.Should().Be(3);
+        renameResponse.ScopeUid.Should().Be(renameRequest.NewScopeUid);
+        renameResponse.Name.Should().Be(renameRequest.NewFileName);
+        renameResponse.OriginalName.Should().Be("rename-cover.png");
+
+        var updatedContent = await GetTest<ContentDetailsDto>($"/api/content/{createdContent!.Id}", HttpStatusCode.OK);
+        updatedContent.Should().NotBeNull();
+        updatedContent!.CoverImageUrl.Should().Be($"/api/media/{renameRequest.NewScopeUid}/{renameRequest.NewFileName}");
+        updatedContent.Body.Should().Contain($"/api/media/{renameRequest.NewScopeUid}/{renameRequest.NewFileName}");
+        updatedContent.Body.Should().Contain($"/media/{renameRequest.NewScopeUid}/{renameRequest.NewFileName}");
+    }
+
+    [Fact]
+    public async Task OptimizeMedia_ShouldUpdateDimensionsAndRespectLogin()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "png");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "120x80");
+
+        const string scopeUid = "media-optimize";
+        const string originalFileName = "optimize-cover.png";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var media = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "webp");
+
+        var request = new MediaTransformRequestDto
+        {
+            ScopeUid = scopeUid,
+            FileName = media.Name,
+        };
+
+        Logout();
+        var unauthorized = await Request(HttpMethod.Post, "/api/media/optimize", request);
+        unauthorized.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        await LoginAsAdmin();
+        var response = await Request(HttpMethod.Post, "/api/media/optimize", request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var optimized = await response.Content.ReadFromJsonAsync<MediaDetailsDto>();
+        optimized.Should().NotBeNull();
+        optimized!.Extension.Should().Be(".webp");
+        optimized.Width.Should().BeGreaterThan(0);
+        optimized.Height.Should().BeGreaterThan(0);
+        optimized.Width.Should().BeLessThanOrEqualTo(120);
+        optimized.Height.Should().BeLessThanOrEqualTo(80);
+    }
+
+    [Fact]
+    public async Task ResizeMedia_ShouldUpdateWidthAndHeight()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "png");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string scopeUid = "media-resize";
+        const string originalFileName = "resize-cover.png";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var media = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        var request = new MediaResizeRequestDto
+        {
+            ScopeUid = scopeUid,
+            FileName = media.Name,
+            Width = 200,
+            Height = 100,
+            MaintainAspectRatio = false,
+        };
+
+        var response = await Request(HttpMethod.Post, "/api/media/resize", request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var resized = await response.Content.ReadFromJsonAsync<MediaDetailsDto>();
+        resized.Should().NotBeNull();
+        resized!.Width.Should().Be(200);
+        resized.Height.Should().Be(100);
+    }
+
+    [Fact]
+    public async Task CropMedia_ShouldUpdateWidthAndHeight()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "png");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string scopeUid = "media-crop";
+        const string originalFileName = "crop-cover.png";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var media = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        var request = new MediaCropRequestDto
+        {
+            ScopeUid = scopeUid,
+            FileName = media.Name,
+            Width = 120,
+            Height = 80,
+            X = 10,
+            Y = 5,
+        };
+
+        var response = await Request(HttpMethod.Post, "/api/media/crop", request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var cropped = await response.Content.ReadFromJsonAsync<MediaDetailsDto>();
+        cropped.Should().NotBeNull();
+        cropped!.Width.Should().Be(120);
+        cropped.Height.Should().Be(80);
+    }
+
     public async Task<bool> CreateAndGetMedia(string fileName, int fileSize)
     {
         var testMedia = new TestMedia(fileName, fileSize);
@@ -333,6 +537,34 @@ public class MediaTests : BaseTestAutoLogin
 
         var response = await client.SendAsync(request);
         response.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var media = await response.Content.ReadFromJsonAsync<MediaDetailsDto>();
+        media.Should().NotBeNull();
+        media!.Location.Should().NotBeNullOrWhiteSpace();
+
+        return media;
+    }
+
+    private async Task<MediaDetailsDto> PatchMediaAsync(byte[] bytes, string fileName, string scopeUid, string existingFileName)
+    {
+        var contentTypeProvider = new FileExtensionContentTypeProvider();
+        contentTypeProvider.TryGetContentType(fileName, out var contentType);
+
+        var form = new MultipartFormDataContent();
+        var fileContent = new StreamContent(new MemoryStream(bytes));
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType ?? "application/octet-stream");
+        form.Add(fileContent, "File", fileName);
+        form.Add(new StringContent(scopeUid), "ScopeUid");
+        form.Add(new StringContent(existingFileName), "FileName");
+
+        var request = new HttpRequestMessage(HttpMethod.Patch, "/api/media")
+        {
+            Content = form,
+        };
+        request.Headers.Authorization = GetAuthenticationHeaderValue();
+
+        var response = await client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var media = await response.Content.ReadFromJsonAsync<MediaDetailsDto>();
         media.Should().NotBeNull();

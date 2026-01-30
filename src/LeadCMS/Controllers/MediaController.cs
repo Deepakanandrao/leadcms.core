@@ -96,7 +96,13 @@ public class MediaController : ControllerBase
         if (scopeAndFileExists.Count() > 0)
         {
             uploadedMedia = scopeAndFileExists!.FirstOrDefault()!;
+            var oldScope = uploadedMedia.ScopeUid;
+            var oldName = uploadedMedia.Name;
+            var oldOriginalName = uploadedMedia.OriginalName;
             var optimizedName = GetOptimizedFileName(incomingFileName, optimizationResult.Extension);
+            var newScope = imageCreateDto.ScopeUid.Trim();
+            string newName;
+            string? newOriginalName;
 
             // If optimization is enabled, store both original and optimized
             if (settings.EnableOptimisation)
@@ -105,12 +111,14 @@ public class MediaController : ControllerBase
                 uploadedMedia!.OriginalSize = incomingFileSize;
                 uploadedMedia!.OriginalExtension = incomingFileExtension;
                 uploadedMedia!.OriginalMimeType = incomingFileMimeType;
-                uploadedMedia!.OriginalName = incomingFileName;
+                newOriginalName = incomingFileName;
+                uploadedMedia!.OriginalName = newOriginalName;
                 uploadedMedia!.Data = processedResult.Data;
                 uploadedMedia!.Size = processedResult.Size;
                 uploadedMedia!.Extension = optimizationResult.Extension;
                 uploadedMedia!.MimeType = optimizationResult.MimeType;
-                uploadedMedia!.Name = optimizedName;
+                newName = optimizedName;
+                uploadedMedia!.Name = newName;
             }
             else
             {
@@ -119,7 +127,14 @@ public class MediaController : ControllerBase
                 uploadedMedia!.Size = processedResult.Size;
                 uploadedMedia!.Extension = incomingFileExtension;
                 uploadedMedia!.MimeType = incomingFileMimeType;
-                uploadedMedia!.Name = incomingFileName;
+                newName = incomingFileName;
+                newOriginalName = null;
+                uploadedMedia!.Name = newName;
+                uploadedMedia!.OriginalData = null;
+                uploadedMedia!.OriginalSize = null;
+                uploadedMedia!.OriginalExtension = null;
+                uploadedMedia!.OriginalMimeType = null;
+                uploadedMedia!.OriginalName = null;
             }
 
             TrySetImageDimensions(
@@ -138,6 +153,21 @@ public class MediaController : ControllerBase
             if (imageCreateDto.Tags != null)
             {
                 uploadedMedia.Tags = normalizedTags;
+            }
+
+            if (!string.Equals(oldScope, newScope, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase))
+            {
+                var renameOriginal = !string.IsNullOrWhiteSpace(oldOriginalName)
+                    ? (newOriginalName ?? newName)
+                    : newOriginalName;
+                await UpdateContentReferencesAsync(
+                    oldScope,
+                    oldName,
+                    oldOriginalName,
+                    newScope,
+                    newName,
+                    renameOriginal);
             }
 
             pgDbContext.Media!.Update(uploadedMedia);
@@ -542,6 +572,10 @@ public class MediaController : ControllerBase
         // If a file is provided, update the binary keeping name/extension; otherwise only update metadata
         if (mediaUpdateDto.File != null)
         {
+            var oldScope = existingMedia.ScopeUid;
+            var oldName = existingMedia.Name;
+            var oldOriginalName = existingMedia.OriginalName;
+
             // Process the new file content
             var incomingFileExtension = Path.GetExtension(mediaUpdateDto.File.FileName);
             var incomingFileSize = mediaUpdateDto.File.Length;
@@ -568,7 +602,10 @@ public class MediaController : ControllerBase
                 hasCoverTag);
 
             // Update only the binary content and size, preserve other properties (ScopeUid, Name, Extension)
-            var optimizedName = GetOptimizedFileName(mediaUpdateDto.File.FileName.ToTranslit().Slugify(), optimizationResult.Extension);
+            var baseFileName = mediaUpdateDto.File.FileName.ToTranslit().Slugify();
+            var optimizedName = GetOptimizedFileName(baseFileName, optimizationResult.Extension);
+            string newName;
+            string? newOriginalName;
 
             // If optimization is enabled, store both original and optimized
             if (settings.EnableOptimisation)
@@ -577,12 +614,14 @@ public class MediaController : ControllerBase
                 existingMedia.OriginalSize = incomingFileSize;
                 existingMedia.OriginalExtension = incomingFileExtension;
                 existingMedia.OriginalMimeType = incomingFileMimeType;
-                existingMedia.OriginalName = mediaUpdateDto.File.FileName.ToTranslit().Slugify();
+                newOriginalName = baseFileName;
+                existingMedia.OriginalName = newOriginalName;
                 existingMedia.Data = processedResult.Data;
                 existingMedia.Size = processedResult.Size;
                 existingMedia.Extension = optimizationResult.Extension;
                 existingMedia.MimeType = optimizationResult.MimeType;
-                existingMedia.Name = optimizedName;
+                newName = optimizedName;
+                existingMedia.Name = newName;
             }
             else
             {
@@ -591,7 +630,14 @@ public class MediaController : ControllerBase
                 existingMedia.Size = processedResult.Size;
                 existingMedia.Extension = incomingFileExtension;
                 existingMedia.MimeType = incomingFileMimeType;
-                existingMedia.Name = mediaUpdateDto.File.FileName.ToTranslit().Slugify();
+                newName = baseFileName;
+                newOriginalName = null;
+                existingMedia.Name = newName;
+                existingMedia.OriginalData = null;
+                existingMedia.OriginalSize = null;
+                existingMedia.OriginalExtension = null;
+                existingMedia.OriginalMimeType = null;
+                existingMedia.OriginalName = null;
             }
 
             TrySetImageDimensions(
@@ -600,6 +646,21 @@ public class MediaController : ControllerBase
                 imageInBytes,
                 optimizationResult.MimeType,
                 processedResult.Data);
+
+            if (!string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(oldScope, existingMedia.ScopeUid, StringComparison.OrdinalIgnoreCase))
+            {
+                var renameOriginal = !string.IsNullOrWhiteSpace(oldOriginalName)
+                    ? (newOriginalName ?? newName)
+                    : newOriginalName;
+                await UpdateContentReferencesAsync(
+                    oldScope,
+                    oldName,
+                    oldOriginalName,
+                    existingMedia.ScopeUid,
+                    newName,
+                    renameOriginal);
+            }
         }
 
         // Update description if provided (can be set to empty to clear)
@@ -780,16 +841,22 @@ public class MediaController : ControllerBase
                 TrySetImageDimensions(media, sourceMimeType, sourceData, optimizationResult.MimeType, processedResult.Data);
 
                 var baseName = media.OriginalName ?? media.Name ?? string.Empty;
-                if (!string.IsNullOrWhiteSpace(baseName))
-                {
-                    media.Name = GetOptimizedFileName(baseName, optimizationResult.Extension);
-                }
+                var newName = !string.IsNullOrWhiteSpace(baseName)
+                    ? GetOptimizedFileName(baseName, optimizationResult.Extension)
+                    : media.Name;
 
                 media.Data = processedResult.Data;
                 media.Size = processedResult.Size;
                 media.Extension = optimizationResult.Extension;
                 media.MimeType = optimizationResult.MimeType;
                 media.UpdatedAt = DateTime.UtcNow;
+
+                if (!string.IsNullOrWhiteSpace(newName) &&
+                    !string.Equals(media.Name, newName, StringComparison.OrdinalIgnoreCase))
+                {
+                    await RenameMediaAsync(media, media.ScopeUid, newName);
+                }
+
                 updatedCount++;
             }
 
@@ -801,6 +868,247 @@ public class MediaController : ControllerBase
         {
             Updated = updatedCount,
         });
+    }
+
+    [HttpPost("rename")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(MediaDetailsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<MediaDetailsDto>> RenameMedia([FromBody] MediaRenameRequestDto request)
+    {
+        if (string.IsNullOrWhiteSpace(request.ScopeUid) || string.IsNullOrWhiteSpace(request.FileName) ||
+            string.IsNullOrWhiteSpace(request.NewScopeUid) || string.IsNullOrWhiteSpace(request.NewFileName))
+        {
+            return UnprocessableEntity(new ProblemDetails
+            {
+                Title = "Invalid rename request",
+                Detail = "ScopeUid, FileName, NewScopeUid, and NewFileName are required.",
+                Status = StatusCodes.Status422UnprocessableEntity,
+            });
+        }
+
+        var media = await pgDbContext.Media!
+            .FirstOrDefaultAsync(m => m.ScopeUid == request.ScopeUid &&
+                                      (m.Name == request.FileName || m.OriginalName == request.FileName));
+
+        if (media == null)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "Media not found",
+                Detail = $"Media '{request.ScopeUid}/{request.FileName}' was not found.",
+                Status = StatusCodes.Status404NotFound,
+            });
+        }
+
+        var linksUpdated = await RenameMediaAsync(media, request.NewScopeUid, request.NewFileName);
+        var dto = mapper.Map<MediaDetailsDto>(media);
+        dto.Location = CalculateMediaLocation(dto.ScopeUid, dto.Name);
+        dto.UsageCount = linksUpdated;
+
+        return Ok(dto);
+    }
+
+    [HttpPost("optimize")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(MediaDetailsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<MediaDetailsDto>> OptimizeMedia([FromBody] MediaTransformRequestDto request)
+    {
+        var media = await ResolveMediaAsync(request.ScopeUid, request.FileName);
+        if (media == null)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "Media not found",
+                Detail = $"Media '{request.ScopeUid}/{request.FileName}' was not found.",
+                Status = StatusCodes.Status404NotFound,
+            });
+        }
+
+        var sourceData = media.OriginalData ?? media.Data;
+        var sourceExtension = media.OriginalExtension ?? media.Extension ?? string.Empty;
+        var sourceMimeType = media.OriginalMimeType ?? media.MimeType ?? string.Empty;
+        var baseName = !string.IsNullOrWhiteSpace(media.OriginalName)
+            ? media.OriginalName
+            : media.Name;
+
+        if (sourceData == null || sourceData.Length == 0 ||
+            string.IsNullOrWhiteSpace(sourceMimeType) ||
+            !sourceMimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return UnprocessableEntity(new ProblemDetails
+            {
+                Title = "Unsupported media",
+                Detail = "Only image media can be optimized.",
+                Status = StatusCodes.Status422UnprocessableEntity,
+            });
+        }
+
+        var response = await ApplyMediaTransformAsync(
+            media,
+            sourceData,
+            sourceData,
+            sourceExtension,
+            sourceMimeType,
+            baseName);
+
+        return Ok(response);
+    }
+
+    [HttpPost("resize")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(MediaDetailsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<MediaDetailsDto>> ResizeMedia([FromBody] MediaResizeRequestDto request)
+    {
+        var media = await ResolveMediaAsync(request.ScopeUid, request.FileName);
+        if (media == null)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "Media not found",
+                Detail = $"Media '{request.ScopeUid}/{request.FileName}' was not found.",
+                Status = StatusCodes.Status404NotFound,
+            });
+        }
+
+        var sourceData = media.OriginalData ?? media.Data;
+        var sourceExtension = media.OriginalExtension ?? media.Extension ?? string.Empty;
+        var sourceMimeType = media.OriginalMimeType ?? media.MimeType ?? string.Empty;
+        var baseName = !string.IsNullOrWhiteSpace(media.OriginalName)
+            ? media.OriginalName
+            : media.Name;
+
+        if (sourceData == null || sourceData.Length == 0 ||
+            string.IsNullOrWhiteSpace(sourceMimeType) ||
+            !sourceMimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return UnprocessableEntity(new ProblemDetails
+            {
+                Title = "Unsupported media",
+                Detail = "Only image media can be resized.",
+                Status = StatusCodes.Status422UnprocessableEntity,
+            });
+        }
+
+        byte[] resizedData;
+        try
+        {
+            using var image = new ImageMagick.MagickImage(sourceData);
+            var geometry = new ImageMagick.MagickGeometry((uint)request.Width, (uint)request.Height)
+            {
+                IgnoreAspectRatio = !request.MaintainAspectRatio,
+            };
+            image.Resize(geometry);
+            resizedData = image.ToByteArray();
+        }
+        catch
+        {
+            return UnprocessableEntity(new ProblemDetails
+            {
+                Title = "Resize failed",
+                Detail = "Unable to resize the provided image.",
+                Status = StatusCodes.Status422UnprocessableEntity,
+            });
+        }
+
+        var response = await ApplyMediaTransformAsync(
+            media,
+            sourceData,
+            resizedData,
+            sourceExtension,
+            sourceMimeType,
+            baseName);
+
+        return Ok(response);
+    }
+
+    [HttpPost("crop")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(MediaDetailsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<MediaDetailsDto>> CropMedia([FromBody] MediaCropRequestDto request)
+    {
+        var media = await ResolveMediaAsync(request.ScopeUid, request.FileName);
+        if (media == null)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "Media not found",
+                Detail = $"Media '{request.ScopeUid}/{request.FileName}' was not found.",
+                Status = StatusCodes.Status404NotFound,
+            });
+        }
+
+        var sourceData = media.OriginalData ?? media.Data;
+        var sourceExtension = media.OriginalExtension ?? media.Extension ?? string.Empty;
+        var sourceMimeType = media.OriginalMimeType ?? media.MimeType ?? string.Empty;
+        var baseName = !string.IsNullOrWhiteSpace(media.OriginalName)
+            ? media.OriginalName
+            : media.Name;
+
+        if (sourceData == null || sourceData.Length == 0 ||
+            string.IsNullOrWhiteSpace(sourceMimeType) ||
+            !sourceMimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return UnprocessableEntity(new ProblemDetails
+            {
+                Title = "Unsupported media",
+                Detail = "Only image media can be cropped.",
+                Status = StatusCodes.Status422UnprocessableEntity,
+            });
+        }
+
+        byte[] croppedData;
+        try
+        {
+            using var image = new ImageMagick.MagickImage(sourceData);
+            var imageWidth = (int)image.Width;
+            var imageHeight = (int)image.Height;
+            var cropX = request.X ?? Math.Max(0, (imageWidth - request.Width) / 2);
+            var cropY = request.Y ?? Math.Max(0, (imageHeight - request.Height) / 2);
+            cropX = Math.Max(0, Math.Min(cropX, imageWidth - request.Width));
+            cropY = Math.Max(0, Math.Min(cropY, imageHeight - request.Height));
+            image.Crop(new ImageMagick.MagickGeometry(cropX, cropY, (uint)request.Width, (uint)request.Height));
+            image.Page = new ImageMagick.MagickGeometry(0, 0, 0, 0);
+            croppedData = image.ToByteArray();
+        }
+        catch
+        {
+            return UnprocessableEntity(new ProblemDetails
+            {
+                Title = "Crop failed",
+                Detail = "Unable to crop the provided image.",
+                Status = StatusCodes.Status422UnprocessableEntity,
+            });
+        }
+
+        var response = await ApplyMediaTransformAsync(
+            media,
+            sourceData,
+            croppedData,
+            sourceExtension,
+            sourceMimeType,
+            baseName);
+
+        return Ok(response);
     }
 
     /// <summary>
@@ -951,6 +1259,292 @@ public class MediaController : ControllerBase
         }
 
         return Path.ChangeExtension(originalName, extension);
+    }
+
+    private static string EnsureFileNameExtension(string fileName, string extension)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return fileName;
+        }
+
+        if (Path.HasExtension(fileName))
+        {
+            return fileName;
+        }
+
+        if (string.IsNullOrWhiteSpace(extension))
+        {
+            return fileName;
+        }
+
+        var normalized = extension.StartsWith('.') ? extension : "." + extension;
+        return Path.ChangeExtension(fileName, normalized);
+    }
+
+    private async Task<Media?> ResolveMediaAsync(string scopeUid, string fileName)
+    {
+        var normalizedScope = scopeUid.Trim();
+        var normalizedFile = fileName.Trim();
+        return await pgDbContext.Media!
+            .FirstOrDefaultAsync(m => m.ScopeUid == normalizedScope &&
+                                      (m.Name == normalizedFile || m.OriginalName == normalizedFile));
+    }
+
+    private async Task<MediaDetailsDto> ApplyMediaTransformAsync(
+        Media media,
+        byte[] sourceData,
+        byte[] transformedData,
+        string sourceExtension,
+        string sourceMimeType,
+        string? baseName)
+    {
+        if (sourceData == null || sourceData.Length == 0)
+        {
+            throw new InvalidOperationException("Source media data is empty.");
+        }
+
+        var safeBaseName = string.IsNullOrWhiteSpace(baseName)
+            ? (media.OriginalName ?? media.Name ?? string.Empty)
+            : baseName;
+        safeBaseName = EnsureFileNameExtension(safeBaseName, sourceExtension);
+
+        var settings = await mediaOptimizationService.GetSettingsAsync();
+        var oldName = media.Name;
+
+        var finalData = transformedData;
+        var finalExtension = sourceExtension;
+        var finalMimeType = sourceMimeType;
+        var newName = safeBaseName;
+
+        if (settings.EnableOptimisation)
+        {
+            if (media.OriginalData == null || media.OriginalData.Length == 0)
+            {
+                media.OriginalData = sourceData;
+                media.OriginalSize = sourceData.LongLength;
+                media.OriginalExtension = sourceExtension;
+                media.OriginalMimeType = sourceMimeType;
+                media.OriginalName = EnsureFileNameExtension(media.OriginalName ?? safeBaseName, sourceExtension);
+            }
+
+            var optimizationResult = await mediaOptimizationService.OptimizeAsync(new MediaOptimizationRequest
+            {
+                Data = transformedData,
+                FileName = safeBaseName,
+                Extension = sourceExtension,
+                MimeType = sourceMimeType,
+            });
+
+            finalData = optimizationResult.Data;
+            finalExtension = optimizationResult.Extension;
+            finalMimeType = optimizationResult.MimeType;
+            newName = GetOptimizedFileName(safeBaseName, optimizationResult.Extension);
+        }
+        else
+        {
+            media.OriginalData = null;
+            media.OriginalSize = null;
+            media.OriginalExtension = null;
+            media.OriginalMimeType = null;
+            media.OriginalName = null;
+        }
+
+        media.Data = finalData;
+        media.Size = finalData.LongLength;
+        media.Extension = finalExtension;
+        media.MimeType = finalMimeType;
+        media.UpdatedAt = DateTime.UtcNow;
+
+        TrySetImageDimensions(media, sourceMimeType, sourceData, finalMimeType, finalData);
+
+        if (!string.IsNullOrWhiteSpace(finalMimeType) &&
+            finalMimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                using var updatedImage = new ImageMagick.MagickImage(finalData);
+                media.Width = (int)updatedImage.Width;
+                media.Height = (int)updatedImage.Height;
+            }
+            catch
+            {
+                // Ignore dimension extraction failures
+            }
+        }
+
+        var linksUpdated = 0;
+        if (!string.IsNullOrWhiteSpace(newName) &&
+            !string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase))
+        {
+            linksUpdated = await RenameMediaAsync(media, media.ScopeUid, newName);
+        }
+        else
+        {
+            media.UsageCount = linksUpdated;
+            pgDbContext.Media!.Update(media);
+            await pgDbContext.SaveChangesAsync();
+        }
+
+        var dto = mapper.Map<MediaDetailsDto>(media);
+        dto.Location = CalculateMediaLocation(dto.ScopeUid, dto.Name);
+
+        dto.UsageCount = linksUpdated;
+        return dto;
+    }
+
+    private async Task<int> RenameMediaAsync(Media media, string newScopeUid, string newFileName)
+    {
+        var currentScope = media.ScopeUid;
+        var currentName = media.Name;
+        var currentOriginalName = media.OriginalName;
+
+        var scopeChanged = !string.Equals(currentScope, newScopeUid, StringComparison.OrdinalIgnoreCase);
+        var nameChanged = !string.Equals(currentName, newFileName, StringComparison.OrdinalIgnoreCase);
+
+        if (!scopeChanged && !nameChanged)
+        {
+            return 0;
+        }
+
+        if (nameChanged && !string.IsNullOrWhiteSpace(media.OriginalName))
+        {
+            var originalExtension = Path.GetExtension(media.OriginalName);
+            if (string.IsNullOrWhiteSpace(originalExtension))
+            {
+                originalExtension = media.OriginalExtension ?? string.Empty;
+            }
+
+            media.OriginalName = string.IsNullOrWhiteSpace(originalExtension)
+                ? newFileName
+                : Path.ChangeExtension(newFileName, originalExtension);
+        }
+
+        media.ScopeUid = newScopeUid;
+        media.Name = newFileName;
+
+        var linksUpdated = await UpdateContentReferencesAsync(
+            currentScope,
+            currentName,
+            currentOriginalName,
+            newScopeUid,
+            newFileName,
+            media.OriginalName);
+
+        media.UsageCount = linksUpdated;
+        pgDbContext.Media!.Update(media);
+        await pgDbContext.SaveChangesAsync();
+
+        return linksUpdated;
+    }
+
+    private async Task<int> UpdateContentReferencesAsync(
+        string oldScopeUid,
+        string oldFileName,
+        string? oldOriginalName,
+        string newScopeUid,
+        string newFileName,
+        string? newOriginalName)
+    {
+        var oldRelativePath = BuildMediaPath(oldScopeUid, oldFileName);
+        var newRelativePath = BuildMediaPath(newScopeUid, newFileName);
+
+        var oldRelativeOriginal = string.IsNullOrWhiteSpace(oldOriginalName)
+            ? null
+            : BuildMediaPath(oldScopeUid, oldOriginalName);
+        var newRelativeOriginal = string.IsNullOrWhiteSpace(newOriginalName)
+            ? null
+            : BuildMediaPath(newScopeUid, newOriginalName);
+
+        var contents = await pgDbContext.Content!
+            .Where(c =>
+                                (c.CoverImageUrl != null &&
+                                 (c.CoverImageUrl.Contains(oldRelativePath) ||
+                                    (oldRelativeOriginal != null && c.CoverImageUrl.Contains(oldRelativeOriginal)))) ||
+                                (c.Body != null &&
+                                 (c.Body.Contains(oldRelativePath) ||
+                                    (oldRelativeOriginal != null && c.Body.Contains(oldRelativeOriginal)))))
+            .ToListAsync();
+
+        var linksUpdated = 0;
+
+        foreach (var content in contents)
+        {
+            var updated = false;
+            var coverImageUrl = content.CoverImageUrl;
+            var body = content.Body;
+
+            linksUpdated += ReplaceOccurrences(coverImageUrl, oldRelativePath, newRelativePath, ref coverImageUrl, ref updated);
+
+            if (oldRelativeOriginal != null && newRelativeOriginal != null)
+            {
+                linksUpdated += ReplaceOccurrences(coverImageUrl, oldRelativeOriginal, newRelativeOriginal, ref coverImageUrl, ref updated);
+            }
+
+            linksUpdated += ReplaceOccurrences(body, oldRelativePath, newRelativePath, ref body, ref updated);
+
+            if (oldRelativeOriginal != null && newRelativeOriginal != null)
+            {
+                linksUpdated += ReplaceOccurrences(body, oldRelativeOriginal, newRelativeOriginal, ref body, ref updated);
+            }
+
+            if (updated)
+            {
+                content.CoverImageUrl = coverImageUrl;
+                content.Body = body ?? content.Body;
+                pgDbContext.Content!.Update(content);
+            }
+        }
+
+        if (contents.Count > 0)
+        {
+            await pgDbContext.SaveChangesAsync();
+        }
+
+        return linksUpdated;
+    }
+
+    private int ReplaceOccurrences(
+        string? value,
+        string oldValue,
+        string newValue,
+        ref string? result,
+        ref bool updated)
+    {
+        if (string.IsNullOrWhiteSpace(value) ||
+            string.IsNullOrWhiteSpace(oldValue) ||
+            string.IsNullOrWhiteSpace(newValue))
+        {
+            return 0;
+        }
+
+        var count = 0;
+        var index = 0;
+        while (true)
+        {
+            index = value.IndexOf(oldValue, index, StringComparison.OrdinalIgnoreCase);
+            if (index < 0)
+            {
+                break;
+            }
+
+            count++;
+            index += oldValue.Length;
+        }
+
+        if (count == 0)
+        {
+            return 0;
+        }
+
+        result = value.Replace(oldValue, newValue, StringComparison.OrdinalIgnoreCase);
+        updated = true;
+        return count;
+    }
+
+    private string BuildMediaPath(string scopeUid, string fileName)
+    {
+        return $"/media/{scopeUid}/{fileName}";
     }
 
     private async Task<CoverResizeResult> ApplyCoverDimensionsIfNeeded(byte[] data, string mimeType, bool hasCoverTag)

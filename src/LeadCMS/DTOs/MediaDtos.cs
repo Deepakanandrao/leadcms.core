@@ -91,3 +91,51 @@ public class MediaReoptimizeResponseDto
 
     public string? Message { get; set; }
 }
+
+public class MediaRenameRequestDto
+{
+    [Required]
+    public string ScopeUid { get; set; } = string.Empty;
+
+    [Required]
+    public string FileName { get; set; } = string.Empty;
+
+    [Required]
+    public string NewScopeUid { get; set; } = string.Empty;
+
+    [Required]
+    public string NewFileName { get; set; } = string.Empty;
+}
+
+public class MediaTransformRequestDto
+{
+    [Required]
+    public string ScopeUid { get; set; } = string.Empty;
+
+    [Required]
+    public string FileName { get; set; } = string.Empty;
+}
+
+public class MediaResizeRequestDto : MediaTransformRequestDto
+{
+    [Range(1, int.MaxValue)]
+    public int Width { get; set; }
+
+    [Range(1, int.MaxValue)]
+    public int Height { get; set; }
+
+    public bool MaintainAspectRatio { get; set; } = true;
+}
+
+public class MediaCropRequestDto : MediaTransformRequestDto
+{
+    [Range(1, int.MaxValue)]
+    public int Width { get; set; }
+
+    [Range(1, int.MaxValue)]
+    public int Height { get; set; }
+
+    public int? X { get; set; }
+
+    public int? Y { get; set; }
+}
