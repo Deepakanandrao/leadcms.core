@@ -94,6 +94,18 @@ public class MediaOptimizationService : IMediaOptimizationService
             };
         }
 
+        if (MediaOptimizationHelper.ShouldSkipOptimization(request.Extension, request.MimeType))
+        {
+            return new MediaOptimizationResult
+            {
+                Data = request.Data,
+                Size = request.Data.Length,
+                Extension = request.Extension,
+                MimeType = request.MimeType,
+                WasOptimized = false,
+            };
+        }
+
         var targetFormat = ResolveMagickFormat(settings.PreferredFormat);
 
         try
@@ -107,6 +119,7 @@ public class MediaOptimizationService : IMediaOptimizationService
 
             var (maxWidth, maxHeight) = MediaSizeHelper.ParseSize(settings.MaxDimensions, DefaultMaxWidth, DefaultMaxHeight);
             ApplyResize(image, maxWidth, maxHeight);
+            EnsureTransparencyPreserved(image, targetFormat);
             image.Strip();
             image.Quality = DefaultQuality;
             image.Format = targetFormat;
@@ -161,6 +174,26 @@ public class MediaOptimizationService : IMediaOptimizationService
         image.Resize(geometry);
     }
 
+    private static void EnsureTransparencyPreserved(MagickImage image, MagickFormat targetFormat)
+    {
+        if (!image.HasAlpha || !SupportsTransparency(targetFormat))
+        {
+            return;
+        }
+
+        image.Alpha(AlphaOption.Set);
+        image.BackgroundColor = MagickColors.Transparent;
+        image.ColorType = ColorType.TrueColorAlpha;
+    }
+
+    private static bool SupportsTransparency(MagickFormat format)
+    {
+        return format == MagickFormat.Avif
+            || format == MagickFormat.WebP
+            || format == MagickFormat.Png
+            || format == MagickFormat.Tiff;
+    }
+
     private static string ResolvePreferredFormat(string value)
     {
         var supported = MagickNET.SupportedFormats
@@ -168,7 +201,12 @@ public class MediaOptimizationService : IMediaOptimizationService
             .Select(format => format.Format.ToString().ToLowerInvariant())
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var normalized = value.Trim().TrimStart('.');
+        var normalized = value.Trim();
+        if (normalized.Length > 0 && normalized[0] == '.')
+        {
+            normalized = normalized.Substring(1);
+        }
+
         if (string.IsNullOrWhiteSpace(normalized) || !supported.Contains(normalized))
         {
             return DefaultPreferredFormat;

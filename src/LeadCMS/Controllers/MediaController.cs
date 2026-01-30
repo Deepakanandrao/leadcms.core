@@ -666,6 +666,47 @@ public class MediaController : ControllerBase
                     continue;
                 }
 
+                var skipOptimization = MediaOptimizationHelper.ShouldSkipOptimization(
+                    media.OriginalExtension ?? media.Extension ?? string.Empty,
+                    media.OriginalMimeType ?? media.MimeType ?? string.Empty);
+
+                if (skipOptimization)
+                {
+                    if (media.OriginalData != null && media.OriginalData.Length > 0)
+                    {
+                        var originalData = media.OriginalData;
+                        var originalExtension = media.OriginalExtension ?? media.Extension ?? string.Empty;
+                        var originalMimeType = media.OriginalMimeType ?? media.MimeType ?? string.Empty;
+                        var originalName = media.OriginalName ?? media.Name ?? string.Empty;
+
+                        media.Data = originalData;
+                        media.Size = media.OriginalSize ?? originalData.Length;
+                        media.Extension = originalExtension;
+                        media.MimeType = originalMimeType;
+                        media.UpdatedAt = DateTime.UtcNow;
+
+                        TrySetImageDimensions(media, originalMimeType, originalData, originalMimeType, originalData);
+
+                        media.OriginalData = null;
+                        media.OriginalSize = null;
+                        media.OriginalExtension = null;
+                        media.OriginalMimeType = null;
+                        media.OriginalName = null;
+                        media.OriginalWidth = null;
+                        media.OriginalHeight = null;
+
+                        if (!string.IsNullOrWhiteSpace(originalName) &&
+                            !string.Equals(media.Name, originalName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            await RenameMediaAsync(media, media.ScopeUid, originalName);
+                        }
+
+                        updatedCount++;
+                    }
+
+                    continue;
+                }
+
                 if (media.OriginalData == null || media.OriginalData.Length == 0)
                 {
                     media.OriginalData = media.Data;
