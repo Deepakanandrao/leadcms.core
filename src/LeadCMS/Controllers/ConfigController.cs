@@ -130,6 +130,11 @@ public class ConfigController : ControllerBase
             SettingKeys.RequireNonAlphanumeric,
             SettingKeys.RequiredLength,
             SettingKeys.RequiredUniqueChars,
+            SettingKeys.MediaEnableOptimisation,
+            SettingKeys.MediaPreferredFormat,
+            SettingKeys.MediaMaxDimensions,
+            SettingKeys.MediaCoverDimensions,
+            SettingKeys.MediaMaxFileSize,
         };
 
         string? userId = null;
