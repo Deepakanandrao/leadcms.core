@@ -119,6 +119,33 @@ public class MediaTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task GetMedia_WithOriginalQuery_ShouldReturnOriginalData()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "webp");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string originalFileName = "original-query-cover.png";
+        const string scopeUid = "media-original-query";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var created = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        created.Should().NotBeNull();
+        created!.OriginalName.Should().Be(originalFileName);
+        created.Name.Should().NotBe(originalFileName);
+
+        var optimizedResponse = await GetTest($"/api/media/{scopeUid}/{created.Name}", HttpStatusCode.OK);
+        optimizedResponse.Content.Headers.ContentType?.MediaType.Should().Be("image/webp");
+
+        var originalResponse = await GetTest($"/api/media/{scopeUid}/{created.Name}?original=true", HttpStatusCode.OK);
+        originalResponse.Content.Headers.ContentType?.MediaType.Should().Be("image/png");
+
+        var downloadedBytes = await originalResponse.Content.ReadAsByteArrayAsync();
+        downloadedBytes.Should().Equal(imageBytes);
+    }
+
+    [Fact]
     public async Task Reoptimize_ShouldUpdateImagesToPreferredFormat()
     {
         await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
@@ -349,6 +376,100 @@ public class MediaTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task OptimizeMedia_ShouldApplyCoverDimensions_WhenCoverTagPresent()
+    {
+        // Cover dimensions are 1200x630 by default
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "webp");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+        await SetSystemSettingAsync(SettingKeys.MediaCoverDimensions, "400x200");
+
+        const string scopeUid = "media-optimize-cover";
+        const string originalFileName = "optimize-with-cover-tag.png";
+
+        // Upload with cover tag
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var media = await UploadMediaWithTagsAsync(imageBytes, originalFileName, scopeUid, new[] { "cover" });
+
+        media.Should().NotBeNull();
+        media!.Tags.Should().Contain("cover");
+
+        // The image should be cropped to cover dimensions (400x200) since it has the cover tag
+        media.Width.Should().Be(400);
+        media.Height.Should().Be(200);
+
+        // Now change settings to different cover dimensions
+        await SetSystemSettingAsync(SettingKeys.MediaCoverDimensions, "300x150");
+
+        // Re-optimize the media - it should apply the new cover dimensions
+        var request = new MediaTransformRequestDto
+        {
+            ScopeUid = scopeUid,
+            FileName = media.Name,
+        };
+
+        var response = await Request(HttpMethod.Post, "/api/media/optimize", request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var optimized = await response.Content.ReadFromJsonAsync<MediaDetailsDto>();
+        optimized.Should().NotBeNull();
+        optimized!.Width.Should().Be(300);
+        optimized.Height.Should().Be(150);
+    }
+
+    [Fact]
+    public async Task ResizeMedia_ShouldPreserveOriginal_WhenMissing()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "png");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string scopeUid = "media-resize-preserve-original";
+        const string originalFileName = "resize-preserve-original.png";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var media = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        media.OriginalName.Should().BeNull();
+
+        var request = new MediaResizeRequestDto
+        {
+            ScopeUid = scopeUid,
+            FileName = media.Name,
+            Width = 140,
+            Height = 90,
+            MaintainAspectRatio = false,
+        };
+
+        var response = await Request(HttpMethod.Post, "/api/media/resize", request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var resized = await response.Content.ReadFromJsonAsync<MediaDetailsDto>();
+        resized.Should().NotBeNull();
+        resized!.Width.Should().Be(140);
+        resized.Height.Should().Be(90);
+        resized.OriginalName.Should().Be(originalFileName);
+        resized.OriginalSize.Should().NotBeNull();
+        resized.OriginalExtension.Should().Be(".png");
+        resized.OriginalMimeType.Should().Be("image/png");
+        resized.OriginalWidth.Should().NotBeNull();
+        resized.OriginalHeight.Should().NotBeNull();
+
+        var mediaList = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?filter[where][scopeUid][eq]={scopeUid}",
+            HttpStatusCode.OK);
+
+        mediaList.Should().NotBeNull();
+        var persisted = mediaList!.Single(m => m.Name == resized.Name);
+        persisted.OriginalName.Should().Be(originalFileName);
+        persisted.OriginalSize.Should().NotBeNull();
+        persisted.OriginalExtension.Should().Be(".png");
+        persisted.OriginalMimeType.Should().Be("image/png");
+        persisted.OriginalWidth.Should().NotBeNull();
+        persisted.OriginalHeight.Should().NotBeNull();
+    }
+
+    [Fact]
     public async Task ResizeMedia_ShouldUpdateWidthAndHeight()
     {
         await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
@@ -520,6 +641,11 @@ public class MediaTests : BaseTestAutoLogin
 
     private async Task<MediaDetailsDto> UploadMediaAsync(byte[] bytes, string fileName, string scopeUid)
     {
+        return await UploadMediaWithTagsAsync(bytes, fileName, scopeUid, null);
+    }
+
+    private async Task<MediaDetailsDto> UploadMediaWithTagsAsync(byte[] bytes, string fileName, string scopeUid, string[]? tags)
+    {
         var contentTypeProvider = new FileExtensionContentTypeProvider();
         contentTypeProvider.TryGetContentType(fileName, out var contentType);
 
@@ -528,6 +654,14 @@ public class MediaTests : BaseTestAutoLogin
         fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType ?? "application/octet-stream");
         form.Add(fileContent, "File", fileName);
         form.Add(new StringContent(scopeUid), "ScopeUid");
+
+        if (tags != null)
+        {
+            foreach (var tag in tags)
+            {
+                form.Add(new StringContent(tag), "Tags");
+            }
+        }
 
         var request = new HttpRequestMessage(HttpMethod.Post, "/api/media")
         {

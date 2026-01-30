@@ -222,29 +222,8 @@ public class MediaController : ControllerBase
         Log.Information("Request scheme {0}", HttpContext.Request.Scheme);
         Log.Information("Request host {0}", HttpContext.Request.Host.Value);
 
-        var fileData = new MediaDetailsDto()
-        {
-            Id = uploadedMedia.Id,
-            ScopeUid = uploadedMedia.ScopeUid,
-            Name = uploadedMedia.Name,
-            OriginalName = uploadedMedia.OriginalName,
-            Description = uploadedMedia.Description,
-            Size = uploadedMedia.Size,
-            Extension = uploadedMedia.Extension,
-            MimeType = uploadedMedia.MimeType,
-            OriginalSize = uploadedMedia.OriginalSize,
-            OriginalExtension = uploadedMedia.OriginalExtension,
-            OriginalMimeType = uploadedMedia.OriginalMimeType,
-            Width = uploadedMedia.Width,
-            Height = uploadedMedia.Height,
-            OriginalWidth = uploadedMedia.OriginalWidth,
-            OriginalHeight = uploadedMedia.OriginalHeight,
-            Tags = uploadedMedia.Tags,
-            UsageCount = uploadedMedia.UsageCount,
-            CreatedAt = uploadedMedia.CreatedAt,
-            UpdatedAt = uploadedMedia.UpdatedAt,
-            Location = CalculateMediaLocation(uploadedMedia.ScopeUid, uploadedMedia.Name),
-        };
+        var fileData = mapper.Map<MediaDetailsDto>(uploadedMedia);
+        fileData.Location = CalculateMediaLocation(uploadedMedia.ScopeUid, uploadedMedia.Name);
 
         return CreatedAtAction(nameof(Get), new { scopeUid = uploadedMedia.ScopeUid, fileName = uploadedMedia.Name }, fileData);
     }
@@ -256,7 +235,7 @@ public class MediaController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult> Get([Required] string pathToFile)
+    public async Task<ActionResult> Get([Required] string pathToFile, [FromQuery] bool original = false)
     {
         pathToFile = Uri.UnescapeDataString(pathToFile);
 
@@ -272,9 +251,18 @@ public class MediaController : ControllerBase
 
         if (uploadedImageData != null)
         {
-            servedData = uploadedImageData.Data;
-            servedMimeType = uploadedImageData.MimeType;
-            servedSize = uploadedImageData.Size;
+            if (original && uploadedImageData.OriginalData != null && uploadedImageData.OriginalData.Length > 0)
+            {
+                servedData = uploadedImageData.OriginalData;
+                servedMimeType = uploadedImageData.OriginalMimeType ?? uploadedImageData.MimeType;
+                servedSize = uploadedImageData.OriginalSize ?? servedData.LongLength;
+            }
+            else
+            {
+                servedData = uploadedImageData.Data;
+                servedMimeType = uploadedImageData.MimeType;
+                servedSize = uploadedImageData.Size;
+            }
         }
         else
         {
@@ -286,6 +274,7 @@ public class MediaController : ControllerBase
                 throw new EntityNotFoundException(nameof(Media), pathToFile);
             }
 
+            // Matched by OriginalName - always return original data (legacy behavior)
             servedData = uploadedImageData.OriginalData ?? uploadedImageData.Data;
             servedMimeType = uploadedImageData.OriginalMimeType ?? uploadedImageData.MimeType;
             servedSize = uploadedImageData.OriginalSize ?? servedData.LongLength;
@@ -370,25 +359,11 @@ public class MediaController : ControllerBase
 
             var mediaList = result.Records ?? new List<Media>();
 
-            var mapped = mediaList.Select(m => new MediaDetailsDto
+            var mapped = mediaList.Select(m =>
             {
-                Id = m.Id,
-                ScopeUid = m.ScopeUid,
-                Name = m.Name,
-                OriginalName = m.OriginalName,
-                Description = m.Description,
-                Size = m.Size,
-                Extension = m.Extension,
-                MimeType = m.MimeType,
-                Width = m.Width,
-                Height = m.Height,
-                OriginalWidth = m.OriginalWidth,
-                OriginalHeight = m.OriginalHeight,
-                Tags = m.Tags,
-                UsageCount = m.UsageCount,
-                CreatedAt = m.CreatedAt,
-                UpdatedAt = m.UpdatedAt,
-                Location = CalculateMediaLocation(m.ScopeUid, m.Name),
+                var dto = mapper.Map<MediaDetailsDto>(m);
+                dto.Location = CalculateMediaLocation(m.ScopeUid, m.Name);
+                return dto;
             }).ToList();
 
             return Ok(mapped);
@@ -418,20 +393,6 @@ public class MediaController : ControllerBase
                 // Files in root (ScopeUid is empty)
                 files = await pgDbContext.Media!
                     .Where(m => string.IsNullOrEmpty(m.ScopeUid))
-                    .Select(m => new Media
-                    {
-                        Id = m.Id,
-                        ScopeUid = m.ScopeUid,
-                        Name = m.Name,
-                        OriginalName = m.OriginalName,
-                        Description = m.Description,
-                        Size = m.Size,
-                        Extension = m.Extension,
-                        MimeType = m.MimeType,
-                        Tags = m.Tags,
-                        CreatedAt = m.CreatedAt,
-                        UpdatedAt = m.UpdatedAt,
-                    })
                     .ToListAsync();
             }
             else
@@ -456,20 +417,6 @@ public class MediaController : ControllerBase
                 // Files in this folder
                 files = await pgDbContext.Media!
                     .Where(m => m.ScopeUid == scopePrefix)
-                    .Select(m => new Media
-                    {
-                        Id = m.Id,
-                        ScopeUid = m.ScopeUid,
-                        Name = m.Name,
-                        OriginalName = m.OriginalName,
-                        Description = m.Description,
-                        Size = m.Size,
-                        Extension = m.Extension,
-                        MimeType = m.MimeType,
-                        Tags = m.Tags,
-                        CreatedAt = m.CreatedAt,
-                        UpdatedAt = m.UpdatedAt,
-                    })
                     .ToListAsync();
             }
 
@@ -522,25 +469,11 @@ public class MediaController : ControllerBase
             }
 
             // File DTOs
-            var fileDtos = files.Select(m => new MediaDetailsDto
+            var fileDtos = files.Select(m =>
             {
-                Id = m.Id,
-                ScopeUid = m.ScopeUid,
-                Name = m.Name,
-                OriginalName = m.OriginalName,
-                Description = m.Description,
-                Size = m.Size,
-                Extension = m.Extension,
-                MimeType = m.MimeType,
-                Width = m.Width,
-                Height = m.Height,
-                OriginalWidth = m.OriginalWidth,
-                OriginalHeight = m.OriginalHeight,
-                Tags = m.Tags,
-                UsageCount = m.UsageCount,
-                CreatedAt = m.CreatedAt,
-                UpdatedAt = m.UpdatedAt,
-                Location = CalculateMediaLocation(m.ScopeUid, m.Name),
+                var dto = mapper.Map<MediaDetailsDto>(m);
+                dto.Location = CalculateMediaLocation(m.ScopeUid, m.Name);
+                return dto;
             });
 
             var resultList = folderDtos.Concat(fileDtos).ToList();
@@ -685,29 +618,8 @@ public class MediaController : ControllerBase
             existingMedia.Id);
 
         // Return the updated media details
-        var updatedMediaDto = new MediaDetailsDto
-        {
-            Id = existingMedia.Id,
-            ScopeUid = existingMedia.ScopeUid,
-            Name = existingMedia.Name,
-            OriginalName = existingMedia.OriginalName,
-            Description = existingMedia.Description,
-            Size = existingMedia.Size,
-            Extension = existingMedia.Extension,
-            MimeType = existingMedia.MimeType,
-            OriginalSize = existingMedia.OriginalSize,
-            OriginalExtension = existingMedia.OriginalExtension,
-            OriginalMimeType = existingMedia.OriginalMimeType,
-            Width = existingMedia.Width,
-            Height = existingMedia.Height,
-            OriginalWidth = existingMedia.OriginalWidth,
-            OriginalHeight = existingMedia.OriginalHeight,
-            Tags = existingMedia.Tags,
-            UsageCount = existingMedia.UsageCount,
-            CreatedAt = existingMedia.CreatedAt,
-            UpdatedAt = existingMedia.UpdatedAt,
-            Location = CalculateMediaLocation(existingMedia.ScopeUid, existingMedia.Name),
-        };
+        var updatedMediaDto = mapper.Map<MediaDetailsDto>(existingMedia);
+        updatedMediaDto.Location = CalculateMediaLocation(existingMedia.ScopeUid, existingMedia.Name);
 
         return Ok(updatedMediaDto);
     }
@@ -923,6 +835,17 @@ public class MediaController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<MediaDetailsDto>> OptimizeMedia([FromBody] MediaTransformRequestDto request)
     {
+        var settings = await mediaOptimizationService.GetSettingsAsync();
+        if (!settings.EnableOptimisation)
+        {
+            return UnprocessableEntity(new ProblemDetails
+            {
+                Title = "Optimization disabled",
+                Detail = "Media optimization is disabled in settings.",
+                Status = StatusCodes.Status422UnprocessableEntity,
+            });
+        }
+
         var media = await ResolveMediaAsync(request.ScopeUid, request.FileName);
         if (media == null)
         {
@@ -1312,6 +1235,15 @@ public class MediaController : ControllerBase
         var settings = await mediaOptimizationService.GetSettingsAsync();
         var oldName = media.Name;
 
+        if (media.OriginalData == null || media.OriginalData.Length == 0)
+        {
+            media.OriginalData = media.Data;
+            media.OriginalSize = media.Size;
+            media.OriginalExtension = media.Extension;
+            media.OriginalMimeType = media.MimeType;
+            media.OriginalName = EnsureFileNameExtension(media.OriginalName ?? media.Name ?? safeBaseName, media.Extension ?? string.Empty);
+        }
+
         var finalData = transformedData;
         var finalExtension = sourceExtension;
         var finalMimeType = sourceMimeType;
@@ -1319,15 +1251,6 @@ public class MediaController : ControllerBase
 
         if (settings.EnableOptimisation)
         {
-            if (media.OriginalData == null || media.OriginalData.Length == 0)
-            {
-                media.OriginalData = sourceData;
-                media.OriginalSize = sourceData.LongLength;
-                media.OriginalExtension = sourceExtension;
-                media.OriginalMimeType = sourceMimeType;
-                media.OriginalName = EnsureFileNameExtension(media.OriginalName ?? safeBaseName, sourceExtension);
-            }
-
             var optimizationResult = await mediaOptimizationService.OptimizeAsync(new MediaOptimizationRequest
             {
                 Data = transformedData,
@@ -1336,18 +1259,24 @@ public class MediaController : ControllerBase
                 MimeType = sourceMimeType,
             });
 
-            finalData = optimizationResult.Data;
+            var hasCoverTag = HasCoverTag(media.Tags);
+            var processedResult = await ApplyCoverDimensionsIfNeeded(
+                optimizationResult.Data,
+                optimizationResult.MimeType,
+                hasCoverTag);
+
+            finalData = processedResult.Data;
             finalExtension = optimizationResult.Extension;
             finalMimeType = optimizationResult.MimeType;
             newName = GetOptimizedFileName(safeBaseName, optimizationResult.Extension);
         }
         else
         {
-            media.OriginalData = null;
-            media.OriginalSize = null;
-            media.OriginalExtension = null;
-            media.OriginalMimeType = null;
-            media.OriginalName = null;
+            media.OriginalData = media.OriginalData ?? sourceData;
+            media.OriginalSize = media.OriginalSize ?? sourceData.LongLength;
+            media.OriginalExtension = media.OriginalExtension ?? sourceExtension;
+            media.OriginalMimeType = media.OriginalMimeType ?? sourceMimeType;
+            media.OriginalName = media.OriginalName ?? EnsureFileNameExtension(safeBaseName, sourceExtension);
         }
 
         media.Data = finalData;

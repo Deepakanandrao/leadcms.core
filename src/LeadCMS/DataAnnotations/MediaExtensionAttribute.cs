@@ -4,7 +4,9 @@
 
 using System.ComponentModel.DataAnnotations;
 using LeadCMS.Configuration;
+using LeadCMS.Constants;
 using LeadCMS.Helpers;
+using LeadCMS.Interfaces;
 using Microsoft.Extensions.Options;
 
 namespace LeadCMS.DataAnnotations
@@ -32,17 +34,45 @@ namespace LeadCMS.DataAnnotations
 
             var fileLength = file.Length;
 
-            var fileLengthSizeInfo = configuration.Value.MaxSize.FirstOrDefault(info => info.Extension == fileExtension);
-            if (fileLengthSizeInfo == null)
+            var settingService = (ISettingService?)validationContext.GetService(typeof(ISettingService));
+            if (settingService == null)
             {
-                fileLengthSizeInfo = configuration.Value.MaxSize.FirstOrDefault(info => info.Extension == "default");
-                if (fileLengthSizeInfo == null)
-                {
-                    throw new MissingConfigurationException("Failed to resolve default value for upload media.");
-                }
+                throw new MissingConfigurationException("Failed to resolve ISettingService object.");
             }
 
-            var fileLengthAllowedSize = StringHelper.GetSizeInBytesFromString(fileLengthSizeInfo.MaxSize);
+            var maxFileSizeSetting = settingService
+                .GetSystemSettingAsync(SettingKeys.MediaMaxFileSize)
+                .GetAwaiter()
+                .GetResult();
+
+            if (string.IsNullOrWhiteSpace(maxFileSizeSetting))
+            {
+                var defaultSizeInfo = configuration.Value.MaxSize
+                    .FirstOrDefault(info => string.Equals(info.Extension, "default", StringComparison.OrdinalIgnoreCase));
+
+                if (defaultSizeInfo == null || string.IsNullOrWhiteSpace(defaultSizeInfo.MaxSize))
+                {
+                    throw new MissingConfigurationException("Failed to resolve Media.Max.FileSize setting.");
+                }
+
+                maxFileSizeSetting = defaultSizeInfo.MaxSize;
+            }
+
+            long fileLengthAllowedSize;
+            if (long.TryParse(maxFileSizeSetting, out var maxSizeInKb))
+            {
+                fileLengthAllowedSize = maxSizeInKb * 1024L;
+            }
+            else
+            {
+                var parsedSize = StringHelper.GetSizeInBytesFromString(maxFileSizeSetting);
+                if (!parsedSize.HasValue)
+                {
+                    throw new MissingConfigurationException("Invalid Media.Max.FileSize format.");
+                }
+
+                fileLengthAllowedSize = parsedSize.Value;
+            }
 
             if (fileLength > fileLengthAllowedSize)
             {

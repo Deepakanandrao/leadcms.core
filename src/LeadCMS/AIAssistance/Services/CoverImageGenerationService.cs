@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using AutoMapper;
 using ImageMagick;
 using LeadCMS.Constants;
 using LeadCMS.Core.AIAssistance.Configuration;
@@ -26,17 +27,20 @@ public class CoverImageGenerationService : ICoverImageGenerationService
     private readonly IImageGenerationService imageGenerationService;
     private readonly ISettingService settingService;
     private readonly IMediaOptimizationService mediaOptimizationService;
+    private readonly IMapper mapper;
 
     public CoverImageGenerationService(
         PgDbContext dbContext,
         IImageGenerationService imageGenerationService,
         ISettingService settingService,
-        IMediaOptimizationService mediaOptimizationService)
+        IMediaOptimizationService mediaOptimizationService,
+        IMapper mapper)
     {
         this.dbContext = dbContext;
         this.imageGenerationService = imageGenerationService;
         this.settingService = settingService;
         this.mediaOptimizationService = mediaOptimizationService;
+        this.mapper = mapper;
     }
 
     public async Task<MediaDetailsDto> GenerateCoverImageAsync(CoverImageGenerationRequest request)
@@ -100,21 +104,9 @@ public class CoverImageGenerationService : ICoverImageGenerationService
             request.ContentSlug,
             savedMedia.Id);
 
-        return new MediaDetailsDto
-        {
-            Id = savedMedia.Id,
-            Location = $"/api/media/{savedMedia.ScopeUid}/{savedMedia.Name}",
-            ScopeUid = savedMedia.ScopeUid,
-            Name = savedMedia.Name,
-            Description = savedMedia.Description,
-            Size = savedMedia.Size,
-            Extension = savedMedia.Extension,
-            MimeType = savedMedia.MimeType,
-            Tags = savedMedia.Tags,
-            UsageCount = savedMedia.UsageCount,
-            CreatedAt = savedMedia.CreatedAt,
-            UpdatedAt = savedMedia.UpdatedAt,
-        };
+        var result = mapper.Map<MediaDetailsDto>(savedMedia);
+        result.Location = $"/api/media/{savedMedia.ScopeUid}/{savedMedia.Name}";
+        return result;
     }
 
     public async Task<MediaDetailsDto> EditCoverImageAsync(CoverImageEditRequest request)
@@ -206,29 +198,9 @@ public class CoverImageGenerationService : ICoverImageGenerationService
             request.CoverImageUrl,
             updatedMedia.Id);
 
-        return new MediaDetailsDto
-        {
-            Id = updatedMedia.Id,
-            Location = $"/api/media/{updatedMedia.ScopeUid}/{updatedMedia.Name}",
-            ScopeUid = updatedMedia.ScopeUid,
-            Name = updatedMedia.Name,
-            OriginalName = updatedMedia.OriginalName,
-            Description = updatedMedia.Description,
-            Size = updatedMedia.Size,
-            OriginalSize = updatedMedia.OriginalSize,
-            Width = updatedMedia.Width,
-            Height = updatedMedia.Height,
-            OriginalWidth = updatedMedia.OriginalWidth,
-            OriginalHeight = updatedMedia.OriginalHeight,
-            Extension = updatedMedia.Extension,
-            OriginalExtension = updatedMedia.OriginalExtension,
-            MimeType = updatedMedia.MimeType,
-            OriginalMimeType = updatedMedia.OriginalMimeType,
-            Tags = updatedMedia.Tags,
-            UsageCount = updatedMedia.UsageCount,
-            CreatedAt = updatedMedia.CreatedAt,
-            UpdatedAt = updatedMedia.UpdatedAt,
-        };
+        var result = mapper.Map<MediaDetailsDto>(updatedMedia);
+        result.Location = $"/api/media/{updatedMedia.ScopeUid}/{updatedMedia.Name}";
+        return result;
     }
 
     private static string BuildGenerationPrompt(
