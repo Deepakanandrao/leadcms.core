@@ -191,6 +191,330 @@ public class MediaTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task GetList_WhenIncludeFoldersTrue_AtRoot_ShowsTopLevelFolders()
+    {
+        var folder1 = $"root-folder1-{Guid.NewGuid():N}";
+        var folder2 = $"root-folder2-{Guid.NewGuid():N}";
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        await UploadMediaAsync(imageBytes, "file1.png", folder1);
+        await UploadMediaAsync(imageBytes, "file2.png", folder2);
+        await UploadMediaAsync(imageBytes, "file3.png", $"{folder1}/nested");
+
+        // Query root level with includeFolders=true and no scopeUid
+        var items = await GetTest<List<MediaDetailsDto>>(
+            "/api/media?includeFolders=true",
+            HttpStatusCode.OK);
+
+        items.Should().NotBeNull();
+
+        // Should have folder entries for both top-level folders
+        var folderItems = items!.Where(i => i.MimeType == "inode/directory").ToList();
+        folderItems.Should().Contain(f => f.ScopeUid == folder1);
+        folderItems.Should().Contain(f => f.ScopeUid == folder2);
+    }
+
+    [Fact]
+    public async Task GetList_WhenIncludeFoldersTrue_WithNestedFolders_ShowsCorrectHierarchy()
+    {
+        var rootScope = $"nested-test-{Guid.NewGuid():N}";
+        var level1Scope = $"{rootScope}/level1";
+        var level2Scope = $"{rootScope}/level1/level2";
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        await UploadMediaAsync(imageBytes, "root.png", rootScope);
+        await UploadMediaAsync(imageBytes, "level1.png", level1Scope);
+        await UploadMediaAsync(imageBytes, "level2.png", level2Scope);
+
+        // Query at root level - should show level1 folder and root file
+        var rootItems = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?includeFolders=true&scopeUid={Uri.EscapeDataString(rootScope)}",
+            HttpStatusCode.OK);
+
+        rootItems.Should().NotBeNull();
+        rootItems!.Should().Contain(i => i.MimeType == "inode/directory" && i.ScopeUid == level1Scope);
+        rootItems.Should().Contain(i => i.MimeType != "inode/directory" && i.Name.Contains("root"));
+        rootItems.Should().NotContain(i => i.ScopeUid == level2Scope && i.MimeType != "inode/directory");
+
+        // Query at level1 - should show level2 folder and level1 file
+        var level1Items = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?includeFolders=true&scopeUid={Uri.EscapeDataString(level1Scope)}",
+            HttpStatusCode.OK);
+
+        level1Items.Should().NotBeNull();
+        level1Items!.Should().Contain(i => i.MimeType == "inode/directory" && i.ScopeUid == level2Scope);
+        level1Items.Should().Contain(i => i.MimeType != "inode/directory" && i.Name.Contains("level1"));
+    }
+
+    [Fact]
+    public async Task GetList_WhenIncludeFoldersTrue_FolderHasCorrectStatistics()
+    {
+        var rootScope = $"stats-test-{Guid.NewGuid():N}";
+        var subScope = $"{rootScope}/sub";
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        var file1 = await UploadMediaAsync(imageBytes, "stats1.png", subScope);
+        var file2 = await UploadMediaAsync(imageBytes, "stats2.png", subScope);
+
+        var items = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?includeFolders=true&scopeUid={Uri.EscapeDataString(rootScope)}",
+            HttpStatusCode.OK);
+
+        items.Should().NotBeNull();
+        var folder = items!.SingleOrDefault(i => i.MimeType == "inode/directory" && i.ScopeUid == subScope);
+        folder.Should().NotBeNull();
+
+        // Folder size should be sum of files
+        folder!.Size.Should().Be(file1.Size + file2.Size);
+
+        // Folder should have a Name (human-readable)
+        folder.Name.Should().NotBeNullOrEmpty();
+
+        // Folder should have CreatedAt set
+        folder.CreatedAt.Should().NotBe(default);
+    }
+
+    [Fact]
+    public async Task GetList_WhenIncludeFoldersTrue_FolderItemCountIsCorrect()
+    {
+        // Reproduces bug: folder showed 3 items instead of 2
+        // when folder contains 1 file and 1 subfolder with 1 file
+        var rootScope = $"folder-count-{Guid.NewGuid():N}";
+        var subScope = $"{rootScope}/subfolder";
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        // Upload file directly in root folder
+        await UploadMediaAsync(imageBytes, "cover.png", rootScope);
+
+        // Upload file in subfolder
+        await UploadMediaAsync(imageBytes, "banner.png", subScope);
+
+        // Query at parent level (where rootScope is a child)
+        var parentScope = rootScope.Contains('/') ? rootScope.Substring(0, rootScope.LastIndexOf('/')) : string.Empty;
+
+        var items = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?includeFolders=true{(string.IsNullOrEmpty(parentScope) ? string.Empty : $"&scopeUid={Uri.EscapeDataString(parentScope)}")}",
+            HttpStatusCode.OK);
+
+        items.Should().NotBeNull();
+        var rootFolder = items!.SingleOrDefault(i => i.MimeType == "inode/directory" && i.ScopeUid == rootScope);
+        rootFolder.Should().NotBeNull();
+
+        // Folder Id should show total file count in entire tree: 1 file in root + 1 file in subfolder = 2
+        // NOT counting the subfolder itself (which would make it 3)
+        rootFolder!.Id.Should().Be(2, "folder should show total files in tree: 1 direct + 1 in subfolder = 2");
+    }
+
+    [Fact]
+    public async Task GetList_WhenIncludeFoldersTrue_WithOrderParam_SortsByNameAscending()
+    {
+        var rootScope = $"order-test-{Guid.NewGuid():N}";
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        await UploadMediaAsync(imageBytes, "zebra.png", rootScope);
+        await UploadMediaAsync(imageBytes, "alpha.png", rootScope);
+        await UploadMediaAsync(imageBytes, "mike.png", rootScope);
+
+        var items = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?includeFolders=true&scopeUid={Uri.EscapeDataString(rootScope)}&order=Name ASC",
+            HttpStatusCode.OK);
+
+        items.Should().NotBeNull();
+        items!.Count.Should().BeGreaterThanOrEqualTo(3);
+
+        var fileItems = items.Where(i => i.MimeType != "inode/directory").ToList();
+        fileItems.Should().BeInAscendingOrder(f => f.Name);
+    }
+
+    [Fact]
+    public async Task GetList_WhenIncludeFoldersTrue_WithOrderParam_SortsByNameDescending()
+    {
+        var rootScope = $"order-desc-test-{Guid.NewGuid():N}";
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        await UploadMediaAsync(imageBytes, "zebra.png", rootScope);
+        await UploadMediaAsync(imageBytes, "alpha.png", rootScope);
+        await UploadMediaAsync(imageBytes, "mike.png", rootScope);
+
+        var items = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?includeFolders=true&scopeUid={Uri.EscapeDataString(rootScope)}&order=Name DESC",
+            HttpStatusCode.OK);
+
+        items.Should().NotBeNull();
+        items!.Count.Should().BeGreaterThanOrEqualTo(3);
+
+        var fileItems = items.Where(i => i.MimeType != "inode/directory").ToList();
+        fileItems.Should().BeInDescendingOrder(f => f.Name);
+    }
+
+    [Fact]
+    public async Task GetList_WhenIncludeFoldersTrue_WithOrderBySize_SortsBySize()
+    {
+        var rootScope = $"order-size-test-{Guid.NewGuid():N}";
+        var smallImage = LoadEmbeddedResource("cover-sample.png");
+
+        // Create files - same image but different names
+        await UploadMediaAsync(smallImage, "file-a.png", rootScope);
+        await UploadMediaAsync(smallImage, "file-b.png", rootScope);
+
+        var itemsAsc = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?includeFolders=true&scopeUid={Uri.EscapeDataString(rootScope)}&order=Size ASC",
+            HttpStatusCode.OK);
+
+        itemsAsc.Should().NotBeNull();
+        var fileItemsAsc = itemsAsc!.Where(i => i.MimeType != "inode/directory").ToList();
+        fileItemsAsc.Should().BeInAscendingOrder(f => f.Size);
+
+        var itemsDesc = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?includeFolders=true&scopeUid={Uri.EscapeDataString(rootScope)}&order=Size DESC",
+            HttpStatusCode.OK);
+
+        itemsDesc.Should().NotBeNull();
+        var fileItemsDesc = itemsDesc!.Where(i => i.MimeType != "inode/directory").ToList();
+        fileItemsDesc.Should().BeInDescendingOrder(f => f.Size);
+    }
+
+    [Fact]
+    public async Task GetList_WhenIncludeFoldersTrue_WithNoOrderParam_DefaultsToNameAsc()
+    {
+        var rootScope = $"default-order-test-{Guid.NewGuid():N}";
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        await UploadMediaAsync(imageBytes, "zebra.png", rootScope);
+        await UploadMediaAsync(imageBytes, "alpha.png", rootScope);
+        await UploadMediaAsync(imageBytes, "mike.png", rootScope);
+
+        // No order param - should default to Name ASC
+        var items = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?includeFolders=true&scopeUid={Uri.EscapeDataString(rootScope)}",
+            HttpStatusCode.OK);
+
+        items.Should().NotBeNull();
+
+        var fileItems = items!.Where(i => i.MimeType != "inode/directory").ToList();
+        fileItems.Should().BeInAscendingOrder(f => f.Name);
+    }
+
+    [Fact]
+    public async Task GetList_WhenIncludeFoldersTrue_EmptyFolder_ReturnsEmptyList()
+    {
+        var emptyScope = $"empty-folder-{Guid.NewGuid():N}";
+
+        var items = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?includeFolders=true&scopeUid={Uri.EscapeDataString(emptyScope)}",
+            HttpStatusCode.OK);
+
+        items.Should().NotBeNull();
+        items!.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetList_WhenIncludeFoldersTrue_FoldersAndFilesMixedSorting()
+    {
+        var rootScope = $"mixed-sort-test-{Guid.NewGuid():N}";
+        var subFolder1 = $"{rootScope}/aaa-folder";
+        var subFolder2 = $"{rootScope}/zzz-folder";
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        // Create files in root and subfolders
+        await UploadMediaAsync(imageBytes, "mmm-file.png", rootScope);
+        await UploadMediaAsync(imageBytes, "sub1.png", subFolder1);
+        await UploadMediaAsync(imageBytes, "sub2.png", subFolder2);
+
+        var items = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?includeFolders=true&scopeUid={Uri.EscapeDataString(rootScope)}&order=Name ASC",
+            HttpStatusCode.OK);
+
+        items.Should().NotBeNull();
+        items!.Count.Should().Be(3); // 2 folders + 1 file
+
+        // Folders get humanized names ("Aaa Folder", "Zzz Folder") and file keeps original name
+        // Sorting is case-insensitive: Aaa < mmm < Zzz
+        items.Should().BeInAscendingOrder(i => i.Name, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GetList_WhenIncludeFoldersFalse_WithScopeUidFilter_ReturnsOnlyMatchingFiles()
+    {
+        var scopeA = $"scope-filter-a-{Guid.NewGuid():N}";
+        var scopeB = $"scope-filter-b-{Guid.NewGuid():N}";
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        await UploadMediaAsync(imageBytes, "file-a1.png", scopeA);
+        await UploadMediaAsync(imageBytes, "file-a2.png", scopeA);
+        await UploadMediaAsync(imageBytes, "file-b1.png", scopeB);
+
+        var items = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?includeFolders=false&filter[where][ScopeUid][eq]={Uri.EscapeDataString(scopeA)}",
+            HttpStatusCode.OK);
+
+        items.Should().NotBeNull();
+        items!.Count.Should().Be(2);
+        items.Should().OnlyContain(i => i.ScopeUid == scopeA);
+    }
+
+    [Fact]
+    public async Task GetList_WhenIncludeFoldersFalse_WithLimitAndSkip_ReturnsPaginatedResults()
+    {
+        var scopeUid = $"pagination-test-{Guid.NewGuid():N}";
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        await UploadMediaAsync(imageBytes, "page1.png", scopeUid);
+        await UploadMediaAsync(imageBytes, "page2.png", scopeUid);
+        await UploadMediaAsync(imageBytes, "page3.png", scopeUid);
+        await UploadMediaAsync(imageBytes, "page4.png", scopeUid);
+
+        // Get first page (2 items)
+        var page1Response = await GetTest(
+            $"/api/media?filter[where][ScopeUid][eq]={Uri.EscapeDataString(scopeUid)}&filter[order]=Name ASC&filter[limit]=2&filter[skip]=0",
+            HttpStatusCode.OK);
+
+        page1Response.Headers.TryGetValues(ResponseHeaderNames.TotalCount, out var totalCountValues)
+            .Should().BeTrue();
+        totalCountValues!.Single().Should().Be("4");
+
+        var page1 = await page1Response.Content.ReadFromJsonAsync<List<MediaDetailsDto>>();
+        page1.Should().NotBeNull();
+        page1!.Count.Should().Be(2);
+
+        // Get second page (2 items)
+        var page2 = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?filter[where][ScopeUid][eq]={Uri.EscapeDataString(scopeUid)}&filter[order]=Name ASC&filter[limit]=2&filter[skip]=2",
+            HttpStatusCode.OK);
+
+        page2.Should().NotBeNull();
+        page2!.Count.Should().Be(2);
+
+        // Pages should not overlap
+        page1.Select(p => p.Id).Should().NotIntersectWith(page2.Select(p => p.Id));
+    }
+
+    [Fact]
+    public async Task GetList_WhenIncludeFoldersFalse_WithOrderFilter_SortsResults()
+    {
+        var scopeUid = $"order-flat-test-{Guid.NewGuid():N}";
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        await UploadMediaAsync(imageBytes, "charlie.png", scopeUid);
+        await UploadMediaAsync(imageBytes, "alpha.png", scopeUid);
+        await UploadMediaAsync(imageBytes, "bravo.png", scopeUid);
+
+        var itemsAsc = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?filter[where][ScopeUid][eq]={Uri.EscapeDataString(scopeUid)}&filter[order]=Name ASC",
+            HttpStatusCode.OK);
+
+        itemsAsc.Should().NotBeNull();
+        itemsAsc!.Should().BeInAscendingOrder(i => i.Name);
+
+        var itemsDesc = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?filter[where][ScopeUid][eq]={Uri.EscapeDataString(scopeUid)}&filter[order]=Name DESC",
+            HttpStatusCode.OK);
+
+        itemsDesc.Should().NotBeNull();
+        itemsDesc!.Should().BeInDescendingOrder(i => i.Name);
+    }
+
+    [Fact]
     public async Task Reoptimize_ShouldUpdateImagesToPreferredFormat()
     {
         await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");

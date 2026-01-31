@@ -340,7 +340,8 @@ public class MediaController : ControllerBase
     public async Task<ActionResult<List<MediaDetailsDto>>> GetList(
         [FromQuery] string? query = null,
         [FromQuery] string? scopeUid = null,
-        [FromQuery] bool includeFolders = false)
+        [FromQuery] bool includeFolders = false,
+        [FromQuery] string? order = null)
     {
         if (!includeFolders)
         {
@@ -352,31 +353,50 @@ public class MediaController : ControllerBase
 
             var mediaList = result.Records ?? new List<Media>();
 
-            var mapped = mediaList.Select(m =>
-            {
-                var dto = mapper.Map<MediaDetailsDto>(m);
-                dto.Location = CalculateMediaLocation(m.ScopeUid, m.Name);
-                return dto;
-            }).ToList();
+            var mapped = mediaList.Select(MapToMediaDto).ToList();
 
             return Ok(mapped);
         }
         else
         {
             var scopePrefix = string.IsNullOrEmpty(scopeUid) ? string.Empty : scopeUid.TrimEnd('/');
+
+            // Parse order parameter (default: Name ASC)
+            var (orderProperty, orderAscending) = ParseOrderParameter(order);
+
+            // Query media without binary Data fields for efficiency
+            var mediaQuery = pgDbContext.Media!
+                .Select(m => new Media
+                {
+                    Id = m.Id,
+                    ScopeUid = m.ScopeUid,
+                    Name = m.Name,
+                    Description = m.Description,
+                    Size = m.Size,
+                    MimeType = m.MimeType,
+                    Extension = m.Extension,
+                    Tags = m.Tags,
+                    UsageCount = m.UsageCount,
+                    CreatedAt = m.CreatedAt,
+                    UpdatedAt = m.UpdatedAt,
+                    Width = m.Width,
+                    Height = m.Height,
+                    OriginalWidth = m.OriginalWidth,
+                    OriginalHeight = m.OriginalHeight,
+                });
+
             List<string> folderScopeUids;
-            List<Media> files;
+            List<MediaDetailsDto> fileDtos;
 
             if (string.IsNullOrEmpty(scopePrefix))
             {
-                // Root: get all distinct first-level ScopeUid parts, filter out empty names and leading slashes
-                var allScopeUids = await pgDbContext.Media!
-                    .Where(m => !string.IsNullOrEmpty(m.ScopeUid))
-                    .Select(m => m.ScopeUid)
-                    .ToListAsync();
+                // Root level: need all media to compute folder stats
+                var allMedia = await mediaQuery.ToListAsync();
 
-                folderScopeUids = allScopeUids
-                    .Select(s => s.TrimStart('/'))
+                // Root: get all distinct first-level ScopeUid parts
+                folderScopeUids = allMedia
+                    .Where(m => !string.IsNullOrEmpty(m.ScopeUid))
+                    .Select(m => m.ScopeUid.TrimStart('/'))
                     .Where(s => !string.IsNullOrEmpty(s))
                     .Select(s => s.Split('/')[0])
                     .Where(name => !string.IsNullOrEmpty(name))
@@ -384,22 +404,33 @@ public class MediaController : ControllerBase
                     .ToList();
 
                 // Files in root (ScopeUid is empty)
-                files = await pgDbContext.Media!
+                fileDtos = allMedia
                     .Where(m => string.IsNullOrEmpty(m.ScopeUid))
-                    .ToListAsync();
+                    .Select(MapToMediaDto)
+                    .ToList();
+
+                // Build folder DTOs from in-memory data
+                var folderDtos = BuildFolderDtos(folderScopeUids, allMedia);
+                var resultList = folderDtos.Concat(fileDtos).ToList();
+
+                // Apply sorting
+                resultList = ApplyMediaSorting(resultList, orderProperty, orderAscending);
+
+                return Ok(resultList);
             }
             else
             {
-                // Subfolder: get all distinct next-level ScopeUid parts, filter out empty names and leading slashes
+                // Subfolder: only query media in this folder and below
                 var prefix = scopePrefix + "/";
 
-                var allScopeUids = await pgDbContext.Media!
-                    .Where(m => m.ScopeUid.StartsWith(prefix))
-                    .Select(m => m.ScopeUid.Substring(prefix.Length))
+                var relevantMedia = await mediaQuery
+                    .Where(m => m.ScopeUid == scopePrefix || m.ScopeUid.StartsWith(prefix))
                     .ToListAsync();
 
-                folderScopeUids = allScopeUids
-                    .Select(s => s.TrimStart('/'))
+                // Get distinct next-level folder names
+                folderScopeUids = relevantMedia
+                    .Where(m => m.ScopeUid.StartsWith(prefix))
+                    .Select(m => m.ScopeUid.Substring(prefix.Length).TrimStart('/'))
                     .Where(s => !string.IsNullOrEmpty(s))
                     .Select(s => s.Split('/')[0])
                     .Where(name => !string.IsNullOrEmpty(name))
@@ -408,69 +439,20 @@ public class MediaController : ControllerBase
                     .ToList();
 
                 // Files in this folder
-                files = await pgDbContext.Media!
+                fileDtos = relevantMedia
                     .Where(m => m.ScopeUid == scopePrefix)
-                    .ToListAsync();
+                    .Select(MapToMediaDto)
+                    .ToList();
+
+                // Build folder DTOs from in-memory data
+                var folderDtos = BuildFolderDtos(folderScopeUids, relevantMedia);
+                var resultList = folderDtos.Concat(fileDtos).ToList();
+
+                // Apply sorting
+                resultList = ApplyMediaSorting(resultList, orderProperty, orderAscending);
+
+                return Ok(resultList);
             }
-
-            // Build folder DTOs
-            var folderDtos = new List<MediaDetailsDto>();
-
-            foreach (var folder in folderScopeUids.Distinct())
-            {
-                // For folder info, only query files in this folder and subfolders (excluding Data)
-                var folderFiles = await pgDbContext.Media!
-                    .Where(m => m.ScopeUid == folder || m.ScopeUid.StartsWith(folder + "/"))
-                    .Select(m => new { m.Size, m.CreatedAt, m.UpdatedAt })
-                    .ToListAsync();
-
-                // Count subfolders in this folder
-                var subfolderScopeUids = await pgDbContext.Media!
-                    .Where(m => m.ScopeUid == folder || m.ScopeUid.StartsWith(folder + "/"))
-                    .Select(m => m.ScopeUid)
-                    .ToListAsync();
-                var subfolderCount = subfolderScopeUids
-                    .Where(s => s != folder && s.StartsWith(folder + "/"))
-                    .Select(s => s.Substring(folder.Length + 1).Split('/')[0])
-                    .Distinct()
-                    .Count();
-                var fileCount = folderFiles.Count;
-                var totalCount = subfolderCount + fileCount;
-
-                var createdAt = folderFiles.OrderBy(f => f.CreatedAt).FirstOrDefault()?.CreatedAt ?? DateTime.UtcNow;
-                var updatedAt = folderFiles.OrderByDescending(f => f.UpdatedAt).FirstOrDefault()?.UpdatedAt;
-                var size = folderFiles.Sum(f => f.Size);
-                var namePart = folder.Split('/').Last();
-
-                var humanName = Regex.Replace(namePart, "([a-z])([A-Z])", "$1 $2").Replace("-", " ").Replace("_", " ");
-                humanName = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(humanName);
-
-                folderDtos.Add(new MediaDetailsDto
-                {
-                    Id = totalCount,
-                    ScopeUid = folder,
-                    Location = folder,
-                    Name = humanName,
-                    Description = null,
-                    Size = size,
-                    MimeType = "inode/directory",
-                    Tags = Array.Empty<string>(),
-                    UsageCount = 0,
-                    CreatedAt = createdAt,
-                    UpdatedAt = updatedAt,
-                });
-            }
-
-            // File DTOs
-            var fileDtos = files.Select(m =>
-            {
-                var dto = mapper.Map<MediaDetailsDto>(m);
-                dto.Location = CalculateMediaLocation(m.ScopeUid, m.Name);
-                return dto;
-            });
-
-            var resultList = folderDtos.Concat(fileDtos).ToList();
-            return Ok(resultList);
         }
     }
 
@@ -606,8 +588,7 @@ public class MediaController : ControllerBase
             existingMedia.Id);
 
         // Return the updated media details
-        var updatedMediaDto = mapper.Map<MediaDetailsDto>(existingMedia);
-        updatedMediaDto.Location = CalculateMediaLocation(existingMedia.ScopeUid, existingMedia.Name);
+        var updatedMediaDto = MapToMediaDto(existingMedia);
 
         return Ok(updatedMediaDto);
     }
@@ -853,8 +834,7 @@ public class MediaController : ControllerBase
         }
 
         var linksUpdated = await RenameMediaAsync(media, request.NewScopeUid, request.NewFileName);
-        var dto = mapper.Map<MediaDetailsDto>(media);
-        dto.Location = CalculateMediaLocation(dto.ScopeUid, dto.Name);
+        var dto = MapToMediaDto(media);
         dto.UsageCount = linksUpdated;
 
         return Ok(dto);
@@ -1240,6 +1220,99 @@ public class MediaController : ControllerBase
         return Path.ChangeExtension(fileName, normalized);
     }
 
+    private static (string Property, bool Ascending) ParseOrderParameter(string? order)
+    {
+        // Default: Name ASC
+        if (string.IsNullOrWhiteSpace(order))
+        {
+            return ("Name", true);
+        }
+
+        var parts = order.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var property = parts.Length > 0 ? parts[0] : "Name";
+        var ascending = parts.Length < 2 || !parts[1].Equals("DESC", StringComparison.OrdinalIgnoreCase);
+
+        return (property, ascending);
+    }
+
+    private static List<MediaDetailsDto> ApplyMediaSorting(List<MediaDetailsDto> list, string property, bool ascending)
+    {
+        // Get property info for dynamic sorting
+        var propInfo = typeof(MediaDetailsDto).GetProperty(property, System.Reflection.BindingFlags.IgnoreCase | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+
+        if (propInfo == null)
+        {
+            // Fallback to Name if property not found
+            propInfo = typeof(MediaDetailsDto).GetProperty("Name");
+        }
+
+        if (ascending)
+        {
+            return list.OrderBy(m => propInfo!.GetValue(m)).ToList();
+        }
+        else
+        {
+            return list.OrderByDescending(m => propInfo!.GetValue(m)).ToList();
+        }
+    }
+
+    private static List<MediaDetailsDto> BuildFolderDtos(List<string> folderScopeUids, List<Media> mediaList)
+    {
+        var folderDtos = new List<MediaDetailsDto>();
+
+        foreach (var folder in folderScopeUids.Distinct())
+        {
+            var folderPrefix = folder + "/";
+
+            // Filter for files in this folder and subfolders
+            var folderFiles = mediaList
+                .Where(m => m.ScopeUid == folder || m.ScopeUid.StartsWith(folderPrefix))
+                .ToList();
+
+            // Total count is all files in this folder and subfolders (not counting subfolders themselves)
+            var totalCount = folderFiles.Count;
+
+            var createdAt = folderFiles
+                .Select(f => f.CreatedAt)
+                .OrderBy(d => d)
+                .FirstOrDefault();
+            if (createdAt == default)
+            {
+                createdAt = DateTime.UtcNow;
+            }
+
+            var updatedAt = folderFiles
+                .Select(f => f.UpdatedAt)
+                .Where(d => d.HasValue)
+                .OrderByDescending(d => d)
+                .FirstOrDefault();
+
+            var size = folderFiles.Sum(f => f.Size);
+            var usageCount = folderFiles.Sum(f => f.UsageCount);
+            var namePart = folder.Split('/').Last();
+
+            var humanName = Regex.Replace(namePart, "([a-z])([A-Z])", "$1 $2").Replace("-", " ").Replace("_", " ");
+            humanName = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(humanName);
+
+            folderDtos.Add(new MediaDetailsDto
+            {
+                Id = totalCount,
+                ScopeUid = folder,
+                Location = folder,
+                Name = humanName,
+                Description = null,
+                Size = size,
+                MimeType = "inode/directory",
+                Tags = Array.Empty<string>(),
+                UsageCount = usageCount,
+                CreatedAt = createdAt,
+                UpdatedAt = updatedAt,
+            });
+        }
+
+        return folderDtos;
+    }
+
     private async Task<Media?> ResolveMediaAsync(string scopeUid, string fileName)
     {
         var normalizedScope = scopeUid.Trim();
@@ -1350,8 +1423,7 @@ public class MediaController : ControllerBase
             await pgDbContext.SaveChangesAsync();
         }
 
-        var dto = mapper.Map<MediaDetailsDto>(media);
-        dto.Location = CalculateMediaLocation(dto.ScopeUid, dto.Name);
+        var dto = MapToMediaDto(media);
 
         dto.UsageCount = linksUpdated;
         return dto;
@@ -1562,6 +1634,13 @@ public class MediaController : ControllerBase
     {
         var relativePath = Path.Combine("/api/media", scopeUid ?? string.Empty, fileName ?? string.Empty).Replace("\\", "/");
         return mediaResolver.Resolve(relativePath, HttpContext, MediaResolutionHelper.GetResolutionMode(HttpContext));
+    }
+
+    private MediaDetailsDto MapToMediaDto(Media media)
+    {
+        var dto = mapper.Map<MediaDetailsDto>(media);
+        dto.Location = CalculateMediaLocation(media.ScopeUid, media.Name);
+        return dto;
     }
 
     private async Task<int> ApplyDeferredContentUpdatesAsync(List<ContentReferenceUpdate> updates)
