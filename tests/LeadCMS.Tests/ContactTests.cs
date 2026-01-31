@@ -247,9 +247,9 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
     }
 
     [Theory]
-    [InlineData("filtercadabra", HttpStatusCode.BadRequest)]
-    [InlineData("filter", HttpStatusCode.BadRequest)]
-    [InlineData("filter[]", HttpStatusCode.BadRequest)]
+    [InlineData("filtercadabra", HttpStatusCode.OK)] // No '=' sign, silently ignored
+    [InlineData("filter", HttpStatusCode.OK)] // No '=' sign, silently ignored
+    [InlineData("filter[]", HttpStatusCode.OK)] // No '=' sign, silently ignored
     [InlineData("filter[]=", HttpStatusCode.BadRequest)]
     [InlineData("filter[]=0", HttpStatusCode.BadRequest)]
     [InlineData("filter[][]=3", HttpStatusCode.BadRequest)]

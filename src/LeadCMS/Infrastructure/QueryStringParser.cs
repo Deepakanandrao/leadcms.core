@@ -11,6 +11,12 @@ namespace LeadCMS.Infrastructure
     {
         public static List<QueryCommand> Parse(string query)
         {
+            // Strip leading '?' if present
+            if (query.StartsWith('?'))
+            {
+                query = query.Substring(1);
+            }
+
             var queryCommands = query.Length > 0 ? query.Split('&') : new string[0];
 
             var processedCommands = new List<QueryCommand>();
@@ -35,9 +41,36 @@ namespace LeadCMS.Infrastructure
                     match = Regex.Match(cmd, "filter(\\[(?'property'.*?)\\])+?=(?'value'.*)");
                     if (!match.Success)
                     {
-                        if (!cmd.Contains("syncToken") && !cmd.Contains("includeTranslations"))
+                        var parts = cmd.Split('=', 2);
+                        if (parts.Length == 2 && !string.IsNullOrWhiteSpace(parts[0]))
                         {
-                            errorList.Add(new QueryException(cmd, "Failed to parse command"));
+                            var paramName = parts[0].ToLowerInvariant();
+                            var paramValue = parts[1];
+
+                            // Check if this is a known filter type (limit, skip, order)
+                            if (QueryCommand.FilterMappings.TryGetValue(paramName, out var filterType))
+                            {
+                                processedCommands.Add(new QueryCommand
+                                {
+                                    Type = filterType,
+                                    Props = Array.Empty<string>(),
+                                    Value = paramValue,
+                                    Source = cmd,
+                                    IsImplicit = true,
+                                });
+                            }
+                            else
+                            {
+                                // Treat as implicit where filter
+                                processedCommands.Add(new QueryCommand
+                                {
+                                    Type = FilterType.Where,
+                                    Props = new[] { parts[0] },
+                                    Value = paramValue,
+                                    Source = cmd,
+                                    IsImplicit = true,
+                                });
+                            }
                         }
 
                         continue;

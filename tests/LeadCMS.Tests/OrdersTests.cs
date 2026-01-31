@@ -393,7 +393,8 @@ public class OrdersTests : TableWithFKTests<Order, TestOrder, OrderUpdateDto, IE
     {
         GenerateBulkRecords(10);
 
-        await GetTest<List<Order>>(itemsUrl + "?incorrect-query", HttpStatusCode.BadRequest);
+        // Query params without '=' sign are silently ignored
+        await GetTest<List<Order>>(itemsUrl + "?incorrect-query", HttpStatusCode.OK);
     }
 
     [Fact]

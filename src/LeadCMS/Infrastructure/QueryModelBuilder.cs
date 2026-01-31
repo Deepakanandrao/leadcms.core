@@ -241,7 +241,10 @@ namespace LeadCMS.Infrastructure
                 }
                 catch (QueryException ex)
                 {
-                    errorList.Add(ex);
+                    if (!cmd.IsImplicit)
+                    {
+                        errorList.Add(ex);
+                    }
                 }
             }
 

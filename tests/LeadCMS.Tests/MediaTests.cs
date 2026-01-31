@@ -9,6 +9,7 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using LeadCMS.Constants;
 using LeadCMS.Helpers;
+using LeadCMS.Infrastructure;
 using Microsoft.AspNetCore.StaticFiles;
 
 namespace LeadCMS.Tests;
@@ -143,6 +144,50 @@ public class MediaTests : BaseTestAutoLogin
 
         var downloadedBytes = await originalResponse.Content.ReadAsByteArrayAsync();
         downloadedBytes.Should().Equal(imageBytes);
+    }
+
+    [Fact]
+    public async Task GetList_WhenIncludeFoldersFalse_ReturnsFlatList_WithFilters()
+    {
+        var scopeUid = $"media-flat-{Guid.NewGuid():N}";
+        var otherScopeUid = $"media-flat-other-{Guid.NewGuid():N}";
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        await UploadMediaAsync(imageBytes, "flat-a.png", scopeUid);
+        await UploadMediaAsync(imageBytes, "flat-b.png", scopeUid);
+        await UploadMediaAsync(imageBytes, "flat-c.png", otherScopeUid);
+
+        var response = await GetTest(
+            $"/api/media?scopeUid={Uri.EscapeDataString(scopeUid)}&includeFolders=false&filter[order]=Name ASC&filter[limit]=1",
+            HttpStatusCode.OK);
+
+        response.Headers.TryGetValues(ResponseHeaderNames.TotalCount, out var totalCountValues)
+            .Should().BeTrue();
+        totalCountValues!.Single().Should().Be("2");
+
+        var items = await response.Content.ReadFromJsonAsync<List<MediaDetailsDto>>();
+        items.Should().NotBeNull();
+        items!.Count.Should().Be(1);
+        items.TrueForAll(m => m.ScopeUid == scopeUid).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GetList_WhenIncludeFoldersTrue_ReturnsFoldersAndFiles()
+    {
+        var rootScopeUid = $"media-folder-{Guid.NewGuid():N}";
+        var subScopeUid = $"{rootScopeUid}/sub";
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        await UploadMediaAsync(imageBytes, "root-file.png", rootScopeUid);
+        await UploadMediaAsync(imageBytes, "sub-file.png", subScopeUid);
+
+        var items = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?includeFolders=true&scopeUid={Uri.EscapeDataString(rootScopeUid)}",
+            HttpStatusCode.OK);
+
+        items.Should().NotBeNull();
+        items!.Exists(i => i.MimeType == "inode/directory" && i.ScopeUid == subScopeUid).Should().BeTrue();
+        items.Exists(i => i.MimeType != "inode/directory" && i.ScopeUid == rootScopeUid).Should().BeTrue();
     }
 
     [Fact]

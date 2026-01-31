@@ -30,6 +30,7 @@ namespace LeadCMS.Infrastructure
         Contains = 10,
         NContains = 11,
         InList = 12, // Added for WHERE ... IN (...)
+        StartsWith = 13,
     }
 
     public class QueryCommand
@@ -58,6 +59,7 @@ namespace LeadCMS.Infrastructure
             { "contains", WOperand.Contains },
             { "ncontains", WOperand.NContains },
             { "in", WOperand.InList }, // Added for WHERE ... IN (...)
+            { "startswith", WOperand.StartsWith },
         };
 
         public static string AvailableCommandString => FilterMappings.Keys.Aggregate(string.Empty, (acc, key) => $"{acc}{key}, ");
@@ -69,6 +71,8 @@ namespace LeadCMS.Infrastructure
         public string Value { get; set; } = string.Empty;
 
         public string Source { get; set; } = string.Empty;
+
+        public bool IsImplicit { get; set; } = false;
 
         public System.Reflection.PropertyInfo ParseProperty<T>()
         {

@@ -489,6 +489,21 @@ namespace LeadCMS.Infrastructure
                 return res;
             }
 
+            Expression? CreateStartsWithExpression(QueryModelBuilder<T>.WhereUnitData cmd, Expression parameter)
+            {
+                if (cmd.PropertyPath.LeafProperty.PropertyType != typeof(string))
+                {
+                    throw new QueryException(cmd.Cmd.Source, "StartsWith operand is only supported for string properties");
+                }
+
+                var parsedValue = cmd.ParseValues(new string[] { cmd.StringValue })[0];
+                var value = Expression.Constant(parsedValue, typeof(string));
+                var comparison = Expression.Constant(StringComparison.OrdinalIgnoreCase);
+                var method = typeof(string).GetMethod("StartsWith", new[] { typeof(string), typeof(StringComparison) });
+
+                return Expression.Call(parameter, method!, value, comparison);
+            }
+
             try
             {
                 switch (cmd.Operation)
@@ -515,6 +530,9 @@ namespace LeadCMS.Infrastructure
                     case WOperand.Contains:
                     case WOperand.NContains:
                         outputExpression = CreateContainExpression(cmd, parameterPropertyExpression)!;
+                        break;
+                    case WOperand.StartsWith:
+                        outputExpression = CreateStartsWithExpression(cmd, parameterPropertyExpression)!;
                         break;
                     default:
                         throw new QueryException(cmd.Cmd.Source, $"No such operand '{cmd.Operation}'");
