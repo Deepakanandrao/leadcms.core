@@ -343,6 +343,11 @@ public class MediaController : ControllerBase
         [FromQuery] bool includeFolders = false,
         [FromQuery] string? order = null)
     {
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            includeFolders = false;
+        }
+
         if (!includeFolders)
         {
             var qp = queryProviderFactory.BuildQueryProvider();

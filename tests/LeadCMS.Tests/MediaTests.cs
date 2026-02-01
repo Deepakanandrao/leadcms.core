@@ -306,6 +306,27 @@ public class MediaTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task GetList_WhenQueryProvided_ReturnsFlatSearchResults()
+    {
+        var rootScope = $"media-search-{Guid.NewGuid():N}";
+        var subScope = $"{rootScope}/sub";
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        await UploadMediaAsync(imageBytes, "needle-one.png", rootScope);
+        await UploadMediaAsync(imageBytes, "needle-two.png", subScope);
+        await UploadMediaAsync(imageBytes, "haystack.png", rootScope);
+
+        var items = await GetTest<List<MediaDetailsDto>>(
+            "/api/media?includeFolders=true&query=needle",
+            HttpStatusCode.OK);
+
+        items.Should().NotBeNull();
+        items!.Should().OnlyContain(i => i.MimeType != "inode/directory");
+        items.Should().HaveCount(2);
+        items.Should().OnlyContain(i => i.Name.Contains("needle", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task GetList_WhenIncludeFoldersTrue_WithOrderParam_SortsByNameAscending()
     {
         var rootScope = $"order-test-{Guid.NewGuid():N}";
