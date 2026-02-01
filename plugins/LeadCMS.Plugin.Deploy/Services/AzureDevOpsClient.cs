@@ -9,27 +9,21 @@ using System.Text.Json.Serialization;
 using LeadCMS.Plugin.Deploy.Configuration;
 using LeadCMS.Plugin.Deploy.DTOs;
 using Microsoft.Extensions.Logging;
-using Microsoft.TeamFoundation.Build.WebApi;
-using Microsoft.TeamFoundation.Core.WebApi;
-using Microsoft.VisualStudio.Services.Common;
-using Microsoft.VisualStudio.Services.WebApi;
 
 namespace LeadCMS.Plugin.Deploy.Services;
 
 /// <summary>
 /// Client for Azure DevOps API operations.
 /// Thread-safe - can be used as a singleton across multiple requests.
-/// Uses HttpClient for Release API to avoid SDK IdentityDescriptor deserialization issues.
+/// Uses HttpClient for all API calls to avoid SDK deserialization issues.
 /// </summary>
 public class AzureDevOpsClient : IDisposable
 {
     private readonly AzureDevOpsSettings settings;
     private readonly ILogger<AzureDevOpsClient>? logger;
-    private readonly object connectionLock = new();
     private readonly SemaphoreSlim projectIdLock = new(1, 1);
     private readonly HttpClient httpClient;
     private readonly JsonSerializerOptions jsonOptions;
-    private VssConnection? connection;
     private bool disposed;
 
     /// <summary>
@@ -42,7 +36,7 @@ public class AzureDevOpsClient : IDisposable
         this.settings = settings;
         this.logger = logger;
 
-        // Initialize HttpClient for Release API calls (avoids SDK deserialization issues)
+        // Initialize HttpClient for all API calls
         httpClient = new HttpClient();
         var authToken = Convert.ToBase64String(Encoding.ASCII.GetBytes($":{settings.PersonalAccessToken}"));
         httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authToken);
@@ -74,24 +68,27 @@ public class AzureDevOpsClient : IDisposable
     {
         try
         {
-            var conn = GetConnection();
-            var projectClient = conn.GetClient<ProjectHttpClient>();
+            // Use REST API directly to get project info
+            var projectUrl = $"{settings.OrganizationUrl}/_apis/projects/{Uri.EscapeDataString(settings.ProjectName)}?api-version=7.1";
+            var project = await GetFromApiAsync<ProjectResponse>(projectUrl);
 
-            var projects = await projectClient.GetProjects();
-            var targetProject = projects.FirstOrDefault(p =>
-                string.Equals(p.Name, settings.ProjectName, StringComparison.OrdinalIgnoreCase));
-
-            if (targetProject == null)
+            if (project == null || string.IsNullOrEmpty(project.Id))
             {
-                return false;
+                throw new InvalidOperationException($"Project '{settings.ProjectName}' not found in organization");
             }
 
-            settings.ProjectId = targetProject.Id.ToString();
+            settings.ProjectId = project.Id;
             return true;
         }
-        catch
+        catch (HttpRequestException ex)
         {
-            return false;
+            logger?.LogError(ex, "Failed to connect to Azure DevOps organization {OrganizationUrl} project {ProjectName}", settings.OrganizationUrl, settings.ProjectName);
+            throw new InvalidOperationException($"Failed to connect to Azure DevOps: {ex.Message}", ex);
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException)
+        {
+            logger?.LogError(ex, "Failed to test connection to Azure DevOps organization {OrganizationUrl} project {ProjectName}", settings.OrganizationUrl, settings.ProjectName);
+            throw new InvalidOperationException($"Failed to connect to Azure DevOps: {ex.Message}", ex);
         }
     }
 
@@ -101,39 +98,44 @@ public class AzureDevOpsClient : IDisposable
     /// <param name="definitionId">The build definition ID.</param>
     /// <param name="sourceBranch">Optional source branch.</param>
     /// <returns>The queued build, or null if failed.</returns>
-    public async Task<Build?> TriggerBuildAsync(int definitionId, string? sourceBranch = null)
+    public async Task<BuildDetails?> TriggerBuildAsync(int definitionId, string? sourceBranch = null)
     {
         try
         {
             if (!await EnsureProjectIdAsync())
             {
-                return null;
+                throw new InvalidOperationException("Failed to resolve project ID");
             }
 
-            var conn = GetConnection();
-            var buildClient = conn.GetClient<BuildHttpClient>();
-
-            var buildDefinition = await buildClient.GetDefinitionAsync(
-                project: settings.ProjectId!,
-                definitionId: definitionId);
-
-            var buildRequest = new Build
+            // Get build definition to determine default branch if not specified
+            string branch = sourceBranch ?? "refs/heads/main";
+            if (string.IsNullOrWhiteSpace(sourceBranch))
             {
-                Definition = buildDefinition,
-                Project = new TeamProjectReference
+                var definition = await GetBuildDefinitionAsync(definitionId);
+                if (definition?.Repository?.DefaultBranch != null)
                 {
+                    branch = definition.Repository.DefaultBranch;
+                }
+            }
+
+            var buildRequest = new BuildQueueRequest
+            {
+                Definition = new BuildDefinitionReference { Id = definitionId },
+                SourceBranch = branch,
+                Project = new ProjectReference
+                {
+                    Id = settings.ProjectId!,
                     Name = settings.ProjectName,
-                    Id = Guid.Parse(settings.ProjectId!),
                 },
-                SourceBranch = sourceBranch ?? buildDefinition.Repository?.DefaultBranch ?? "refs/heads/main",
             };
 
-            return await buildClient.QueueBuildAsync(buildRequest);
+            var url = $"{GetBuildBaseUrl()}/_apis/build/builds?api-version=7.1";
+            return await PostToApiAsync<BuildDetails>(url, buildRequest);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not InvalidOperationException)
         {
             logger?.LogError(ex, "Failed to trigger build for definition {DefinitionId} on branch {SourceBranch}", definitionId, sourceBranch);
-            throw new InvalidOperationException($"Failed to trigger build for definition {definitionId}", ex);
+            throw new InvalidOperationException($"Failed to trigger build for definition {definitionId}: {ex.Message}", ex);
         }
     }
 
@@ -142,24 +144,22 @@ public class AzureDevOpsClient : IDisposable
     /// </summary>
     /// <param name="buildId">The build ID.</param>
     /// <returns>The build, or null if not found.</returns>
-    public async Task<Build?> GetBuildAsync(int buildId)
+    public async Task<BuildDetails?> GetBuildAsync(int buildId)
     {
         try
         {
             if (!await EnsureProjectIdAsync())
             {
-                return null;
+                throw new InvalidOperationException("Failed to resolve project ID");
             }
 
-            var conn = GetConnection();
-            var buildClient = conn.GetClient<BuildHttpClient>();
-
-            return await buildClient.GetBuildAsync(settings.ProjectId!, buildId);
+            var url = $"{GetBuildBaseUrl()}/_apis/build/builds/{buildId}?api-version=7.1";
+            return await GetFromApiAsync<BuildDetails>(url);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not InvalidOperationException)
         {
             logger?.LogError(ex, "Failed to get build {BuildId}", buildId);
-            throw new InvalidOperationException($"Failed to get build {buildId}", ex);
+            throw new InvalidOperationException($"Failed to get build {buildId}: {ex.Message}", ex);
         }
     }
 
@@ -168,24 +168,22 @@ public class AzureDevOpsClient : IDisposable
     /// </summary>
     /// <param name="definitionId">The build definition ID.</param>
     /// <returns>The build definition, or null if not found.</returns>
-    public async Task<BuildDefinition?> GetBuildDefinitionAsync(int definitionId)
+    public async Task<BuildDefinitionDetails?> GetBuildDefinitionAsync(int definitionId)
     {
         try
         {
             if (!await EnsureProjectIdAsync())
             {
-                return null;
+                throw new InvalidOperationException("Failed to resolve project ID");
             }
 
-            var conn = GetConnection();
-            var buildClient = conn.GetClient<BuildHttpClient>();
-
-            return await buildClient.GetDefinitionAsync(settings.ProjectId!, definitionId);
+            var url = $"{GetBuildBaseUrl()}/_apis/build/definitions/{definitionId}?api-version=7.1";
+            return await GetFromApiAsync<BuildDefinitionDetails>(url);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not InvalidOperationException)
         {
             logger?.LogError(ex, "Failed to get build definition {DefinitionId}", definitionId);
-            throw new InvalidOperationException($"Failed to get build definition {definitionId}", ex);
+            throw new InvalidOperationException($"Failed to get build definition {definitionId}: {ex.Message}", ex);
         }
     }
 
@@ -195,29 +193,29 @@ public class AzureDevOpsClient : IDisposable
     /// <param name="definitionIds">The build definition IDs.</param>
     /// <param name="top">Maximum number of builds to return.</param>
     /// <returns>A list of builds.</returns>
-    public async Task<List<Build>> GetRecentBuildsAsync(IEnumerable<int> definitionIds, int top = 20)
+    public async Task<List<BuildDetails>> GetRecentBuildsAsync(IEnumerable<int> definitionIds, int top = 20)
     {
         try
         {
             if (!await EnsureProjectIdAsync())
             {
-                return new List<Build>();
+                throw new InvalidOperationException("Failed to resolve project ID");
             }
 
-            var conn = GetConnection();
-            var buildClient = conn.GetClient<BuildHttpClient>();
+            var definitions = string.Join(",", definitionIds);
+            var url = $"{GetBuildBaseUrl()}/_apis/build/builds?" +
+                $"definitions={definitions}" +
+                $"&queryOrder=startTimeDescending" +
+                $"&$top={top}" +
+                $"&api-version=7.1";
 
-            var builds = await buildClient.GetBuildsAsync(
-                project: settings.ProjectId!,
-                definitions: definitionIds.ToArray(),
-                queryOrder: BuildQueryOrder.StartTimeDescending,
-                top: top);
-
-            return builds.ToList();
+            var response = await GetFromApiAsync<BuildListResponse>(url);
+            return response?.Value ?? new List<BuildDetails>();
         }
-        catch
+        catch (Exception ex) when (ex is not InvalidOperationException)
         {
-            return new List<Build>();
+            logger?.LogError(ex, "Failed to get recent builds for definitions {DefinitionIds}", string.Join(", ", definitionIds));
+            throw new InvalidOperationException($"Failed to get recent builds: {ex.Message}", ex);
         }
     }
 
@@ -228,47 +226,46 @@ public class AzureDevOpsClient : IDisposable
     /// <param name="status">The build status to filter.</param>
     /// <param name="top">Maximum number of builds to return.</param>
     /// <returns>A list of builds.</returns>
-    public async Task<List<Build>> GetBuildsWithStatusAsync(IEnumerable<int> definitionIds, BuildStatus status, int top = 50)
+    public async Task<List<BuildDetails>> GetBuildsWithStatusAsync(IEnumerable<int> definitionIds, BuildApiStatus status, int top = 50)
     {
         try
         {
             if (!await EnsureProjectIdAsync())
             {
-                return new List<Build>();
+                throw new InvalidOperationException("Failed to resolve project ID");
             }
 
-            var conn = GetConnection();
-            var buildClient = conn.GetClient<BuildHttpClient>();
+            var definitions = string.Join(",", definitionIds);
+            var url = $"{GetBuildBaseUrl()}/_apis/build/builds?" +
+                $"definitions={definitions}" +
+                $"&statusFilter={status}" +
+                $"&queryOrder=startTimeDescending" +
+                $"&$top={top}" +
+                $"&api-version=7.1";
 
-            var builds = await buildClient.GetBuildsAsync(
-                project: settings.ProjectId!,
-                definitions: definitionIds.ToArray(),
-                statusFilter: status,
-                queryOrder: BuildQueryOrder.StartTimeDescending,
-                top: top);
-
-            return builds.ToList();
+            var response = await GetFromApiAsync<BuildListResponse>(url);
+            return response?.Value ?? new List<BuildDetails>();
         }
-        catch
+        catch (Exception ex) when (ex is not InvalidOperationException)
         {
-            return new List<Build>();
+            logger?.LogError(ex, "Failed to get builds with status {Status} for definitions {DefinitionIds}", status, string.Join(", ", definitionIds));
+            throw new InvalidOperationException($"Failed to get builds with status {status}: {ex.Message}", ex);
         }
     }
 
     /// <summary>
     /// Finds a release triggered by a specific build using the artifact source ID filter.
     /// This is more reliable than time-based filtering and works for historical builds.
-    /// Uses HTTP REST API to avoid SDK IdentityDescriptor deserialization issues.
     /// </summary>
     /// <param name="build">The build to find releases for.</param>
     /// <returns>The release, or null if not found.</returns>
-    public async Task<ReleaseDetails?> FindReleaseForBuildAsync(Build build)
+    public async Task<ReleaseDetails?> FindReleaseForBuildAsync(BuildDetails build)
     {
         try
         {
             if (!await EnsureProjectIdAsync())
             {
-                return null;
+                throw new InvalidOperationException("Failed to resolve project ID");
             }
 
             // Use sourceId filter to find releases that used this build as an artifact.
@@ -292,10 +289,10 @@ public class AzureDevOpsClient : IDisposable
             // Get full release details
             return await GetReleaseAsync(releaseRef.Id);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not InvalidOperationException)
         {
             logger?.LogError(ex, "Failed to find release for build {BuildId}", build.Id);
-            throw new InvalidOperationException($"Failed to find release for build {build.Id}", ex);
+            throw new InvalidOperationException($"Failed to find release for build {build.Id}: {ex.Message}", ex);
         }
     }
 
@@ -317,11 +314,10 @@ public class AzureDevOpsClient : IDisposable
 
     /// <summary>
     /// Batch finds releases for multiple builds.
-    /// Uses HTTP REST API to avoid SDK IdentityDescriptor deserialization issues.
     /// </summary>
     /// <param name="builds">The builds to find releases for.</param>
     /// <returns>A dictionary mapping build IDs to releases.</returns>
-    public async Task<Dictionary<int, ReleaseDetails>> FindReleasesForBuildsAsync(IEnumerable<Build> builds)
+    public async Task<Dictionary<int, ReleaseDetails>> FindReleasesForBuildsAsync(IEnumerable<BuildDetails> builds)
     {
         var result = new Dictionary<int, ReleaseDetails>();
 
@@ -367,7 +363,7 @@ public class AzureDevOpsClient : IDisposable
         catch (Exception ex)
         {
             logger?.LogError(ex, "Failed to find releases for builds");
-            // Return whatever we collected
+            throw new InvalidOperationException($"Failed to find releases for builds: {ex.Message}", ex);
         }
 
         return result;
@@ -375,7 +371,6 @@ public class AzureDevOpsClient : IDisposable
 
     /// <summary>
     /// Gets the status of a release.
-    /// Uses HTTP REST API to avoid SDK IdentityDescriptor deserialization issues.
     /// </summary>
     /// <param name="releaseId">The release ID.</param>
     /// <returns>The release, or null if not found.</returns>
@@ -385,16 +380,16 @@ public class AzureDevOpsClient : IDisposable
         {
             if (!await EnsureProjectIdAsync())
             {
-                return null;
+                throw new InvalidOperationException("Failed to resolve project ID");
             }
 
             var releaseUrl = $"{GetVsrmBaseUrl()}/_apis/release/releases/{releaseId}?api-version=7.1";
             return await GetFromApiAsync<ReleaseDetails>(releaseUrl);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not InvalidOperationException)
         {
             logger?.LogError(ex, "Failed to get release {ReleaseId}", releaseId);
-            throw new InvalidOperationException($"Failed to get release {releaseId}", ex);
+            throw new InvalidOperationException($"Failed to get release {releaseId}: {ex.Message}", ex);
         }
     }
 
@@ -561,48 +556,56 @@ public class AzureDevOpsClient : IDisposable
     /// </summary>
     /// <param name="buildId">The build ID.</param>
     /// <returns>The timeline, or null if not found.</returns>
-    public async Task<Timeline?> GetBuildTimelineAsync(int buildId)
+    public async Task<BuildTimeline?> GetBuildTimelineAsync(int buildId)
     {
         try
         {
             if (!await EnsureProjectIdAsync())
             {
-                return null;
+                throw new InvalidOperationException("Failed to resolve project ID");
             }
 
-            var conn = GetConnection();
-            var buildClient = conn.GetClient<BuildHttpClient>();
-
-            return await buildClient.GetBuildTimelineAsync(settings.ProjectId!, buildId);
+            var url = $"{GetBuildBaseUrl()}/_apis/build/builds/{buildId}/timeline?api-version=7.1";
+            return await GetFromApiAsync<BuildTimeline>(url);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not InvalidOperationException)
         {
             logger?.LogError(ex, "Failed to get build timeline for build {BuildId}", buildId);
-            throw new InvalidOperationException($"Failed to get build timeline for build {buildId}", ex);
+            throw new InvalidOperationException($"Failed to get build timeline for build {buildId}: {ex.Message}", ex);
         }
     }
 
     /// <summary>
-    /// Gets the URL to view a build in Azure DevOps.
+    /// Gets the URL to view a build in Azure DevOps web UI.
     /// </summary>
     /// <param name="build">The build object.</param>
     /// <returns>The build URL.</returns>
-    public string? GetBuildUrl(Build build)
+    public string GetBuildUrl(BuildDetails build)
     {
-        return build.Links?.Links.TryGetValue("web", out var webLink) == true
-            ? (webLink as Microsoft.VisualStudio.Services.WebApi.ReferenceLink)?.Href
-            : null;
+        return $"{settings.OrganizationUrl}/{Uri.EscapeDataString(settings.ProjectName)}/_build/results?buildId={build.Id}";
     }
 
     /// <summary>
-    /// Gets the URL to view build logs in Azure DevOps.
+    /// Gets the URL to view build logs in Azure DevOps web UI.
     /// </summary>
     /// <param name="build">The build object.</param>
     /// <returns>The build logs URL.</returns>
-    public string? GetBuildLogsUrl(Build build)
+    public string GetBuildLogsUrl(BuildDetails build)
     {
-        var baseUrl = GetBuildUrl(build);
-        return !string.IsNullOrEmpty(baseUrl) ? $"{baseUrl}&view=logs" : null;
+        return $"{GetBuildUrl(build)}&view=logs";
+    }
+
+    /// <summary>
+    /// Gets the raw API URL for build logs.
+    /// Format: https://dev.azure.com/{org}/{projectId}/_apis/build/builds/{buildId}/logs/{logId}.
+    /// </summary>
+    /// <param name="buildId">The build ID.</param>
+    /// <param name="logId">The specific log ID (optional - omit to get list of all logs).</param>
+    /// <returns>The raw logs API URL.</returns>
+    public string GetBuildLogsApiUrl(int buildId, int? logId = null)
+    {
+        var baseUrl = $"{settings.OrganizationUrl}/{settings.ProjectId}/_apis/build/builds/{buildId}/logs";
+        return logId.HasValue ? $"{baseUrl}/{logId}" : baseUrl;
     }
 
     /// <summary>
@@ -666,32 +669,11 @@ public class AzureDevOpsClient : IDisposable
         {
             if (disposing)
             {
-                connection?.Dispose();
                 projectIdLock.Dispose();
                 httpClient.Dispose();
             }
 
             disposed = true;
-        }
-    }
-
-    private VssConnection GetConnection()
-    {
-        if (connection != null)
-        {
-            return connection;
-        }
-
-        lock (connectionLock)
-        {
-            // Double-check after acquiring lock
-            if (connection == null)
-            {
-                var credentials = new VssBasicCredential(string.Empty, settings.PersonalAccessToken);
-                connection = new VssConnection(new Uri(settings.OrganizationUrl), credentials);
-            }
-
-            return connection;
         }
     }
 
@@ -717,6 +699,15 @@ public class AzureDevOpsClient : IDisposable
         {
             projectIdLock.Release();
         }
+    }
+
+    /// <summary>
+    /// Gets the base URL for Build API calls.
+    /// </summary>
+    /// <returns>The build API base URL.</returns>
+    private string GetBuildBaseUrl()
+    {
+        return $"{settings.OrganizationUrl}/{Uri.EscapeDataString(settings.ProjectName)}";
     }
 
     /// <summary>
@@ -751,6 +742,24 @@ public class AzureDevOpsClient : IDisposable
         where T : class
     {
         var response = await httpClient.GetAsync(url);
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<T>(json, jsonOptions);
+    }
+
+    /// <summary>
+    /// Makes an HTTP POST request to the Azure DevOps API and deserializes the response.
+    /// </summary>
+    /// <typeparam name="T">The type to deserialize the response to.</typeparam>
+    /// <param name="url">The API URL.</param>
+    /// <param name="content">The content to post.</param>
+    /// <returns>The deserialized response, or default if failed.</returns>
+    private async Task<T?> PostToApiAsync<T>(string url, object content)
+        where T : class
+    {
+        var jsonContent = JsonSerializer.Serialize(content, jsonOptions);
+        var httpContent = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+        var response = await httpClient.PostAsync(url, httpContent);
         response.EnsureSuccessStatusCode();
         var json = await response.Content.ReadAsStringAsync();
         return JsonSerializer.Deserialize<T>(json, jsonOptions);

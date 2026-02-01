@@ -43,7 +43,6 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.TeamFoundationServer.Client" Version="19.225.1" />
-    <!-- Note: Using HTTP REST API for Release operations to avoid SDK IdentityDescriptor deserialization issues -->
+    <!-- Using HTTP REST API directly for all Azure DevOps operations to avoid SDK deserialization issues -->
   </ItemGroup>
 </Project>

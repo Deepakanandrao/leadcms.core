@@ -8,7 +8,6 @@ using LeadCMS.Core.Deployments.Exceptions;
 using LeadCMS.Core.Deployments.Interfaces;
 using LeadCMS.Plugin.Deploy.Configuration;
 using LeadCMS.Plugin.Deploy.DTOs;
-using Microsoft.TeamFoundation.Build.WebApi;
 
 namespace LeadCMS.Plugin.Deploy.Services;
 
@@ -69,7 +68,7 @@ public class AzureDevOpsDeploymentService : IDeploymentService
 
         // Pre-fetch releases for all builds that need release tracking in one batch
         var buildsNeedingReleaseTracking = builds
-            .Where(b => b.Status == BuildStatus.Completed && b.Result == BuildResult.Succeeded)
+            .Where(b => b.Status == BuildApiStatus.Completed && b.Result == BuildApiResult.Succeeded)
             .Where(b =>
             {
                 var target = FindTargetForBuild(b);
@@ -142,8 +141,8 @@ public class AzureDevOpsDeploymentService : IDeploymentService
         // Fetch release once and reuse for both status and steps
         ReleaseDetails? release = null;
         if (!string.IsNullOrWhiteSpace(target.Value.settings.TrackReleaseStage) &&
-            build.Status == BuildStatus.Completed &&
-            build.Result == BuildResult.Succeeded)
+            build.Status == BuildApiStatus.Completed &&
+            build.Result == BuildApiResult.Succeeded)
         {
             release = await client.FindReleaseForBuildAsync(build);
         }
@@ -187,19 +186,19 @@ public class AzureDevOpsDeploymentService : IDeploymentService
         // Get recent builds to calculate stats
         var recentBuilds = await client.GetRecentBuildsAsync(definitionIds, 100);
 
-        var completed = recentBuilds.Where(b => b.Status == BuildStatus.Completed).ToList();
-        var successful = completed.Count(b => b.Result == BuildResult.Succeeded);
-        var failed = completed.Count(b => b.Result == BuildResult.Failed);
+        var completed = recentBuilds.Where(b => b.Status == BuildApiStatus.Completed).ToList();
+        var successful = completed.Count(b => b.Result == BuildApiResult.Succeeded);
+        var failed = completed.Count(b => b.Result == BuildApiResult.Failed);
 
         // Count in-progress
-        var inProgress = recentBuilds.Count(b => b.Status == BuildStatus.InProgress);
+        var inProgress = recentBuilds.Count(b => b.Status == BuildApiStatus.InProgress);
 
         // Count pending/queued
-        var pending = recentBuilds.Count(b => b.Status == BuildStatus.NotStarted);
+        var pending = recentBuilds.Count(b => b.Status == BuildApiStatus.NotStarted);
 
         // Calculate average duration for successful builds
         var durations = completed
-            .Where(b => b.Result == BuildResult.Succeeded && b.StartTime.HasValue && b.FinishTime.HasValue)
+            .Where(b => b.Result == BuildApiResult.Succeeded && b.StartTime.HasValue && b.FinishTime.HasValue)
             .Select(b => b.FinishTime!.Value - b.StartTime!.Value)
             .ToList();
 
@@ -278,7 +277,7 @@ public class AzureDevOpsDeploymentService : IDeploymentService
         return await TriggerAsync(allTargetIds, triggeredById);
     }
 
-    private (string id, DeploymentTargetSettings settings)? FindTargetForBuild(Build build)
+    private (string id, DeploymentTargetSettings settings)? FindTargetForBuild(BuildDetails build)
     {
         var definitionId = build.Definition?.Id ?? 0;
         var sourceBranch = build.SourceBranch;
@@ -321,7 +320,7 @@ public class AzureDevOpsDeploymentService : IDeploymentService
     /// Determines deployment status using a pre-fetched release cache.
     /// </summary>
     private DeploymentStatus DetermineDeploymentStatus(
-        Build build,
+        BuildDetails build,
         DeploymentTargetSettings target,
         Dictionary<int, ReleaseDetails> releaseCache)
     {
@@ -333,29 +332,29 @@ public class AzureDevOpsDeploymentService : IDeploymentService
     /// Determines deployment status with an optional release.
     /// </summary>
     private DeploymentStatus DetermineDeploymentStatusWithRelease(
-        Build build,
+        BuildDetails build,
         DeploymentTargetSettings target,
         ReleaseDetails? release)
     {
         // If build is not complete, return based on build status
-        if (build.Status != BuildStatus.Completed)
+        if (build.Status != BuildApiStatus.Completed)
         {
             return build.Status switch
             {
-                BuildStatus.NotStarted => DeploymentStatus.Pending,
-                BuildStatus.InProgress => DeploymentStatus.InProgress,
-                BuildStatus.Cancelling => DeploymentStatus.InProgress,
+                BuildApiStatus.NotStarted => DeploymentStatus.Pending,
+                BuildApiStatus.InProgress => DeploymentStatus.InProgress,
+                BuildApiStatus.Cancelling => DeploymentStatus.InProgress,
                 _ => DeploymentStatus.Pending,
             };
         }
 
         // Build is complete - check result
-        if (build.Result == BuildResult.Failed || build.Result == BuildResult.PartiallySucceeded)
+        if (build.Result == BuildApiResult.Failed || build.Result == BuildApiResult.PartiallySucceeded)
         {
             return DeploymentStatus.Failed;
         }
 
-        if (build.Result == BuildResult.Canceled)
+        if (build.Result == BuildApiResult.Canceled)
         {
             return DeploymentStatus.Cancelled;
         }
@@ -383,7 +382,7 @@ public class AzureDevOpsDeploymentService : IDeploymentService
         return success ? DeploymentStatus.Completed : DeploymentStatus.Failed;
     }
 
-    private DateTime? GetCompletionTime(Build build, DeploymentTargetSettings target, ReleaseDetails? release, DeploymentStatus status)
+    private DateTime? GetCompletionTime(BuildDetails build, DeploymentTargetSettings target, ReleaseDetails? release, DeploymentStatus status)
     {
         if (status != DeploymentStatus.Completed && status != DeploymentStatus.Failed && status != DeploymentStatus.Cancelled)
         {
@@ -403,7 +402,7 @@ public class AzureDevOpsDeploymentService : IDeploymentService
         return build.FinishTime;
     }
 
-    private TimeSpan? CalculateDuration(Build build, DeploymentTargetSettings target, ReleaseDetails? release, DeploymentStatus status)
+    private TimeSpan? CalculateDuration(BuildDetails build, DeploymentTargetSettings target, ReleaseDetails? release, DeploymentStatus status)
     {
         if (!build.StartTime.HasValue)
         {
@@ -444,7 +443,7 @@ public class AzureDevOpsDeploymentService : IDeploymentService
     /// Gets deployment steps with a pre-fetched release (avoids duplicate API call).
     /// </summary>
     private List<DeploymentStepDto> GetDeploymentSteps(
-        Build build,
+        BuildDetails build,
         DeploymentTargetSettings target,
         ReleaseDetails? release)
     {
@@ -471,7 +470,7 @@ public class AzureDevOpsDeploymentService : IDeploymentService
             var stageName = target.TrackReleaseStage;
 
             // Build not completed yet - release step is pending
-            if (build.Status != BuildStatus.Completed)
+            if (build.Status != BuildApiStatus.Completed)
             {
                 steps.Add(new DeploymentStepDto
                 {
@@ -479,7 +478,7 @@ public class AzureDevOpsDeploymentService : IDeploymentService
                     Status = DeploymentStatus.Pending,
                 });
             }
-            else if (build.Result != BuildResult.Succeeded)
+            else if (build.Result != BuildApiResult.Succeeded)
             {
                 // Build failed or canceled - release step won't run
                 steps.Add(new DeploymentStepDto
@@ -535,31 +534,31 @@ public class AzureDevOpsDeploymentService : IDeploymentService
         return steps;
     }
 
-    private DeploymentStatus MapBuildStatusToDeploymentStatus(Build build)
+    private DeploymentStatus MapBuildStatusToDeploymentStatus(BuildDetails build)
     {
-        if (build.Status != BuildStatus.Completed)
+        if (build.Status != BuildApiStatus.Completed)
         {
             return build.Status switch
             {
-                BuildStatus.NotStarted => DeploymentStatus.Pending,
-                BuildStatus.InProgress => DeploymentStatus.InProgress,
+                BuildApiStatus.NotStarted => DeploymentStatus.Pending,
+                BuildApiStatus.InProgress => DeploymentStatus.InProgress,
                 _ => DeploymentStatus.InProgress,
             };
         }
 
         return build.Result switch
         {
-            BuildResult.Succeeded => DeploymentStatus.Completed,
-            BuildResult.PartiallySucceeded => DeploymentStatus.Completed,
-            BuildResult.Failed => DeploymentStatus.Failed,
-            BuildResult.Canceled => DeploymentStatus.Cancelled,
+            BuildApiResult.Succeeded => DeploymentStatus.Completed,
+            BuildApiResult.PartiallySucceeded => DeploymentStatus.Completed,
+            BuildApiResult.Failed => DeploymentStatus.Failed,
+            BuildApiResult.Canceled => DeploymentStatus.Cancelled,
             _ => DeploymentStatus.Failed,
         };
     }
 
-    private string? GetErrorMessage(Build build)
+    private string? GetErrorMessage(BuildDetails build)
     {
-        if (build.Result == BuildResult.Failed)
+        if (build.Result == BuildApiResult.Failed)
         {
             return $"Build failed. See Azure DevOps for details: {client.OrganizationUrl}/{client.ProjectName}/_build/results?buildId={build.Id}";
         }

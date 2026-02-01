@@ -377,3 +377,29 @@ public class ArtifactSourceReference
     /// </summary>
     public string? Name { get; set; }
 }
+
+/// <summary>
+/// Response from Azure DevOps REST API for project information.
+/// </summary>
+public class ProjectResponse
+{
+    /// <summary>
+    /// Gets or sets the project ID (GUID).
+    /// </summary>
+    public string? Id { get; set; }
+
+    /// <summary>
+    /// Gets or sets the project name.
+    /// </summary>
+    public string? Name { get; set; }
+
+    /// <summary>
+    /// Gets or sets the project description.
+    /// </summary>
+    public string? Description { get; set; }
+
+    /// <summary>
+    /// Gets or sets the project state (e.g., "wellFormed").
+    /// </summary>
+    public string? State { get; set; }
+}
