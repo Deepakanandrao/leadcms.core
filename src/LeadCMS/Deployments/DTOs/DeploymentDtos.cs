@@ -53,6 +53,8 @@ public class DeploymentDetailsDto : DeploymentRecordDto
 
 public class DeploymentStepDto
 {
+    public string? Id { get; set; }
+
     public string Name { get; set; } = string.Empty;
 
     public DeploymentStatus Status { get; set; }
@@ -62,6 +64,16 @@ public class DeploymentStepDto
     public DateTime? CompletedAt { get; set; }
 
     public TimeSpan? Duration { get; set; }
+
+    /// <summary>
+    /// Gets or sets the URL to view this step in the provider's UI.
+    /// </summary>
+    public string? Url { get; set; }
+
+    /// <summary>
+    /// Gets or sets the URL to view logs for this step in the provider's UI.
+    /// </summary>
+    public string? LogsUrl { get; set; }
 }
 
 public class DeploymentStatsDto

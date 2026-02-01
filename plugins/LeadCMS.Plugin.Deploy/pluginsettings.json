@@ -1,0 +1,33 @@
+{
+  "AzureDevOps": {
+    "OrganizationUrl": "$AZUREDEVOPS__ORGANIZATIONURL",
+    "ProjectName": "$AZUREDEVOPS__PROJECTNAME",
+    "PersonalAccessToken": "$AZUREDEVOPS__PERSONALACCESSTOKEN"
+  },
+  "DeploymentTargets": {
+    "PROD": {
+      "Name": "Production Site",
+      "Description": "Deploy main site to production",
+      "BuildPipelineId": 0,
+      "SourceBranch": "refs/heads/main",
+      "TrackRelease": true,
+      "Resource": "https://example.com"
+    },
+    "DEV": {
+      "Name": "Production Site",
+      "Description": "Deploy main site to production",
+      "BuildPipelineId": 0,
+      "SourceBranch": "refs/heads/main",
+      "TrackRelease": true,
+      "Resource": "https://example.com"
+    },
+    "PREVIEW": {
+      "Name": "Staging Site",
+      "Description": "Deploy site to staging environment",
+      "BuildPipelineId": 0,
+      "SourceBranch": "refs/heads/develop",
+      "TrackRelease": true,
+      "Resource": "https://staging.example.com"
+    }
+  }
+}

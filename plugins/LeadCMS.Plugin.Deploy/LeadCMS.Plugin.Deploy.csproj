@@ -30,11 +30,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.TeamFoundationServer.Client" Version="19.225.1" />
-    <PackageReference Include="Microsoft.VisualStudio.Services.Release.Client" Version="19.225.1" />
-  </ItemGroup>
-
-  <ItemGroup>
     <Folder Include="Configuration\" />
     <Folder Include="Services\" />
   </ItemGroup>
@@ -46,5 +41,9 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.TeamFoundationServer.Client" Version="19.225.1" />
+    <!-- Note: Using HTTP REST API for Release operations to avoid SDK IdentityDescriptor deserialization issues -->
   </ItemGroup>
 </Project>

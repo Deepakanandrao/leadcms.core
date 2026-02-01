@@ -16,31 +16,22 @@ public class NullDeploymentService : IDeploymentService
 {
     public Task<List<DeploymentTargetDto>> GetTargetsAsync()
     {
-        return Task.FromResult(new List<DeploymentTargetDto>());
+        throw new DeploymentNotConfiguredException();
     }
 
     public Task<List<DeploymentRecordDto>> GetRecentDeploymentsAsync(int limit = 20)
     {
-        return Task.FromResult(new List<DeploymentRecordDto>());
+        throw new DeploymentNotConfiguredException();
     }
 
     public Task<DeploymentDetailsDto?> GetDeploymentAsync(string deploymentId)
     {
-        return Task.FromResult<DeploymentDetailsDto?>(null);
+        throw new DeploymentNotConfiguredException();
     }
 
     public Task<DeploymentStatsDto> GetStatsAsync()
     {
-        return Task.FromResult(new DeploymentStatsDto
-        {
-            TotalDeployments = 0,
-            SuccessfulDeployments = 0,
-            FailedDeployments = 0,
-            PendingDeployments = 0,
-            InProgressDeployments = 0,
-            SuccessRate = 0,
-            AverageDuration = null,
-        });
+        throw new DeploymentNotConfiguredException();
     }
 
     public Task<DeploymentTriggerResultDto> TriggerAsync(string targetId, string? triggeredById)

@@ -8,6 +8,7 @@ using LeadCMS.Plugin.Deploy.Configuration;
 using LeadCMS.Plugin.Deploy.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace LeadCMS.Plugin.Deploy;
 
@@ -31,9 +32,15 @@ public class DeployPlugin : IPlugin, ICapabilityProvider
             Configuration = pluginConfig;
         }
 
-        // Register the deployment service
+        // Register the deployment service as singleton since AzureDevOpsClient is thread-safe
+        // This allows connection reuse across requests for better performance
         services.AddSingleton(Configuration);
-        services.AddScoped<IDeploymentService, AzureDevOpsDeploymentService>();
+        services.AddSingleton<AzureDevOpsClient>(sp =>
+        {
+            var logger = sp.GetService<ILogger<AzureDevOpsClient>>();
+            return new AzureDevOpsClient(Configuration.AzureDevOps, logger);
+        });
+        services.AddSingleton<IDeploymentService, AzureDevOpsDeploymentService>();
     }
 
     /// <inheritdoc/>
