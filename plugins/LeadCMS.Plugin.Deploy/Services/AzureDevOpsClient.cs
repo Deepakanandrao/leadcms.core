@@ -313,11 +313,13 @@ public class AzureDevOpsClient : IDisposable
     }
 
     /// <summary>
-    /// Batch finds releases for multiple builds.
+    /// Batch finds releases for multiple builds with parallel execution.
+    /// Optimized to reduce API calls by grouping builds by pipeline definition.
     /// </summary>
     /// <param name="builds">The builds to find releases for.</param>
+    /// <param name="maxConcurrency">Maximum concurrent API calls (default 5).</param>
     /// <returns>A dictionary mapping build IDs to releases.</returns>
-    public async Task<Dictionary<int, ReleaseDetails>> FindReleasesForBuildsAsync(IEnumerable<BuildDetails> builds)
+    public async Task<Dictionary<int, ReleaseDetails>> FindReleasesForBuildsAsync(IEnumerable<BuildDetails> builds, int maxConcurrency = 5)
     {
         var result = new Dictionary<int, ReleaseDetails>();
 
@@ -325,42 +327,43 @@ public class AzureDevOpsClient : IDisposable
         {
             if (!await EnsureProjectIdAsync())
             {
+                throw new InvalidOperationException("Failed to resolve project ID");
+            }
+
+            var buildList = builds.Where(b => b.Definition?.Id != null).ToList();
+            if (!buildList.Any())
+            {
                 return result;
             }
 
-            // Use the same reliable logic as FindReleaseForBuildAsync for each build
-            foreach (var build in builds.Where(b => b.Definition?.Id != null))
+            // Group builds by pipeline definition to batch release queries
+            var buildsByDefinition = buildList.GroupBy(b => b.Definition!.Id).ToList();
+
+            // Use semaphore to limit concurrent API calls
+            using var semaphore = new SemaphoreSlim(maxConcurrency);
+            var tasks = new List<Task<(int BuildId, ReleaseDetails? Release)>>();
+
+            foreach (var group in buildsByDefinition)
             {
-                try
+                var sourceId = $"{settings.ProjectId}:{group.Key}";
+
+                foreach (var build in group)
                 {
-                    var sourceId = $"{settings.ProjectId}:{build.Definition!.Id}";
-
-                    var releaseListUrl = $"{GetVsrmBaseUrl()}/_apis/release/releases?" +
-                        $"sourceId={Uri.EscapeDataString(sourceId)}" +
-                        $"&artifactVersionId={build.Id}" +
-                        $"&$top=1" +
-                        $"&queryOrder=descending" +
-                        $"&api-version=7.1";
-
-                    var releases = await GetFromApiAsync<ReleaseListResponse>(releaseListUrl);
-                    var releaseRef = releases?.Value?.FirstOrDefault();
-                    if (releaseRef != null)
-                    {
-                        var detailedRelease = await GetReleaseAsync(releaseRef.Id);
-                        if (detailedRelease != null)
-                        {
-                            result[build.Id] = detailedRelease;
-                        }
-                    }
+                    tasks.Add(FindReleaseForBuildWithSemaphoreAsync(semaphore, build, sourceId));
                 }
-                catch (Exception ex)
+            }
+
+            var results = await Task.WhenAll(tasks);
+
+            foreach (var (buildId, release) in results)
+            {
+                if (release != null)
                 {
-                    logger?.LogWarning(ex, "Failed to find release for build {BuildId}", build.Id);
-                    continue;
+                    result[buildId] = release;
                 }
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not InvalidOperationException)
         {
             logger?.LogError(ex, "Failed to find releases for builds");
             throw new InvalidOperationException($"Failed to find releases for builds: {ex.Message}", ex);
@@ -698,6 +701,45 @@ public class AzureDevOpsClient : IDisposable
         finally
         {
             projectIdLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Finds a release for a build with semaphore-controlled concurrency.
+    /// </summary>
+    private async Task<(int BuildId, ReleaseDetails? Release)> FindReleaseForBuildWithSemaphoreAsync(
+        SemaphoreSlim semaphore,
+        BuildDetails build,
+        string sourceId)
+    {
+        await semaphore.WaitAsync();
+        try
+        {
+            var releaseListUrl = $"{GetVsrmBaseUrl()}/_apis/release/releases?" +
+                $"sourceId={Uri.EscapeDataString(sourceId)}" +
+                $"&artifactVersionId={build.Id}" +
+                $"&$top=1" +
+                $"&queryOrder=descending" +
+                $"&api-version=7.1";
+
+            var releases = await GetFromApiAsync<ReleaseListResponse>(releaseListUrl);
+            var releaseRef = releases?.Value?.FirstOrDefault();
+            if (releaseRef == null)
+            {
+                return (build.Id, null);
+            }
+
+            var detailedRelease = await GetReleaseAsync(releaseRef.Id);
+            return (build.Id, detailedRelease);
+        }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "Failed to find release for build {BuildId}", build.Id);
+            return (build.Id, null);
+        }
+        finally
+        {
+            semaphore.Release();
         }
     }
 
