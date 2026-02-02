@@ -126,6 +126,7 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
         SetSettingIfNullOrEmpty(settings, SettingKeys.MediaPreferredFormat, string.IsNullOrWhiteSpace(preferredFormat) ? "avif" : preferredFormat!);
         SetSettingIfNullOrEmpty(settings, SettingKeys.MediaMaxFileSize, maxFileSizeInKb.ToString());
         SetSettingIfNullOrEmpty(settings, SettingKeys.MediaEnableOptimisation, enableOptimisation.ToString().ToLower());
+        SetSettingIfNullOrEmpty(settings, SettingKeys.MediaQuality, "75");
     }
 
     /// <summary>

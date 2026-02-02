@@ -7,7 +7,6 @@ using LeadCMS.Constants;
 using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.StaticFiles;
-using Microsoft.Extensions.Logging;
 
 namespace LeadCMS.Services;
 
@@ -38,6 +37,9 @@ public class MediaOptimizationService : IMediaOptimizationService
         var enableOptimisation = await settingService.GetBoolSettingWithFallbackAsync(
             SettingKeys.MediaEnableOptimisation,
             false);
+        var quality = await settingService.GetSettingWithFallbackAsync(
+            SettingKeys.MediaQuality,
+            ConfigurationPaths.GetConfigurationPath(SettingKeys.MediaQuality));
 
         var formatValue = string.IsNullOrWhiteSpace(preferredFormat)
             ? DefaultPreferredFormat
@@ -45,11 +47,18 @@ public class MediaOptimizationService : IMediaOptimizationService
 
         var resolvedFormat = ResolvePreferredFormat(formatValue);
 
+        var qualityValue = DefaultQuality;
+        if (!string.IsNullOrWhiteSpace(quality) && int.TryParse(quality, out var parsedQuality))
+        {
+            qualityValue = Math.Clamp(parsedQuality, 1, 100);
+        }
+
         return new MediaOptimizationSettings
         {
             MaxDimensions = string.IsNullOrWhiteSpace(maxDimensions) ? $"{DefaultMaxWidth}x{DefaultMaxHeight}" : maxDimensions,
             PreferredFormat = resolvedFormat,
             EnableOptimisation = enableOptimisation,
+            Quality = qualityValue,
         };
     }
 
@@ -121,7 +130,7 @@ public class MediaOptimizationService : IMediaOptimizationService
             ApplyResize(image, maxWidth, maxHeight);
             EnsureTransparencyPreserved(image, targetFormat);
             image.Strip();
-            image.Quality = DefaultQuality;
+            image.Quality = (uint)settings.Quality;
             image.Format = targetFormat;
 
             var optimizedBytes = image.ToByteArray();

@@ -9,9 +9,11 @@ LeadCMS provides a comprehensive media optimization system designed to automatic
 ### Core Components
 
 #### 1. **MediaOptimizationService**
+
 The main service responsible for optimizing media files. Located at `src/LeadCMS/Services/MediaOptimizationService.cs`
 
 Key features:
+
 - Asynchronous media optimization pipeline
 - Format conversion and quality management
 - Dimension resizing based on configured limits
@@ -19,15 +21,18 @@ Key features:
 - Error handling with fallback to original data
 
 **Default Configuration:**
+
 - **Max Width:** 2048px
 - **Max Height:** 2048px
 - **Preferred Format:** AVIF
 - **Quality Level:** 75
 
 #### 2. **MediaOptimizationHelper**
+
 A utility helper class that determines whether specific image formats should be optimized.
 
 **Non-Optimizable Formats:**
+
 - `.ico` - Icon files
 - `.gif` - Animated GIFs
 - `.svg` / `.svgz` - Scalable Vector Graphics
@@ -35,6 +40,7 @@ A utility helper class that determines whether specific image formats should be 
 - `.ani` - Animated cursor files
 
 **Non-Optimizable MIME Types:**
+
 - `image/x-icon`
 - `image/vnd.microsoft.icon`
 - `image/gif`
@@ -42,9 +48,11 @@ A utility helper class that determines whether specific image formats should be 
 - `image/apng`
 
 #### 3. **Media Entity**
+
 Represents stored media in the database with optimization metadata.
 
 **Key Properties:**
+
 ```csharp
 public string Name { get; set; }              // Optimized filename
 public string? OriginalName { get; set; }    // Original filename
@@ -66,16 +74,18 @@ public byte[]? OriginalData { get; set; }    // Original binary data
 
 Media optimization is controlled through system settings accessed via the `ISettingService`. The configuration keys are:
 
-| Setting Key | Default Value | Description |
-|---|---|---|
-| `MediaMaxDimensions` | `2048x2048` | Maximum image dimensions (format: `{width}x{height}`) |
-| `MediaPreferredFormat` | `avif` | Target image format for optimization |
-| `MediaEnableOptimisation` | `false` | Enable/disable optimization globally |
-| `MediaCoverDimensions` | Optional | Specific dimensions for cover images (format: `{width}x{height}`) |
+| Setting Key               | Default Value | Description                                                               |
+| ------------------------- | ------------- | ------------------------------------------------------------------------- |
+| `MediaMaxDimensions`      | `2048x2048`   | Maximum image dimensions (format: `{width}x{height}`)                     |
+| `MediaPreferredFormat`    | `avif`        | Target image format for optimization                                      |
+| `MediaEnableOptimisation` | `false`       | Enable/disable optimization globally                                      |
+| `MediaQuality`            | `75`          | Image quality level (1-100, higher = better quality but larger file size) |
+| `MediaCoverDimensions`    | Optional      | Specific dimensions for cover images (format: `{width}x{height}`)         |
 
 ### Supported Image Formats
 
 The following formats are supported for optimization output:
+
 - **JPEG/JPG** - Good for photographs with lossy compression
 - **PNG** - Lossless format preserving quality and transparency
 - **WebP** - Modern format with excellent compression
@@ -84,6 +94,7 @@ The following formats are supported for optimization output:
 ## Optimization Pipeline
 
 ### Step 1: Input Validation
+
 ```
 ┌─────────────────────────────────────────────┐
 │ 1. Check if optimization is enabled        │
@@ -94,11 +105,13 @@ The following formats are supported for optimization output:
 ```
 
 ### Step 2: Format Resolution
+
 - If preferred format is not set, falls back to `AVIF`
 - Validates format is supported by ImageMagick
 - Falls back to original image format if validation fails
 
 ### Step 3: Image Processing
+
 ```csharp
 using var image = new MagickImage(imageBytes);
 
@@ -122,12 +135,15 @@ var optimizedBytes = image.ToByteArray();
 ```
 
 ### Step 4: Metadata Extraction
+
 - **Width & Height:** Extracted from original and optimized images
 - **File Size:** Calculated from byte array length
 - **MIME Type:** Resolved from file extension
 
 ### Step 5: Error Handling
+
 If optimization fails (MagickException):
+
 - Original image data is returned unchanged
 - Warning is logged with image filename
 - `WasOptimized` flag is set to `false`
@@ -169,6 +185,7 @@ If optimization fails (MagickException):
 ### Media Update Workflow (PATCH /api/media)
 
 Similar to upload workflow with optional file replacement:
+
 - If file is provided: Re-optimize with new content
 - If no file: Update metadata only (description, tags)
 
@@ -188,7 +205,7 @@ public async Task<ActionResult<MediaReoptimizeResponseDto>> ReOptimizeAllImages(
     // 1. Preferred format change
     // 2. Maximum dimension changes
     // 3. Missing dimension metadata
-    
+
     // For images requiring reoptimization:
     // - Use original data if available
     // - Apply current optimization settings
@@ -202,6 +219,7 @@ public async Task<ActionResult<MediaReoptimizeResponseDto>> ReOptimizeAllImages(
 **Endpoint:** `POST /api/media/optimize`
 
 Optimize a specific image:
+
 - Validates optimization is enabled
 - Applies current settings to selected image
 - Updates all optimization metadata
@@ -210,9 +228,11 @@ Optimize a specific image:
 ### Media Transformation APIs
 
 #### Resize
+
 **Endpoint:** `POST /api/media/resize`
 
 Parameters:
+
 - `Width` (int): Target width in pixels
 - `Height` (int): Target height in pixels
 - `MaintainAspectRatio` (bool): Preserve aspect ratio
@@ -226,9 +246,11 @@ image.Resize(geometry);
 ```
 
 #### Crop
+
 **Endpoint:** `POST /api/media/crop`
 
 Parameters:
+
 - `Width` (int): Crop width
 - `Height` (int): Crop height
 - `X` (int?): X offset (auto-centered if null)
@@ -245,35 +267,37 @@ image.Crop(new MagickGeometry(cropX, cropY, width, height));
 **Purpose:** Special handling for cover/thumbnail images
 
 **Features:**
+
 - Applied when media is tagged with "Cover"
 - Configurable dimensions via `MediaCoverDimensions`
 - Always maintains aspect ratio
 - Scales to fit then center-crops
 
 **Algorithm:**
+
 ```csharp
 private static byte[] ResizeToCover(byte[] data, int targetWidth, int targetHeight)
 {
     using var image = new MagickImage(data);
-    
+
     // Scale to cover the target dimensions
     var scale = Math.Max(
         (double)targetWidth / image.Width,
         (double)targetHeight / image.Height
     );
-    
+
     var resizedWidth = (int)Math.Ceiling(image.Width * scale);
     var resizedHeight = (int)Math.Ceiling(image.Height * scale);
-    
+
     image.Resize((uint)resizedWidth, (uint)resizedHeight);
-    
+
     // Center-crop to exact dimensions
     var cropX = Math.Max(0, (resizedWidth - targetWidth) / 2);
     var cropY = Math.Max(0, (resizedHeight - targetHeight) / 2);
-    
+
     image.Crop(new MagickGeometry(cropX, cropY, (uint)targetWidth, (uint)targetHeight));
     image.Page = new MagickGeometry(0, 0, 0, 0);
-    
+
     return image.ToByteArray();
 }
 ```
@@ -281,6 +305,7 @@ private static byte[] ResizeToCover(byte[] data, int targetWidth, int targetHeig
 ## Image Quality Management
 
 ### Quality Settings
+
 - **Default Quality Level:** 75
 - Balanced between file size and visual quality
 - Applied to all optimized formats
@@ -288,18 +313,20 @@ private static byte[] ResizeToCover(byte[] data, int targetWidth, int targetHeig
 ### Transparency Preservation
 
 **Supported Formats with Transparency:**
+
 - PNG
 - WebP
 - AVIF
 - TIFF
 
 **Process:**
+
 ```csharp
 private static void EnsureTransparencyPreserved(MagickImage image, MagickFormat targetFormat)
 {
     if (!image.HasAlpha || !SupportsTransparency(targetFormat))
         return;
-    
+
     image.Alpha(AlphaOption.Set);
     image.BackgroundColor = MagickColors.Transparent;
     image.ColorType = ColorType.TrueColorAlpha;
@@ -307,13 +334,16 @@ private static void EnsureTransparencyPreserved(MagickImage image, MagickFormat 
 ```
 
 ### Metadata Stripping
+
 The `image.Strip()` method removes:
+
 - EXIF data
 - Color profiles
 - Comments
 - Other metadata
 
 **Benefits:**
+
 - Reduces file size by 5-15%
 - Improves privacy (removes camera info)
 - Standardizes output
@@ -334,6 +364,7 @@ image.Resize(geometry);
 ```
 
 **Key Points:**
+
 - Aspect ratio is always maintained
 - Images are never upscaled
 - Only dimensions exceeding limits are processed
@@ -354,7 +385,7 @@ private static void TrySetImageDimensions(
     using var originalImage = new MagickImage(originalData);
     media.OriginalWidth = (int)originalImage.Width;
     media.OriginalHeight = (int)originalImage.Height;
-    
+
     // Extract from optimized
     using var optimizedImage = new MagickImage(optimizedData);
     media.Width = (int)optimizedImage.Width;
@@ -380,6 +411,7 @@ private static string GetOptimizedFileName(string originalName, string optimized
 ### Name Sanitization
 
 All filenames go through:
+
 1. **Transliteration** - Convert special characters to ASCII
 2. **Slugification** - Convert to URL-safe format
 
@@ -389,37 +421,40 @@ Example: "Фото с камеры.jpg" → "foto-s-kamery.jpg"
 
 ### Media Queries
 
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/api/media/{*pathToFile}` | Retrieve media file |
-| GET | `/api/media?scope=...` | List media in scope |
-| GET | `/api/media/formats` | Get supported formats |
+| Method | Endpoint                   | Description           |
+| ------ | -------------------------- | --------------------- |
+| GET    | `/api/media/{*pathToFile}` | Retrieve media file   |
+| GET    | `/api/media?scope=...`     | List media in scope   |
+| GET    | `/api/media/formats`       | Get supported formats |
 
 ### Media Management
 
-| Method | Endpoint | Description | Requires |
-|---|---|---|---|
-| POST | `/api/media` | Upload new media | Authenticated |
-| PATCH | `/api/media` | Update media | Authenticated |
-| DELETE | `/api/media/{*pathToFile}` | Delete media | Authenticated |
-| POST | `/api/media/optimize` | Optimize single image | Admin |
-| POST | `/api/media/reoptimize` | Re-optimize all images | Admin |
-| POST | `/api/media/resize` | Resize image | Admin |
-| POST | `/api/media/crop` | Crop image | Admin |
+| Method | Endpoint                   | Description            | Requires      |
+| ------ | -------------------------- | ---------------------- | ------------- |
+| POST   | `/api/media`               | Upload new media       | Authenticated |
+| PATCH  | `/api/media`               | Update media           | Authenticated |
+| DELETE | `/api/media/{*pathToFile}` | Delete media           | Authenticated |
+| POST   | `/api/media/optimize`      | Optimize single image  | Admin         |
+| POST   | `/api/media/reoptimize`    | Re-optimize all images | Admin         |
+| POST   | `/api/media/resize`        | Resize image           | Admin         |
+| POST   | `/api/media/crop`          | Crop image             | Admin         |
 
 ### Query Parameters
 
 **Media Resolution:**
+
 ```
 GET /api/media/path/to/file?mediaResolution=absolute
 Header: X-Media-Resolution: absolute
 ```
 
 Options:
+
 - `absolute` - Full URLs in response
 - `relative` - Relative paths (default)
 
 **Original File:**
+
 ```
 GET /api/media/path/to/file?original=true
 ```
@@ -431,11 +466,13 @@ Returns original unoptimized version if available.
 ### Storage Efficiency
 
 **With Optimization Enabled:**
+
 - Original file stored in `OriginalData`
 - Optimized version in `Data`
 - Typical size reduction: **30-60%**
 
 **Example:**
+
 - Original: 2.5 MB (JPEG)
 - Optimized: 800 KB (AVIF)
 - Savings: **68%**
@@ -451,6 +488,7 @@ Returns original unoptimized version if available.
 ### Database Considerations
 
 **Media Table Schema:**
+
 ```sql
 CREATE TABLE media (
     id SERIAL PRIMARY KEY,
@@ -477,6 +515,7 @@ CREATE TABLE media (
 ```
 
 **Index Recommendations:**
+
 - `(scope_uid, name)` - Primary lookup
 - `(scope_uid, original_name)` - Original name search
 - `(tags)` - GIN index for tag queries
@@ -490,6 +529,7 @@ CREATE TABLE media (
   "MediaMaxDimensions": "2048x2048",
   "MediaPreferredFormat": "avif",
   "MediaEnableOptimisation": true,
+  "MediaQuality": 75,
   "MediaCoverDimensions": "400x300"
 }
 ```
@@ -501,6 +541,7 @@ CREATE TABLE media (
   "MediaMaxDimensions": "1920x1080",
   "MediaPreferredFormat": "webp",
   "MediaEnableOptimisation": true,
+  "MediaQuality": 80,
   "MediaCoverDimensions": "300x200"
 }
 ```
@@ -512,6 +553,7 @@ CREATE TABLE media (
   "MediaMaxDimensions": "4096x4096",
   "MediaPreferredFormat": "png",
   "MediaEnableOptimisation": true,
+  "MediaQuality": 95,
   "MediaCoverDimensions": "600x400"
 }
 ```
@@ -521,16 +563,19 @@ CREATE TABLE media (
 ### Common Issues
 
 **Problem:** Images fail to optimize
+
 - **Solution:** Check ImageMagick is installed and accessible
 - Check for MagickException in logs
 - Verify image file is valid
 
 **Problem:** Original dimensions not extracted
+
 - **Solution:** Ensure files have proper MIME types
 - Check image files are not corrupted
 - Verify width/height are extractable from format
 
 **Problem:** Performance degradation
+
 - **Solution:** Review batch sizes in re-optimization
 - Check database indexes
 - Monitor storage usage
@@ -538,6 +583,7 @@ CREATE TABLE media (
 ### Debug Information
 
 All optimization events are logged at appropriate levels:
+
 - **Information:** Successful operations
 - **Warning:** Optimization fallbacks, failed dimension extraction
 - **Error:** Critical failures
@@ -547,6 +593,7 @@ Access logs: `ILogger<MediaOptimizationService>`
 ## Integration Points
 
 ### Content Type Association
+
 Media optimization integrates with content type definitions:
 
 ```csharp
@@ -558,7 +605,9 @@ public class ContentType
 ```
 
 ### Content Reference Updates
+
 When media is renamed during optimization, all content references are automatically updated:
+
 - Blog post media links
 - Product images
 - Gallery references

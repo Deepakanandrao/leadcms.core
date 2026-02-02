@@ -49,6 +49,8 @@ public static class SettingKeys
     public const string MediaMaxFileSize = "Media.Max.FileSize";
 
     public const string MediaEnableOptimisation = "Media.EnableOptimisation";
+
+    public const string MediaQuality = "Media.Quality";
 }
 
 public static class ConfigurationPaths
