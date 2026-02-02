@@ -62,12 +62,13 @@ public class MediaOptimizationService : IMediaOptimizationService
         };
     }
 
-    public async Task<MediaOptimizationResult> OptimizeAsync(MediaOptimizationRequest request, CancellationToken cancellationToken = default)
+    public async Task<MediaOptimizationResult> OptimizeAsync(MediaOptimizationRequest request, bool force = false, CancellationToken cancellationToken = default)
     {
         var settings = await GetSettingsAsync(cancellationToken);
 
-        // If optimization is disabled, return original data as-is
-        if (!settings.EnableOptimisation)
+        // If optimization is disabled and not forced, return original data as-is
+        // When force=true (manual optimization), bypass the EnableOptimisation check
+        if (!settings.EnableOptimisation && !force)
         {
             return new MediaOptimizationResult
             {

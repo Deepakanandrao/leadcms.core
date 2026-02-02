@@ -41,7 +41,7 @@ public sealed class MediaOptimizationSettings
 
 public interface IMediaOptimizationService
 {
-    Task<MediaOptimizationResult> OptimizeAsync(MediaOptimizationRequest request, CancellationToken cancellationToken = default);
+    Task<MediaOptimizationResult> OptimizeAsync(MediaOptimizationRequest request, bool force = false, CancellationToken cancellationToken = default);
 
     Task<MediaOptimizationSettings> GetSettingsAsync(CancellationToken cancellationToken = default);
 }

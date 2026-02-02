@@ -933,6 +933,76 @@ public class MediaTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task OptimizeMedia_ShouldWorkEvenWhenOptimisationDisabled()
+    {
+        // Manual optimization via /optimize endpoint should work regardless of MediaEnableOptimisation setting
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "png");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "100x100");
+
+        const string scopeUid = "media-optimize-when-disabled";
+        const string originalFileName = "optimize-when-disabled.png";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var media = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        // Keep optimization disabled - the /optimize endpoint should still work
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "webp");
+
+        var request = new MediaTransformRequestDto
+        {
+            ScopeUid = scopeUid,
+            FileName = media.Name,
+        };
+
+        var response = await Request(HttpMethod.Post, "/api/media/optimize", request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var optimized = await response.Content.ReadFromJsonAsync<MediaDetailsDto>();
+        optimized.Should().NotBeNull();
+        optimized!.Extension.Should().Be(".webp");
+        optimized.Width.Should().BeGreaterThan(0);
+        optimized.Height.Should().BeGreaterThan(0);
+        optimized.Width.Should().BeLessThanOrEqualTo(100);
+        optimized.Height.Should().BeLessThanOrEqualTo(100);
+    }
+
+    [Fact]
+    public async Task Reoptimize_ShouldWorkEvenWhenOptimisationDisabled()
+    {
+        // Manual reoptimization via /reoptimize endpoint should work regardless of MediaEnableOptimisation setting
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "png");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string originalFileName = "reoptimize-when-disabled.png";
+        const string scopeUid = "media-reoptimize-when-disabled";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        // Keep optimization disabled but change preferred format
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
+
+        var reoptimizeResponse = await Request(HttpMethod.Post, "/api/media/reoptimize", new { });
+        reoptimizeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var result = await reoptimizeResponse.Content.ReadFromJsonAsync<MediaReoptimizeResponseDto>();
+        result.Should().NotBeNull();
+        result!.Updated.Should().BeGreaterThan(0);
+
+        // Verify media was actually optimized
+        var afterList = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?filter[where][scopeUid][eq]={scopeUid}",
+            HttpStatusCode.OK);
+
+        afterList.Should().NotBeNull();
+        var after = afterList!.Single(m => m.OriginalName == originalFileName);
+        after.Extension.Should().Be(".avif");
+        after.MimeType.Should().Be("image/avif");
+    }
+
+    [Fact]
     public async Task OptimizeMedia_ShouldApplyCoverDimensions_WhenCoverTagPresent()
     {
         // Cover dimensions are 1200x630 by default

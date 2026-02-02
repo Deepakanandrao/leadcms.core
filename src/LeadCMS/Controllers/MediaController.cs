@@ -618,16 +618,6 @@ public class MediaController : ControllerBase
         var offset = 0;
         var settings = await mediaOptimizationService.GetSettingsAsync();
 
-        // If optimization is disabled, return early
-        if (!settings.EnableOptimisation)
-        {
-            return Ok(new MediaReoptimizeResponseDto
-            {
-                Updated = 0,
-                Message = "Media optimization is disabled",
-            });
-        }
-
         var preferredFormat = settings.PreferredFormat.Trim().TrimStart('.');
         var (maxWidth, maxHeight) = MediaSizeHelper.ParseSize(settings.MaxDimensions);
 
@@ -758,13 +748,15 @@ public class MediaController : ControllerBase
                 var sourceExtension = media.OriginalExtension ?? media.Extension ?? string.Empty;
                 var sourceMimeType = media.OriginalMimeType ?? media.MimeType ?? string.Empty;
 
-                var optimizationResult = await mediaOptimizationService.OptimizeAsync(new MediaOptimizationRequest
-                {
-                    Data = sourceData,
-                    FileName = media.Name ?? string.Empty,
-                    Extension = sourceExtension,
-                    MimeType = sourceMimeType,
-                });
+                var optimizationResult = await mediaOptimizationService.OptimizeAsync(
+                    new MediaOptimizationRequest
+                    {
+                        Data = sourceData,
+                        FileName = media.Name ?? string.Empty,
+                        Extension = sourceExtension,
+                        MimeType = sourceMimeType,
+                    },
+                    force: true);
 
                 var hasCoverTag = HasCoverTag(media.Tags);
                 var processedResult = await ApplyCoverDimensionsIfNeeded(
@@ -859,17 +851,6 @@ public class MediaController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<MediaDetailsDto>> OptimizeMedia([FromBody] MediaTransformRequestDto request)
     {
-        var settings = await mediaOptimizationService.GetSettingsAsync();
-        if (!settings.EnableOptimisation)
-        {
-            return UnprocessableEntity(new ProblemDetails
-            {
-                Title = "Optimization disabled",
-                Detail = "Media optimization is disabled in settings.",
-                Status = StatusCodes.Status422UnprocessableEntity,
-            });
-        }
-
         var media = await ResolveMediaAsync(request.ScopeUid, request.FileName);
         if (media == null)
         {
@@ -906,7 +887,8 @@ public class MediaController : ControllerBase
             sourceData,
             sourceExtension,
             sourceMimeType,
-            baseName);
+            baseName,
+            forceOptimize: true);
 
         return Ok(response);
     }
@@ -1337,7 +1319,8 @@ public class MediaController : ControllerBase
         byte[] transformedData,
         string sourceExtension,
         string sourceMimeType,
-        string? baseName)
+        string? baseName,
+        bool forceOptimize = false)
     {
         if (sourceData == null || sourceData.Length == 0)
         {
@@ -1366,15 +1349,18 @@ public class MediaController : ControllerBase
         var finalMimeType = sourceMimeType;
         var newName = safeBaseName;
 
-        if (settings.EnableOptimisation)
+        // Optimize if enabled OR if explicitly forced (manual optimization)
+        if (settings.EnableOptimisation || forceOptimize)
         {
-            var optimizationResult = await mediaOptimizationService.OptimizeAsync(new MediaOptimizationRequest
-            {
-                Data = transformedData,
-                FileName = safeBaseName,
-                Extension = sourceExtension,
-                MimeType = sourceMimeType,
-            });
+            var optimizationResult = await mediaOptimizationService.OptimizeAsync(
+                new MediaOptimizationRequest
+                {
+                    Data = transformedData,
+                    FileName = safeBaseName,
+                    Extension = sourceExtension,
+                    MimeType = sourceMimeType,
+                },
+                force: forceOptimize);
 
             var hasCoverTag = HasCoverTag(media.Tags);
             var processedResult = await ApplyCoverDimensionsIfNeeded(
