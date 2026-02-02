@@ -388,6 +388,10 @@ public class MediaController : ControllerBase
                     Height = m.Height,
                     OriginalWidth = m.OriginalWidth,
                     OriginalHeight = m.OriginalHeight,
+                    OriginalName = m.OriginalName,
+                    OriginalSize = m.OriginalSize,
+                    OriginalExtension = m.OriginalExtension,
+                    OriginalMimeType = m.OriginalMimeType,
                 });
 
             List<string> folderScopeUids;

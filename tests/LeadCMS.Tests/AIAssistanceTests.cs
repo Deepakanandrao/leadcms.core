@@ -26,6 +26,10 @@ public class AIAssistanceTests : BaseTestAutoLogin
     [Fact]
     public async Task CoverImageGenerationEndpoint_ShouldGenerateCoverImage()
     {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
         var request = new CoverImageGenerationRequest
         {
             ContentTitle = "Automated Testing in Practice",
@@ -39,6 +43,12 @@ public class AIAssistanceTests : BaseTestAutoLogin
         response.Should().NotBeNull();
         response!.ScopeUid.Should().Be(request.ContentSlug);
         response.Location.Should().Contain($"/api/media/{request.ContentSlug}/");
+        response.OriginalName.Should().Be("cover.png");
+
+        var originalBytes = LoadEmbeddedResource("cover-sample.png");
+        response.OriginalSize.Should().Be(originalBytes.LongLength);
+        response.OriginalExtension.Should().Be(".png");
+        response.OriginalMimeType.Should().Be("image/png");
 
         var lastRequest = TestAIProviderService.GetLastImageRequest();
         lastRequest.Should().NotBeNull();
@@ -114,22 +124,19 @@ public class AIAssistanceTests : BaseTestAutoLogin
     [Fact]
     public async Task CoverImageEdit_UsesOriginalImageWhenAvailable()
     {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
         var originalBytes = LoadEmbeddedResource("cover-sample.png");
-        var createdCover = await UploadMediaAsync(originalBytes, "optimized-cover.avif", "blog/article/original-edit");
+        var createdCover = await UploadMediaAsync(originalBytes, "original-cover.png", "blog/article/original-edit");
 
-        var dbContext = App.GetDbContext();
-        var media = dbContext!.Media!
-            .First(m => m.ScopeUid == createdCover.ScopeUid && m.Name == createdCover.Name);
-
-        media.OriginalData = originalBytes;
-        media.OriginalExtension = ".png";
-        media.OriginalMimeType = "image/png";
-        media.OriginalName = "original-cover.png";
-        media.MimeType = "image/avif";
-        media.Extension = ".avif";
-        media.Name = "optimized-cover.avif";
-
-        await dbContext.SaveChangesAsync();
+        createdCover.OriginalName.Should().NotBeNullOrWhiteSpace();
+        createdCover.OriginalExtension.Should().NotBeNullOrWhiteSpace();
+        createdCover.OriginalMimeType.Should().NotBeNullOrWhiteSpace();
+        createdCover.OriginalSize.Should().NotBeNull();
+        createdCover.OriginalWidth.Should().Be(736);
+        createdCover.OriginalHeight.Should().Be(404);
 
         var editRequest = new CoverImageEditRequest
         {
@@ -140,16 +147,13 @@ public class AIAssistanceTests : BaseTestAutoLogin
         };
 
         var response = await PostTest<MediaDetailsDto>("/api/content/ai-cover/edit", editRequest, HttpStatusCode.OK);
-
-        response.Should().NotBeNull();
         response!.OriginalName.Should().NotBeNullOrWhiteSpace();
         response.OriginalExtension.Should().NotBeNullOrWhiteSpace();
         response.OriginalMimeType.Should().NotBeNullOrWhiteSpace();
         response.OriginalSize.Should().NotBeNull();
+        response.Should().NotBeNull();
         response.Width.Should().NotBeNull();
         response.Height.Should().NotBeNull();
-        response.OriginalWidth.Should().NotBeNull();
-        response.OriginalHeight.Should().NotBeNull();
         response.OriginalWidth.Should().Be(736);
         response.OriginalHeight.Should().Be(404);
 
@@ -196,6 +200,32 @@ public class AIAssistanceTests : BaseTestAutoLogin
         using var image = new MagickImage(mediaBytes);
         image.Width.Should().Be(100);
         image.Height.Should().Be(50);
+    }
+
+    [Fact]
+    public async Task CoverImageGeneration_WithOptimisationEnabled_SetsOriginalMetadata()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaCoverDimensions, "300x150");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+
+        var request = new CoverImageGenerationRequest
+        {
+            ContentTitle = "Media Original Metadata",
+            ContentDescription = "Cover generation should store original metadata.",
+            ContentSlug = "ai-cover-original-metadata",
+        };
+
+        var response = await PostTest<MediaDetailsDto>("/api/content/ai-cover", request, HttpStatusCode.OK);
+
+        response.Should().NotBeNull();
+        response!.OriginalName.Should().Be("cover.png");
+
+        var originalBytes = LoadEmbeddedResource("cover-sample.png");
+        response.OriginalSize.Should().Be(originalBytes.LongLength);
+        response.OriginalExtension.Should().Be(".png");
+        response.OriginalMimeType.Should().Be("image/png");
     }
 
     [Fact]

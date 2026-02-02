@@ -147,6 +147,89 @@ public class MediaTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task UploadMedia_WithOptimisationEnabled_SetsOriginalNameAndSize()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string scopeUid = "media-upload-original-metadata";
+        const string originalFileName = "upload-original-metadata.png";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var created = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        created.Should().NotBeNull();
+        created!.OriginalName.Should().Be(originalFileName);
+        created.OriginalSize.Should().Be(imageBytes.LongLength);
+        created.OriginalExtension.Should().Be(".png");
+        created.OriginalMimeType.Should().Be("image/png");
+        created.OriginalWidth.Should().Be(736);
+        created.OriginalHeight.Should().Be(404);
+        created.Name.Should().NotBe(originalFileName);
+    }
+
+    [Fact]
+    public async Task GetMediaList_WithOptimisationEnabled_ReturnsOriginalMetadata()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string scopeUid = "media-list-original-metadata";
+        const string originalFileName = "list-original-metadata.png";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var created = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        created.Should().NotBeNull();
+
+        var mediaList = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?filter[where][scopeUid][eq]={scopeUid}",
+            HttpStatusCode.OK);
+
+        mediaList.Should().NotBeNull();
+        var media = mediaList!.Single();
+        media.OriginalName.Should().Be(originalFileName);
+        media.OriginalSize.Should().Be(imageBytes.LongLength);
+        media.OriginalExtension.Should().Be(".png");
+        media.OriginalMimeType.Should().Be("image/png");
+        media.OriginalWidth.Should().Be(736);
+        media.OriginalHeight.Should().Be(404);
+        media.Name.Should().NotBe(originalFileName);
+    }
+
+    [Fact]
+    public async Task GetMediaList_WithIncludeFolders_ReturnsOriginalMetadata()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string scopeUid = "media-folder-original-metadata";
+        const string originalFileName = "folder-original-metadata.png";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var created = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        created.Should().NotBeNull();
+
+        var mediaList = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?scopeUid={Uri.EscapeDataString(scopeUid)}&includeFolders=true&order=UsageCount DESC",
+            HttpStatusCode.OK);
+
+        mediaList.Should().NotBeNull();
+        var media = mediaList!.Single(m => m.MimeType != "inode/directory");
+        media.OriginalName.Should().Be(originalFileName);
+        media.OriginalSize.Should().Be(imageBytes.LongLength);
+        media.OriginalExtension.Should().Be(".png");
+        media.OriginalMimeType.Should().Be("image/png");
+        media.OriginalWidth.Should().Be(736);
+        media.OriginalHeight.Should().Be(404);
+        media.Name.Should().NotBe(originalFileName);
+    }
+
+    [Fact]
     public async Task GetList_WhenIncludeFoldersFalse_ReturnsFlatList_WithFilters()
     {
         var scopeUid = $"media-flat-{Guid.NewGuid():N}";

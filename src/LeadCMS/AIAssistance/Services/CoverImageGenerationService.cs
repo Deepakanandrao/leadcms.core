@@ -733,6 +733,11 @@ public class CoverImageGenerationService : ICoverImageGenerationService
             existingMedia.Extension = originalExtension;
             existingMedia.MimeType = originalMimeType;
             existingMedia.Name = originalName;
+            existingMedia.OriginalData = null;
+            existingMedia.OriginalSize = null;
+            existingMedia.OriginalExtension = null;
+            existingMedia.OriginalMimeType = null;
+            existingMedia.OriginalName = null;
         }
 
         TrySetImageDimensions(
