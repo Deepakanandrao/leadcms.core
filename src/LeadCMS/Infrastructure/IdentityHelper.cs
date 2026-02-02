@@ -129,27 +129,27 @@ public static class IdentityHelper
 
         builder.Services.AddAuthorization(options =>
         {
-                var policyBuilder = new AuthorizationPolicyBuilder();
+            var policyBuilder = new AuthorizationPolicyBuilder();
 
-                if (jwtEnabled)
-                {
-                    policyBuilder.AddAuthenticationSchemes(JwtBearerScheme);
-                }
+            if (jwtEnabled)
+            {
+                policyBuilder.AddAuthenticationSchemes(JwtBearerScheme);
+            }
 
-                if (azureAdEnabled)
-                {
-                    policyBuilder.AddAuthenticationSchemes(AzureAdScheme);
-                }
+            if (azureAdEnabled)
+            {
+                policyBuilder.AddAuthenticationSchemes(AzureAdScheme);
+            }
 
-                // Fallback to JwtBearer if neither is configured
-                if (!jwtEnabled && !azureAdEnabled)
-                {
-                    policyBuilder.AddAuthenticationSchemes(JwtBearerScheme);
-                }
+            // Fallback to JwtBearer if neither is configured
+            if (!jwtEnabled && !azureAdEnabled)
+            {
+                policyBuilder.AddAuthenticationSchemes(JwtBearerScheme);
+            }
 
-                policyBuilder.RequireAuthenticatedUser();
+            policyBuilder.RequireAuthenticatedUser();
 
-                options.DefaultPolicy = policyBuilder.Build();
+            options.DefaultPolicy = policyBuilder.Build();
         });
     }
 
@@ -239,6 +239,27 @@ public static class IdentityHelper
                     }
 
                     await Task.CompletedTask;
+                };
+
+                // Configure token validation to handle tokens without 'kid' header
+                // This is necessary for some Azure AD token scenarios
+                jwtOptions.TokenValidationParameters.RequireSignedTokens = true;
+
+                // Try all available keys if kid is missing
+                jwtOptions.TokenValidationParameters.TryAllIssuerSigningKeys = true;
+
+                // Allow tokens without kid header by setting the validation key resolver
+                // This will iterate through all keys when kid is missing
+                jwtOptions.TokenValidationParameters.IssuerSigningKeyResolver = (token, securityToken, kid, validationParameters) =>
+                {
+                    // If kid is present, use normal resolution
+                    if (!string.IsNullOrEmpty(kid))
+                    {
+                        return validationParameters.IssuerSigningKeys.Where(k => k.KeyId == kid);
+                    }
+
+                    // If kid is missing, try all keys from the configuration
+                    return validationParameters.IssuerSigningKeys;
                 };
             },
             identityOptions =>
