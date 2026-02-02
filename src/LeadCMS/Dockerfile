@@ -21,7 +21,7 @@ RUN dotnet publish "./plugins/LeadCMS.Plugin.Sms/LeadCMS.Plugin.Sms.csproj" -c R
 RUN dotnet publish "./plugins/LeadCMS.Plugin.Vsto/LeadCMS.Plugin.Vsto.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.Vsto /p:UseAppHost=false
 RUN dotnet publish "./plugins/LeadCMS.Plugin.Site/LeadCMS.Plugin.Site.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.Site /p:UseAppHost=false
 RUN dotnet publish "./plugins/LeadCMS.Plugin.AI/LeadCMS.Plugin.AI.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.AI /p:UseAppHost=false
-
+RUN dotnet publish "./plugins/LeadCMS.Plugin.Deploy/LeadCMS.Plugin.Deploy.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.Deploy /p:UseAppHost=false
 
 FROM base AS final
 RUN apk add --no-cache icu-libs
