@@ -51,6 +51,8 @@ public static class SettingKeys
     public const string MediaEnableOptimisation = "Media.EnableOptimisation";
 
     public const string MediaQuality = "Media.Quality";
+
+    public const string MediaEnableCoverResize = "Media.EnableCoverResize";
 }
 
 public static class ConfigurationPaths

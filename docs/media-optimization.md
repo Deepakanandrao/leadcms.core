@@ -74,13 +74,14 @@ public byte[]? OriginalData { get; set; }    // Original binary data
 
 Media optimization is controlled through system settings accessed via the `ISettingService`. The configuration keys are:
 
-| Setting Key               | Default Value | Description                                                                                                 |
-| ------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------- |
-| `MediaMaxDimensions`      | `2048x2048`   | Maximum image dimensions (format: `{width}x{height}`)                                                       |
-| `MediaPreferredFormat`    | `avif`        | Target image format for optimization                                                                        |
-| `MediaEnableOptimisation` | `false`       | Enable/disable automatic optimization on upload (manual optimization via `/optimize` endpoint always works) |
-| `MediaQuality`            | `75`          | Image quality level (1-100, higher = better quality but larger file size)                                   |
-| `MediaCoverDimensions`    | Optional      | Specific dimensions for cover images (format: `{width}x{height}`)                                           |
+| Setting Key               | Default Value | Description                                                                                                     |
+| ------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------- | --- |
+| `MediaMaxDimensions`      | `2048x2048`   | Maximum image dimensions (format: `{width}x{height}`)                                                           |
+| `MediaPreferredFormat`    | `avif`        | Target image format for optimization                                                                            |
+| `MediaEnableOptimisation` | `false`       | Enable/disable automatic optimization on upload (manual optimization via `/optimize` endpoint always works)     |
+| `MediaQuality`            | `75`          | Image quality level (1-100, higher = better quality but larger file size)                                       |
+| `MediaCoverDimensions`    | `512x256`     | Specific dimensions for cover images (format: `{width}x{height}`)                                               |
+| `MediaEnableCoverResize`  | `true`        | Enable/disable automatic resize/crop for cover images. When disabled, cover images are treated as normal images |     |
 
 ### Supported Image Formats
 

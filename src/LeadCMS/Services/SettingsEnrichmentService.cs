@@ -127,6 +127,7 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
         SetSettingIfNullOrEmpty(settings, SettingKeys.MediaMaxFileSize, maxFileSizeInKb.ToString());
         SetSettingIfNullOrEmpty(settings, SettingKeys.MediaEnableOptimisation, enableOptimisation.ToString().ToLower());
         SetSettingIfNullOrEmpty(settings, SettingKeys.MediaQuality, "75");
+        SetSettingIfNullOrEmpty(settings, SettingKeys.MediaEnableCoverResize, "false");
     }
 
     /// <summary>

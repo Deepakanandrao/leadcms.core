@@ -136,6 +136,7 @@ public class ConfigController : ControllerBase
             SettingKeys.MediaCoverDimensions,
             SettingKeys.MediaMaxFileSize,
             SettingKeys.MediaQuality,
+            SettingKeys.MediaEnableCoverResize,
         };
 
         string? userId = null;
