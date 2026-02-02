@@ -278,6 +278,9 @@ public class PgDbContext : IdentityDbContext<User>
 
         builder.Entity<User>().Property(u => u.Data).HasColumnType("jsonb");
 
+        // Add unique index on NormalizedEmail to prevent duplicate emails
+        builder.Entity<User>().HasIndex(u => u.NormalizedEmail).IsUnique();
+
         // Configure Contact FullName as computed column
         // Use CASE statements for conditional concatenation - all functions used are IMMUTABLE
         builder.Entity<Contact>()

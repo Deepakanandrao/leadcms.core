@@ -185,6 +185,9 @@ public static class IdentityHelper
 
         builder.Services.AddIdentity<User, IdentityRole>(options =>
         {
+            // User settings
+            options.User.RequireUniqueEmail = true;
+
             // Lockout settings
             if (identityConfig != null)
             {
