@@ -1045,6 +1045,53 @@ public class MediaTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task UploadMedia_ShouldApplyCoverDimensions_WhenCoverResizeEnabled()
+    {
+        // Explicitly enable cover resize and set dimensions
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
+        await SetSystemSettingAsync(SettingKeys.MediaEnableCoverResize, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaCoverDimensions, "300x150");
+
+        const string scopeUid = "media-cover-resize-enabled";
+        const string originalFileName = "cover-resize-enabled.png";
+
+        // Upload with cover tag
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var media = await UploadMediaWithTagsAsync(imageBytes, originalFileName, scopeUid, new[] { "cover" });
+
+        media.Should().NotBeNull();
+        media!.Tags.Should().Contain("cover");
+
+        // The image should be cropped to cover dimensions since cover resize is enabled
+        media.Width.Should().Be(300);
+        media.Height.Should().Be(150);
+    }
+
+    [Fact]
+    public async Task UploadMedia_ShouldNotApplyCoverDimensions_WhenCoverResizeDisabled()
+    {
+        // Disable cover resize
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
+        await SetSystemSettingAsync(SettingKeys.MediaEnableCoverResize, "false");
+        await SetSystemSettingAsync(SettingKeys.MediaCoverDimensions, "300x150");
+
+        const string scopeUid = "media-cover-resize-disabled";
+        const string originalFileName = "cover-resize-disabled.png";
+
+        // Upload with cover tag
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var media = await UploadMediaWithTagsAsync(imageBytes, originalFileName, scopeUid, new[] { "cover" });
+
+        media.Should().NotBeNull();
+        media!.Tags.Should().Contain("cover");
+
+        // The image should NOT be cropped to cover dimensions since cover resize is disabled
+        // It should retain its original dimensions (cover-sample.png is 736x404)
+        media.Width.Should().Be(736);
+        media.Height.Should().Be(404);
+    }
+
+    [Fact]
     public async Task ResizeMedia_ShouldPreserveOriginal_WhenMissing()
     {
         await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
