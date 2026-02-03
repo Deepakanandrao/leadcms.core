@@ -616,6 +616,7 @@ public class MediaController : ControllerBase
     {
         const int batchSize = 10;
         var updatedCount = 0;
+        var updatedMediaIds = new HashSet<int>();
         var offset = 0;
         var settings = await mediaOptimizationService.GetSettingsAsync();
 
@@ -703,7 +704,10 @@ public class MediaController : ControllerBase
                             await RenameMediaAsync(media, media.ScopeUid, originalName, deferredUpdates);
                         }
 
-                        updatedCount++;
+                        if (updatedMediaIds.Add(media.Id))
+                        {
+                            updatedCount++;
+                        }
                     }
 
                     continue;
@@ -802,7 +806,10 @@ public class MediaController : ControllerBase
                     await RenameMediaAsync(media, media.ScopeUid, newName, deferredUpdates);
                 }
 
-                updatedCount++;
+                if (updatedMediaIds.Add(media.Id))
+                {
+                    updatedCount++;
+                }
             }
 
             // Apply all deferred content reference updates in a single batch
@@ -900,6 +907,7 @@ public class MediaController : ControllerBase
     {
         const int batchSize = 10;
         var updatedCount = 0;
+        var updatedMediaIds = new HashSet<int>();
 
         var folder = request?.Folder?.Trim().Trim('/');
         var includeSubfolders = request?.IncludeSubfolders ?? false;
@@ -971,7 +979,10 @@ public class MediaController : ControllerBase
                     await RenameMediaAsync(media, media.ScopeUid, originalName, deferredUpdates);
                 }
 
-                updatedCount++;
+                if (updatedMediaIds.Add(media.Id))
+                {
+                    updatedCount++;
+                }
             }
 
             // Apply all deferred content reference updates in a single batch
