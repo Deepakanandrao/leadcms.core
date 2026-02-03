@@ -900,7 +900,6 @@ public class MediaController : ControllerBase
     {
         const int batchSize = 10;
         var updatedCount = 0;
-        var offset = 0;
 
         var folder = request?.Folder?.Trim().Trim('/');
         var includeSubfolders = request?.IncludeSubfolders ?? false;
@@ -925,7 +924,6 @@ public class MediaController : ControllerBase
 
             var mediaItems = await filteredQuery
                 .Where(m => m.OriginalData != null)
-                .Skip(offset)
                 .Take(batchSize)
                 .ToListAsync();
 
@@ -980,7 +978,6 @@ public class MediaController : ControllerBase
             await ApplyDeferredContentUpdatesAsync(deferredUpdates);
 
             await pgDbContext.SaveChangesAsync();
-            offset += mediaItems.Count;
         }
 
         return Ok(new MediaOptimizeResponseDto
