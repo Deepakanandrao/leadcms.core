@@ -23,6 +23,7 @@ public class CoverImageGenerationService : ICoverImageGenerationService
     private const int MaxSampleImages = 5;
     private const int DefaultSampleCount = 3;
     private const string DefaultFileName = "cover.png";
+    private const string CoverNameSuffix = "cover";
     private readonly PgDbContext dbContext;
     private readonly IImageGenerationService imageGenerationService;
     private readonly ISettingService settingService;
@@ -97,7 +98,11 @@ public class CoverImageGenerationService : ICoverImageGenerationService
         }
 
         // Step 8: Save to media storage
-        var savedMedia = await SaveToMediaAsync(request.ContentSlug, request.ContentTitle, generatedImage.ImageData);
+        var savedMedia = await SaveToMediaAsync(
+            request.ContentSlug,
+            request.ContentTitle,
+            generatedImage.ImageData,
+            request.ContentSlug);
 
         Log.Information(
             "Successfully generated and saved cover image for {Slug}. Media ID: {MediaId}",
@@ -492,6 +497,20 @@ public class CoverImageGenerationService : ICoverImageGenerationService
         };
     }
 
+    private static string BuildUniqueCoverFileName(string baseName, string extension)
+    {
+        var normalizedBase = string.IsNullOrWhiteSpace(baseName)
+            ? CoverNameSuffix
+            : baseName.Slugify();
+        if (string.IsNullOrWhiteSpace(normalizedBase))
+        {
+            normalizedBase = CoverNameSuffix;
+        }
+
+        var timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+        return $"{normalizedBase}-{CoverNameSuffix}-{timestamp}{extension}";
+    }
+
     private async Task<List<SampleImageInfo>> GetSampleImagesAsync(
         List<string>? userProvidedPaths,
         bool allowRecentFallback = true)
@@ -589,9 +608,9 @@ public class CoverImageGenerationService : ICoverImageGenerationService
         return await settingService.GetSystemSettingAsync(SettingKeys.MediaCoverDimensions);
     }
 
-    private async Task<Media> SaveToMediaAsync(string scopeUid, string? title, byte[] imageData)
+    private async Task<Media> SaveToMediaAsync(string scopeUid, string? title, byte[] imageData, string? baseName)
     {
-        var fileName = DefaultFileName;
+        var fileName = BuildUniqueCoverFileName(baseName ?? title ?? scopeUid, ".png");
         var originalExtension = ".png";
         var originalMimeType = "image/png";
         var settings = await mediaOptimizationService.GetSettingsAsync();
@@ -604,156 +623,42 @@ public class CoverImageGenerationService : ICoverImageGenerationService
         });
         var coverResult = await ApplyCoverDimensionsIfNeeded(optimizationResult.Data, optimizationResult.MimeType);
         var optimizedName = Path.ChangeExtension(fileName, optimizationResult.Extension);
-
-        // Check if media already exists at this scope/filename
-        var existingMedia = await dbContext.Media!
-            .FirstOrDefaultAsync(m => m.ScopeUid == scopeUid && (m.Name == fileName || m.OriginalName == fileName));
-
-        if (existingMedia != null)
+        // Always create a new media record to preserve history and avoid caching issues
+        var newMedia = new Media
         {
-            // Update existing
-            if (settings.EnableOptimisation)
-            {
-                existingMedia.OriginalData = imageData;
-                existingMedia.OriginalSize = imageData.Length;
-                existingMedia.OriginalExtension = originalExtension;
-                existingMedia.OriginalMimeType = originalMimeType;
-                existingMedia.OriginalName = fileName;
-                existingMedia.Data = coverResult.Data;
-                existingMedia.Size = coverResult.Size;
-                existingMedia.Extension = optimizationResult.Extension;
-                existingMedia.MimeType = optimizationResult.MimeType;
-                existingMedia.Name = optimizedName;
-            }
-            else
-            {
-                existingMedia.OriginalData = null;
-                existingMedia.OriginalSize = null;
-                existingMedia.OriginalExtension = null;
-                existingMedia.OriginalMimeType = null;
-                existingMedia.OriginalName = null;
-                existingMedia.Data = coverResult.Data;
-                existingMedia.Size = coverResult.Size;
-                existingMedia.Extension = originalExtension;
-                existingMedia.MimeType = originalMimeType;
-                existingMedia.Name = fileName;
-            }
+            ScopeUid = scopeUid,
+            Name = settings.EnableOptimisation ? optimizedName : fileName,
+            OriginalName = settings.EnableOptimisation ? fileName : null,
+            Size = coverResult.Size,
+            Data = coverResult.Data,
+            MimeType = settings.EnableOptimisation ? optimizationResult.MimeType : originalMimeType,
+            Extension = settings.EnableOptimisation ? optimizationResult.Extension : originalExtension,
+            OriginalData = settings.EnableOptimisation ? imageData : null,
+            OriginalSize = settings.EnableOptimisation ? imageData.Length : null,
+            OriginalExtension = settings.EnableOptimisation ? originalExtension : null,
+            OriginalMimeType = settings.EnableOptimisation ? originalMimeType : null,
+            Description = string.IsNullOrWhiteSpace(title) ? null : title,
+            Tags = new[] { "cover" },
+        };
 
-            TrySetImageDimensions(
-                existingMedia,
-                settings.EnableOptimisation ? originalMimeType : string.Empty,
-                settings.EnableOptimisation ? imageData : Array.Empty<byte>(),
-                optimizationResult.MimeType,
-                coverResult.Data);
+        TrySetImageDimensions(
+            newMedia,
+            settings.EnableOptimisation ? originalMimeType : string.Empty,
+            settings.EnableOptimisation ? imageData : Array.Empty<byte>(),
+            optimizationResult.MimeType,
+            coverResult.Data);
 
-            existingMedia.Description = string.IsNullOrWhiteSpace(title) ? existingMedia.Description : title;
-            existingMedia.Tags = new[] { "cover" };
-            dbContext.Media!.Update(existingMedia);
-            await dbContext.SaveChangesAsync();
+        await dbContext.Media!.AddAsync(newMedia);
+        await dbContext.SaveChangesAsync();
 
-            Log.Information("Updated existing cover image at {ScopeUid}/{FileName}", scopeUid, fileName);
-            return existingMedia;
-        }
-        else
-        {
-            // Create new
-            var newMedia = new Media
-            {
-                ScopeUid = scopeUid,
-                Name = settings.EnableOptimisation ? optimizedName : fileName,
-                OriginalName = settings.EnableOptimisation ? fileName : null,
-                Size = coverResult.Size,
-                Data = coverResult.Data,
-                MimeType = settings.EnableOptimisation ? optimizationResult.MimeType : originalMimeType,
-                Extension = settings.EnableOptimisation ? optimizationResult.Extension : originalExtension,
-                OriginalData = settings.EnableOptimisation ? imageData : null,
-                OriginalSize = settings.EnableOptimisation ? imageData.Length : null,
-                OriginalExtension = settings.EnableOptimisation ? originalExtension : null,
-                OriginalMimeType = settings.EnableOptimisation ? originalMimeType : null,
-                Description = string.IsNullOrWhiteSpace(title) ? null : title,
-                Tags = new[] { "cover" },
-            };
-
-            TrySetImageDimensions(
-                newMedia,
-                settings.EnableOptimisation ? originalMimeType : string.Empty,
-                settings.EnableOptimisation ? imageData : Array.Empty<byte>(),
-                optimizationResult.MimeType,
-                coverResult.Data);
-
-            await dbContext.Media!.AddAsync(newMedia);
-            await dbContext.SaveChangesAsync();
-
-            Log.Information("Created new cover image at {ScopeUid}/{FileName}", scopeUid, fileName);
-            return newMedia;
-        }
+        Log.Information("Created new cover image at {ScopeUid}/{FileName}", scopeUid, fileName);
+        return newMedia;
     }
 
     private async Task<Media> UpdateExistingMediaAsync(Media existingMedia, string? title, byte[] imageData)
     {
-        var originalExtension = existingMedia.OriginalExtension ?? existingMedia.Extension;
-        var originalMimeType = existingMedia.OriginalMimeType ?? existingMedia.MimeType;
-        var originalName = existingMedia.OriginalName ?? existingMedia.Name;
-        var hasOriginalData = existingMedia.OriginalData != null && existingMedia.OriginalData.Length > 0;
-        var settings = await mediaOptimizationService.GetSettingsAsync();
-        var optimizationResult = await mediaOptimizationService.OptimizeAsync(new MediaOptimizationRequest
-        {
-            Data = imageData,
-            FileName = existingMedia.Name,
-            Extension = originalExtension,
-            MimeType = originalMimeType,
-        });
-        var coverResult = await ApplyCoverDimensionsIfNeeded(optimizationResult.Data, optimizationResult.MimeType);
-
-        if (hasOriginalData)
-        {
-            existingMedia.OriginalSize ??= existingMedia.OriginalData!.Length;
-            existingMedia.OriginalExtension ??= originalExtension;
-            existingMedia.OriginalMimeType ??= originalMimeType;
-            existingMedia.OriginalName ??= originalName;
-        }
-
-        if (settings.EnableOptimisation)
-        {
-            existingMedia.OriginalData = imageData;
-            existingMedia.OriginalSize = imageData.Length;
-            existingMedia.OriginalExtension = originalExtension;
-            existingMedia.OriginalMimeType = originalMimeType;
-            existingMedia.OriginalName = originalName;
-            existingMedia.Data = coverResult.Data;
-            existingMedia.Size = coverResult.Size;
-            existingMedia.Extension = optimizationResult.Extension;
-            existingMedia.MimeType = optimizationResult.MimeType;
-            existingMedia.Name = Path.ChangeExtension(originalName, optimizationResult.Extension);
-        }
-        else
-        {
-            existingMedia.Data = coverResult.Data;
-            existingMedia.Size = coverResult.Size;
-            existingMedia.Extension = originalExtension;
-            existingMedia.MimeType = originalMimeType;
-            existingMedia.Name = originalName;
-            existingMedia.OriginalData = null;
-            existingMedia.OriginalSize = null;
-            existingMedia.OriginalExtension = null;
-            existingMedia.OriginalMimeType = null;
-            existingMedia.OriginalName = null;
-        }
-
-        TrySetImageDimensions(
-            existingMedia,
-            originalMimeType,
-            imageData,
-            optimizationResult.MimeType,
-            coverResult.Data);
-
-        existingMedia.Description = string.IsNullOrWhiteSpace(title) ? existingMedia.Description : title;
-        existingMedia.Tags = new[] { "cover" };
-        dbContext.Media!.Update(existingMedia);
-        await dbContext.SaveChangesAsync();
-
-        Log.Information("Updated existing cover image at {ScopeUid}/{FileName}", existingMedia.ScopeUid, existingMedia.Name);
-        return existingMedia;
+        var baseName = Path.GetFileNameWithoutExtension(existingMedia.OriginalName ?? existingMedia.Name);
+        return await SaveToMediaAsync(existingMedia.ScopeUid, title ?? existingMedia.Description, imageData, baseName);
     }
 
     private async Task<CoverResizeResult> ApplyCoverDimensionsIfNeeded(byte[] data, string mimeType)

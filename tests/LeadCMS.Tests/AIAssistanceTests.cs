@@ -43,7 +43,9 @@ public class AIAssistanceTests : BaseTestAutoLogin
         response.Should().NotBeNull();
         response!.ScopeUid.Should().Be(request.ContentSlug);
         response.Location.Should().Contain($"/api/media/{request.ContentSlug}/");
-        response.OriginalName.Should().Be("cover.png");
+        response.OriginalName.Should().NotBeNullOrWhiteSpace();
+        response.OriginalName.Should().Contain("cover");
+        response.OriginalName.Should().EndWith(".png");
 
         var originalBytes = LoadEmbeddedResource("cover-sample.png");
         response.OriginalSize.Should().Be(originalBytes.LongLength);
@@ -58,7 +60,7 @@ public class AIAssistanceTests : BaseTestAutoLogin
     }
 
     [Fact]
-    public async Task CoverImageGenerationEndpoint_ShouldOverwriteExistingCover()
+    public async Task CoverImageGenerationEndpoint_ShouldCreateNewCoverVersion()
     {
         await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
 
@@ -77,14 +79,14 @@ public class AIAssistanceTests : BaseTestAutoLogin
         var second = await PostTest<MediaDetailsDto>("/api/content/ai-cover", request, HttpStatusCode.OK);
 
         second.Should().NotBeNull();
-        second!.Id.Should().Be(first!.Id);
+        second!.Id.Should().NotBe(first!.Id);
 
         var dbContext = App.GetDbContext();
         var coverCount = dbContext!.Media!
             .Where(m => m.ScopeUid == request.ContentSlug)
             .AsEnumerable()
             .Count(m => Array.Exists(m.Tags, tag => string.Equals(tag, "cover", StringComparison.OrdinalIgnoreCase)));
-        coverCount.Should().Be(1);
+        coverCount.Should().Be(2);
     }
 
     [Fact]
@@ -220,7 +222,9 @@ public class AIAssistanceTests : BaseTestAutoLogin
         var response = await PostTest<MediaDetailsDto>("/api/content/ai-cover", request, HttpStatusCode.OK);
 
         response.Should().NotBeNull();
-        response!.OriginalName.Should().Be("cover.png");
+        response!.OriginalName.Should().NotBeNullOrWhiteSpace();
+        response.OriginalName.Should().Contain("cover");
+        response.OriginalName.Should().EndWith(".png");
 
         var originalBytes = LoadEmbeddedResource("cover-sample.png");
         response.OriginalSize.Should().Be(originalBytes.LongLength);
