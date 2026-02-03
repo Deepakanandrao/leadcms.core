@@ -192,26 +192,32 @@ Similar to upload workflow with optional file replacement:
 
 ## Advanced Features
 
-### Re-Optimization (Batch Operation)
+### Bulk Optimization
 
-**Endpoint:** `POST /api/media/reoptimize` (Admin only)
+**Endpoint:** `POST /api/media/optimize-all` (Admin only)
 
-Processes all existing media images with current optimization settings:
+Processes existing media images with current optimization settings. Supports optional folder filtering.
 
-```csharp
-public async Task<ActionResult<MediaReoptimizeResponseDto>> ReOptimizeAllImages()
+**Request Body:**
+
+```json
 {
-    // Batch processing (1000 items per batch)
-    // Check each image against:
-    // 1. Preferred format change
-    // 2. Maximum dimension changes
-    // 3. Missing dimension metadata
+  "folder": "optional/folder/path",
+  "includeSubfolders": false
+}
+```
 
-    // For images requiring reoptimization:
-    // - Use original data if available
-    // - Apply current optimization settings
-    // - Update all metadata
-    // - Rename if format changed
+**Parameters:**
+
+- `folder` (string, optional): Folder path to limit optimization scope (e.g., "folder1" or "folder1/subfolder"). When not set, all media files are processed.
+- `includeSubfolders` (bool, optional): When true, includes files in subfolders of the specified folder. Only applicable when folder is set. Defaults to false.
+
+**Response:**
+
+```json
+{
+  "updated": 42,
+  "message": null
 }
 ```
 
@@ -221,10 +227,66 @@ public async Task<ActionResult<MediaReoptimizeResponseDto>> ReOptimizeAllImages(
 
 Optimize a specific image:
 
-- Validates optimization is enabled
 - Applies current settings to selected image
 - Updates all optimization metadata
 - Returns updated media details
+
+**Request Body:**
+
+```json
+{
+  "scopeUid": "folder/path",
+  "fileName": "image.avif"
+}
+```
+
+### Reset to Original
+
+#### Single Media Reset
+
+**Endpoint:** `POST /api/media/reset` (Admin only)
+
+Resets a single media file to its original state, removing optimization.
+
+**Request Body:**
+
+```json
+{
+  "scopeUid": "folder/path",
+  "fileName": "image.avif"
+}
+```
+
+Returns the updated media details with original content restored.
+
+#### Bulk Reset
+
+**Endpoint:** `POST /api/media/reset-all` (Admin only)
+
+Resets all optimized media files to their original state. Supports optional folder filtering.
+
+**Request Body:**
+
+```json
+{
+  "folder": "optional/folder/path",
+  "includeSubfolders": false
+}
+```
+
+**Parameters:**
+
+- `folder` (string, optional): Folder path to limit reset scope (e.g., "folder1" or "folder1/subfolder"). When not set, all media files are processed.
+- `includeSubfolders` (bool, optional): When true, includes files in subfolders of the specified folder. Only applicable when folder is set. Defaults to false.
+
+**Response:**
+
+```json
+{
+  "updated": 42,
+  "message": null
+}
+```
 
 ### Media Transformation APIs
 

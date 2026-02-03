@@ -603,15 +603,16 @@ public class MediaController : ControllerBase
     }
 
     /// <summary>
-    /// Re-optimizes all existing image media using current media optimization settings.
+    /// Optimizes all existing image media using current media optimization settings.
+    /// Optionally filters by folder path.
     /// </summary>
-    [HttpPost("reoptimize")]
+    [HttpPost("optimize-all")]
     [Authorize(Roles = "Admin")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<MediaReoptimizeResponseDto>> ReOptimizeAllImages()
+    public async Task<ActionResult<MediaOptimizeResponseDto>> OptimizeAllImages([FromBody] MediaBulkOptimizeRequestDto? request = null)
     {
         const int batchSize = 10;
         var updatedCount = 0;
@@ -621,10 +622,28 @@ public class MediaController : ControllerBase
         var preferredFormat = settings.PreferredFormat.Trim().TrimStart('.');
         var (maxWidth, maxHeight) = MediaSizeHelper.ParseSize(settings.MaxDimensions);
 
+        var folder = request?.Folder?.Trim().Trim('/');
+        var includeSubfolders = request?.IncludeSubfolders ?? false;
+
         while (true)
         {
-            var mediaItems = await pgDbContext.Media!
-                .OrderBy(m => m.Id)
+            var query = pgDbContext.Media!.OrderBy(m => m.Id);
+            IQueryable<Media> filteredQuery = query;
+
+            if (!string.IsNullOrWhiteSpace(folder))
+            {
+                if (includeSubfolders)
+                {
+                    var prefix = folder + "/";
+                    filteredQuery = query.Where(m => m.ScopeUid == folder || m.ScopeUid.StartsWith(prefix));
+                }
+                else
+                {
+                    filteredQuery = query.Where(m => m.ScopeUid == folder);
+                }
+            }
+
+            var mediaItems = await filteredQuery
                 .Skip(offset)
                 .Take(batchSize)
                 .ToListAsync();
@@ -793,7 +812,178 @@ public class MediaController : ControllerBase
             offset += mediaItems.Count;
         }
 
-        return Ok(new MediaReoptimizeResponseDto
+        return Ok(new MediaOptimizeResponseDto
+        {
+            Updated = updatedCount,
+        });
+    }
+
+    /// <summary>
+    /// Resets a single media file to its original state, removing optimization.
+    /// </summary>
+    [HttpPost("reset")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(MediaDetailsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<MediaDetailsDto>> ResetMedia([FromBody] MediaTransformRequestDto request)
+    {
+        var media = await ResolveMediaAsync(request.ScopeUid, request.FileName);
+        if (media == null)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "Media not found",
+                Detail = $"Media '{request.ScopeUid}/{request.FileName}' was not found.",
+                Status = StatusCodes.Status404NotFound,
+            });
+        }
+
+        if (media.OriginalData == null || media.OriginalData.Length == 0)
+        {
+            return UnprocessableEntity(new ProblemDetails
+            {
+                Title = "No original data",
+                Detail = "This media file does not have original data to reset to.",
+                Status = StatusCodes.Status422UnprocessableEntity,
+            });
+        }
+
+        var originalData = media.OriginalData;
+        var originalExtension = media.OriginalExtension ?? media.Extension ?? string.Empty;
+        var originalMimeType = media.OriginalMimeType ?? media.MimeType ?? string.Empty;
+        var originalName = media.OriginalName ?? media.Name ?? string.Empty;
+
+        media.Data = originalData;
+        media.Size = media.OriginalSize ?? originalData.Length;
+        media.Extension = originalExtension;
+        media.MimeType = originalMimeType;
+        media.UpdatedAt = DateTime.UtcNow;
+
+        TrySetImageDimensions(media, originalMimeType, originalData, originalMimeType, originalData);
+
+        // Clear original fields since we're reverting to original
+        media.OriginalData = null;
+        media.OriginalSize = null;
+        media.OriginalExtension = null;
+        media.OriginalMimeType = null;
+        media.OriginalName = null;
+        media.OriginalWidth = null;
+        media.OriginalHeight = null;
+
+        // Rename if needed
+        if (!string.IsNullOrWhiteSpace(originalName) &&
+            !string.Equals(media.Name, originalName, StringComparison.OrdinalIgnoreCase))
+        {
+            await RenameMediaAsync(media, media.ScopeUid, originalName);
+        }
+
+        await pgDbContext.SaveChangesAsync();
+
+        return Ok(MapToMediaDto(media));
+    }
+
+    /// <summary>
+    /// Resets all media files to their original state, removing optimization.
+    /// Optionally filters by folder path.
+    /// </summary>
+    [HttpPost("reset-all")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<MediaOptimizeResponseDto>> ResetAllMedia([FromBody] MediaBulkResetRequestDto? request = null)
+    {
+        const int batchSize = 10;
+        var updatedCount = 0;
+        var offset = 0;
+
+        var folder = request?.Folder?.Trim().Trim('/');
+        var includeSubfolders = request?.IncludeSubfolders ?? false;
+
+        while (true)
+        {
+            var query = pgDbContext.Media!.OrderBy(m => m.Id);
+            IQueryable<Media> filteredQuery = query;
+
+            if (!string.IsNullOrWhiteSpace(folder))
+            {
+                if (includeSubfolders)
+                {
+                    var prefix = folder + "/";
+                    filteredQuery = query.Where(m => m.ScopeUid == folder || m.ScopeUid.StartsWith(prefix));
+                }
+                else
+                {
+                    filteredQuery = query.Where(m => m.ScopeUid == folder);
+                }
+            }
+
+            var mediaItems = await filteredQuery
+                .Where(m => m.OriginalData != null)
+                .Skip(offset)
+                .Take(batchSize)
+                .ToListAsync();
+
+            if (mediaItems.Count == 0)
+            {
+                break;
+            }
+
+            // Collect all rename operations for batch content update
+            var deferredUpdates = new List<ContentReferenceUpdate>();
+
+            foreach (var media in mediaItems)
+            {
+                if (media.OriginalData == null || media.OriginalData.Length == 0)
+                {
+                    continue;
+                }
+
+                var originalData = media.OriginalData;
+                var originalExtension = media.OriginalExtension ?? media.Extension ?? string.Empty;
+                var originalMimeType = media.OriginalMimeType ?? media.MimeType ?? string.Empty;
+                var originalName = media.OriginalName ?? media.Name ?? string.Empty;
+
+                media.Data = originalData;
+                media.Size = media.OriginalSize ?? originalData.Length;
+                media.Extension = originalExtension;
+                media.MimeType = originalMimeType;
+                media.UpdatedAt = DateTime.UtcNow;
+
+                TrySetImageDimensions(media, originalMimeType, originalData, originalMimeType, originalData);
+
+                // Clear original fields since we're reverting to original
+                media.OriginalData = null;
+                media.OriginalSize = null;
+                media.OriginalExtension = null;
+                media.OriginalMimeType = null;
+                media.OriginalName = null;
+                media.OriginalWidth = null;
+                media.OriginalHeight = null;
+
+                // Rename if needed
+                if (!string.IsNullOrWhiteSpace(originalName) &&
+                    !string.Equals(media.Name, originalName, StringComparison.OrdinalIgnoreCase))
+                {
+                    await RenameMediaAsync(media, media.ScopeUid, originalName, deferredUpdates);
+                }
+
+                updatedCount++;
+            }
+
+            // Apply all deferred content reference updates in a single batch
+            await ApplyDeferredContentUpdatesAsync(deferredUpdates);
+
+            await pgDbContext.SaveChangesAsync();
+            offset += mediaItems.Count;
+        }
+
+        return Ok(new MediaOptimizeResponseDto
         {
             Updated = updatedCount,
         });

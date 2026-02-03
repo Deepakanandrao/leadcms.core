@@ -85,11 +85,47 @@ public class MediaDetailsDto
     public DateTime? UpdatedAt { get; set; }
 }
 
-public class MediaReoptimizeResponseDto
+public class MediaOptimizeResponseDto
 {
     public int Updated { get; set; }
 
     public string? Message { get; set; }
+}
+
+/// <summary>
+/// Request DTO for bulk media optimization with optional folder filtering.
+/// </summary>
+public class MediaBulkOptimizeRequestDto
+{
+    /// <summary>
+    /// Gets or sets the optional folder path to limit optimization scope (e.g., "folder1" or "folder1/subfolder").
+    /// When not set, all media files are processed.
+    /// </summary>
+    public string? Folder { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether to include files in subfolders of the specified folder.
+    /// Only applicable when Folder is set. Defaults to false.
+    /// </summary>
+    public bool IncludeSubfolders { get; set; } = false;
+}
+
+/// <summary>
+/// Request DTO for bulk media reset with optional folder filtering.
+/// </summary>
+public class MediaBulkResetRequestDto
+{
+    /// <summary>
+    /// Gets or sets the optional folder path to limit reset scope (e.g., "folder1" or "folder1/subfolder").
+    /// When not set, all media files are processed.
+    /// </summary>
+    public string? Folder { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether to include files in subfolders of the specified folder.
+    /// Only applicable when Folder is set. Defaults to false.
+    /// </summary>
+    public bool IncludeSubfolders { get; set; } = false;
 }
 
 public class MediaRenameRequestDto

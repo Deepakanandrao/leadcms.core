@@ -619,7 +619,7 @@ public class MediaTests : BaseTestAutoLogin
     }
 
     [Fact]
-    public async Task Reoptimize_ShouldUpdateImagesToPreferredFormat()
+    public async Task OptimizeAll_ShouldUpdateImagesToPreferredFormat()
     {
         await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
         await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "png");
@@ -636,10 +636,10 @@ public class MediaTests : BaseTestAutoLogin
 
         await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
 
-        var reoptimizeResponse = await Request(HttpMethod.Post, "/api/media/reoptimize", new { });
+        var reoptimizeResponse = await Request(HttpMethod.Post, "/api/media/optimize-all", new { });
         reoptimizeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var result = await reoptimizeResponse.Content.ReadFromJsonAsync<MediaReoptimizeResponseDto>();
+        var result = await reoptimizeResponse.Content.ReadFromJsonAsync<MediaOptimizeResponseDto>();
         result.Should().NotBeNull();
         result!.Updated.Should().BeGreaterThan(0);
 
@@ -655,7 +655,7 @@ public class MediaTests : BaseTestAutoLogin
     }
 
     [Fact]
-    public async Task Reoptimize_WhenDimensionsMissing_PopulatesDimensions()
+    public async Task OptimizeAll_WhenDimensionsMissing_PopulatesDimensions()
     {
         await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
         await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "png");
@@ -689,7 +689,7 @@ public class MediaTests : BaseTestAutoLogin
         await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
         await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
 
-        var reoptimizeResponse = await Request(HttpMethod.Post, "/api/media/reoptimize", new { });
+        var reoptimizeResponse = await Request(HttpMethod.Post, "/api/media/optimize-all", new { });
         reoptimizeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var afterList = await GetTest<List<MediaDetailsDto>>(
@@ -968,9 +968,9 @@ public class MediaTests : BaseTestAutoLogin
     }
 
     [Fact]
-    public async Task Reoptimize_ShouldWorkEvenWhenOptimisationDisabled()
+    public async Task OptimizeAll_ShouldWorkEvenWhenOptimisationDisabled()
     {
-        // Manual reoptimization via /reoptimize endpoint should work regardless of MediaEnableOptimisation setting
+        // Manual optimization via /optimize-all endpoint should work regardless of MediaEnableOptimisation setting
         await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
         await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "png");
         await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
@@ -984,10 +984,10 @@ public class MediaTests : BaseTestAutoLogin
         // Keep optimization disabled but change preferred format
         await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
 
-        var reoptimizeResponse = await Request(HttpMethod.Post, "/api/media/reoptimize", new { });
+        var reoptimizeResponse = await Request(HttpMethod.Post, "/api/media/optimize-all", new { });
         reoptimizeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var result = await reoptimizeResponse.Content.ReadFromJsonAsync<MediaReoptimizeResponseDto>();
+        var result = await reoptimizeResponse.Content.ReadFromJsonAsync<MediaOptimizeResponseDto>();
         result.Should().NotBeNull();
         result!.Updated.Should().BeGreaterThan(0);
 
@@ -1000,6 +1000,482 @@ public class MediaTests : BaseTestAutoLogin
         var after = afterList!.Single(m => m.OriginalName == originalFileName);
         after.Extension.Should().Be(".avif");
         after.MimeType.Should().Be("image/avif");
+    }
+
+    [Fact]
+    public async Task OptimizeAll_WithFolderFilter_ShouldOnlyOptimizeFilesInFolder()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "png");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        // Upload to different folders
+        var folder1 = "optimize-folder/subfolder1";
+        var folder2 = "optimize-folder/subfolder2";
+        var rootFolder = "optimize-folder";
+
+        await UploadMediaAsync(imageBytes, "image1.png", folder1);
+        await UploadMediaAsync(imageBytes, "image2.png", folder2);
+        await UploadMediaAsync(imageBytes, "image3.png", rootFolder);
+
+        // Change format to avif
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
+
+        // Optimize only subfolder1
+        var request = new MediaBulkOptimizeRequestDto { Folder = folder1, IncludeSubfolders = false };
+        var response = await Request(HttpMethod.Post, "/api/media/optimize-all", request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var result = await response.Content.ReadFromJsonAsync<MediaOptimizeResponseDto>();
+        result.Should().NotBeNull();
+        result!.Updated.Should().Be(1);
+
+        // Verify only folder1 was optimized
+        var list1 = await GetTest<List<MediaDetailsDto>>($"/api/media?filter[where][scopeUid][eq]={Uri.EscapeDataString(folder1)}", HttpStatusCode.OK);
+        list1!.Should().ContainSingle();
+        list1!.First().Extension.Should().Be(".avif");
+
+        var list2 = await GetTest<List<MediaDetailsDto>>($"/api/media?filter[where][scopeUid][eq]={Uri.EscapeDataString(folder2)}", HttpStatusCode.OK);
+        list2!.Should().ContainSingle();
+        list2!.First().Extension.Should().Be(".png");
+    }
+
+    [Fact]
+    public async Task OptimizeAll_WithFolderAndIncludeSubfolders_ShouldOptimizeRecursively()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "png");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        var parentFolder = "optimize-recursive";
+        var childFolder = "optimize-recursive/child";
+        var unrelatedFolder = "optimize-other";
+
+        await UploadMediaAsync(imageBytes, "parent.png", parentFolder);
+        await UploadMediaAsync(imageBytes, "child.png", childFolder);
+        await UploadMediaAsync(imageBytes, "other.png", unrelatedFolder);
+
+        // Change format to webp
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "webp");
+
+        // Optimize parent folder with subfolders
+        var request = new MediaBulkOptimizeRequestDto { Folder = parentFolder, IncludeSubfolders = true };
+        var response = await Request(HttpMethod.Post, "/api/media/optimize-all", request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var result = await response.Content.ReadFromJsonAsync<MediaOptimizeResponseDto>();
+        result.Should().NotBeNull();
+        result!.Updated.Should().Be(2);
+
+        // Verify parent and child were optimized
+        var parentList = await GetTest<List<MediaDetailsDto>>($"/api/media?filter[where][scopeUid][eq]={Uri.EscapeDataString(parentFolder)}", HttpStatusCode.OK);
+        parentList!.First().Extension.Should().Be(".webp");
+
+        var childList = await GetTest<List<MediaDetailsDto>>($"/api/media?filter[where][scopeUid][eq]={Uri.EscapeDataString(childFolder)}", HttpStatusCode.OK);
+        childList!.First().Extension.Should().Be(".webp");
+
+        // Verify unrelated folder was NOT optimized
+        var otherList = await GetTest<List<MediaDetailsDto>>($"/api/media?filter[where][scopeUid][eq]={Uri.EscapeDataString(unrelatedFolder)}", HttpStatusCode.OK);
+        otherList!.First().Extension.Should().Be(".png");
+    }
+
+    [Fact]
+    public async Task ResetMedia_ShouldRevertToOriginalState()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string scopeUid = "media-reset-single";
+        const string originalFileName = "reset-test.png";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var created = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        // Verify it was optimized
+        created.Extension.Should().Be(".avif");
+        created.OriginalExtension.Should().Be(".png");
+
+        // Reset the media
+        var request = new MediaTransformRequestDto
+        {
+            ScopeUid = scopeUid,
+            FileName = created.Name,
+        };
+
+        var response = await Request(HttpMethod.Post, "/api/media/reset", request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var reset = await response.Content.ReadFromJsonAsync<MediaDetailsDto>();
+        reset.Should().NotBeNull();
+        reset!.Extension.Should().Be(".png");
+        reset.MimeType.Should().Be("image/png");
+        reset.OriginalExtension.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ResetMedia_WithoutOriginalData_ShouldReturnUnprocessableEntity()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
+
+        const string scopeUid = "media-reset-no-original";
+        const string originalFileName = "no-original.png";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var created = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        // Verify no original data
+        created.OriginalExtension.Should().BeNull();
+
+        // Try to reset - should fail
+        var request = new MediaTransformRequestDto
+        {
+            ScopeUid = scopeUid,
+            FileName = created.Name,
+        };
+
+        var response = await Request(HttpMethod.Post, "/api/media/reset", request);
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task ResetAll_ShouldRevertAllOptimizedMedia()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string scopeUid = "media-reset-all";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        await UploadMediaAsync(imageBytes, "reset1.png", scopeUid);
+        await UploadMediaAsync(imageBytes, "reset2.png", scopeUid);
+
+        // Verify they were optimized
+        var beforeList = await GetTest<List<MediaDetailsDto>>($"/api/media?filter[where][scopeUid][eq]={scopeUid}", HttpStatusCode.OK);
+        beforeList!.Should().HaveCount(2);
+        beforeList!.Should().OnlyContain(m => m.Extension == ".avif");
+
+        // Reset all
+        var response = await Request(HttpMethod.Post, "/api/media/reset-all", new { });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var result = await response.Content.ReadFromJsonAsync<MediaOptimizeResponseDto>();
+        result.Should().NotBeNull();
+        result!.Updated.Should().BeGreaterThanOrEqualTo(2);
+
+        // Verify all were reset
+        var afterList = await GetTest<List<MediaDetailsDto>>($"/api/media?filter[where][scopeUid][eq]={scopeUid}", HttpStatusCode.OK);
+        afterList!.Should().HaveCount(2);
+        afterList!.Should().OnlyContain(m => m.Extension == ".png" && m.OriginalExtension == null);
+    }
+
+    [Fact]
+    public async Task ResetAll_WithFolderFilter_ShouldOnlyResetFilesInFolder()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "webp");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        var folder1 = "reset-folder1";
+        var folder2 = "reset-folder2";
+
+        await UploadMediaAsync(imageBytes, "f1.png", folder1);
+        await UploadMediaAsync(imageBytes, "f2.png", folder2);
+
+        // Verify both optimized
+        var f1Before = await GetTest<List<MediaDetailsDto>>($"/api/media?filter[where][scopeUid][eq]={folder1}", HttpStatusCode.OK);
+        f1Before!.First().Extension.Should().Be(".webp");
+
+        // Reset only folder1
+        var request = new MediaBulkResetRequestDto { Folder = folder1, IncludeSubfolders = false };
+        var response = await Request(HttpMethod.Post, "/api/media/reset-all", request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var result = await response.Content.ReadFromJsonAsync<MediaOptimizeResponseDto>();
+        result.Should().NotBeNull();
+        result!.Updated.Should().Be(1);
+
+        // Verify only folder1 was reset
+        var f1After = await GetTest<List<MediaDetailsDto>>($"/api/media?filter[where][scopeUid][eq]={folder1}", HttpStatusCode.OK);
+        f1After!.First().Extension.Should().Be(".png");
+
+        var f2After = await GetTest<List<MediaDetailsDto>>($"/api/media?filter[where][scopeUid][eq]={folder2}", HttpStatusCode.OK);
+        f2After!.First().Extension.Should().Be(".webp");
+    }
+
+    [Fact]
+    public async Task ResetAll_WithFolderAndIncludeSubfolders_ShouldResetRecursively()
+    {
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        var parentFolder = "reset-recursive";
+        var childFolder = "reset-recursive/child";
+        var unrelatedFolder = "reset-other";
+
+        await UploadMediaAsync(imageBytes, "parent.png", parentFolder);
+        await UploadMediaAsync(imageBytes, "child.png", childFolder);
+        await UploadMediaAsync(imageBytes, "other.png", unrelatedFolder);
+
+        // Verify all optimized
+        var parentBefore = await GetTest<List<MediaDetailsDto>>($"/api/media?filter[where][scopeUid][eq]={Uri.EscapeDataString(parentFolder)}", HttpStatusCode.OK);
+        parentBefore!.First().Extension.Should().Be(".avif");
+
+        // Reset parent folder with subfolders
+        var request = new MediaBulkResetRequestDto { Folder = parentFolder, IncludeSubfolders = true };
+        var response = await Request(HttpMethod.Post, "/api/media/reset-all", request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var result = await response.Content.ReadFromJsonAsync<MediaOptimizeResponseDto>();
+        result.Should().NotBeNull();
+        result!.Updated.Should().Be(2);
+
+        // Verify parent and child were reset
+        var parentAfter = await GetTest<List<MediaDetailsDto>>($"/api/media?filter[where][scopeUid][eq]={Uri.EscapeDataString(parentFolder)}", HttpStatusCode.OK);
+        parentAfter!.First().Extension.Should().Be(".png");
+
+        var childAfter = await GetTest<List<MediaDetailsDto>>($"/api/media?filter[where][scopeUid][eq]={Uri.EscapeDataString(childFolder)}", HttpStatusCode.OK);
+        childAfter!.First().Extension.Should().Be(".png");
+
+        // Verify unrelated folder was NOT reset
+        var otherAfter = await GetTest<List<MediaDetailsDto>>($"/api/media?filter[where][scopeUid][eq]={Uri.EscapeDataString(unrelatedFolder)}", HttpStatusCode.OK);
+        otherAfter!.First().Extension.Should().Be(".avif");
+    }
+
+    [Fact]
+    public async Task OptimizeMedia_ShouldUpdateContentReferences_WhenNameChanges()
+    {
+        TrackEntityType<Content>();
+
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string scopeUid = "media-optimize-content-ref";
+        const string originalFileName = "optimize-ref.png";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var media = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        // Create content referencing the media
+        var content = new ContentCreateDto
+        {
+            Title = "Optimize Content Reference",
+            Description = "Description for optimize content reference test",
+            Body = $"Image reference /api/media/{scopeUid}/{media.Name}",
+            Slug = "optimize-content-ref",
+            Type = "blog-post",
+            Author = "Tester",
+            Language = "en",
+            Category = "Product",
+            Tags = new[] { "Tag1" },
+            AllowComments = true,
+            CoverImageUrl = $"/api/media/{scopeUid}/{media.Name}",
+        };
+
+        var createdContent = await PostTest<ContentDetailsDto>("/api/content", content, HttpStatusCode.Created);
+        createdContent.Should().NotBeNull();
+
+        // Now optimize the media - it should change to avif
+        var request = new MediaTransformRequestDto
+        {
+            ScopeUid = scopeUid,
+            FileName = media.Name,
+        };
+
+        var response = await Request(HttpMethod.Post, "/api/media/optimize", request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var optimized = await response.Content.ReadFromJsonAsync<MediaDetailsDto>();
+        optimized.Should().NotBeNull();
+        optimized!.Extension.Should().Be(".avif");
+
+        // Verify content references were updated
+        var updatedContent = await GetTest<ContentDetailsDto>($"/api/content/{createdContent!.Id}", HttpStatusCode.OK);
+        updatedContent.Should().NotBeNull();
+        updatedContent!.CoverImageUrl.Should().Be($"/api/media/{scopeUid}/{optimized.Name}");
+        updatedContent.Body.Should().Contain($"/api/media/{scopeUid}/{optimized.Name}");
+        updatedContent.Body.Should().NotContain($"/api/media/{scopeUid}/{media.Name}");
+    }
+
+    [Fact]
+    public async Task ResetMedia_ShouldUpdateContentReferences_WhenNameChanges()
+    {
+        TrackEntityType<Content>();
+
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "webp");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string scopeUid = "media-reset-content-ref";
+        const string originalFileName = "reset-ref.png";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var media = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        // Verify it was optimized
+        media.Extension.Should().Be(".webp");
+        media.OriginalName.Should().Be(originalFileName);
+
+        // Create content referencing the optimized media
+        var content = new ContentCreateDto
+        {
+            Title = "Reset Content Reference",
+            Description = "Description for reset content reference test",
+            Body = $"Image reference /api/media/{scopeUid}/{media.Name}",
+            Slug = "reset-content-ref",
+            Type = "blog-post",
+            Author = "Tester",
+            Language = "en",
+            Category = "Product",
+            Tags = new[] { "Tag1" },
+            AllowComments = true,
+            CoverImageUrl = $"/api/media/{scopeUid}/{media.Name}",
+        };
+
+        var createdContent = await PostTest<ContentDetailsDto>("/api/content", content, HttpStatusCode.Created);
+        createdContent.Should().NotBeNull();
+
+        // Now reset the media - it should revert to original name
+        var request = new MediaTransformRequestDto
+        {
+            ScopeUid = scopeUid,
+            FileName = media.Name,
+        };
+
+        var response = await Request(HttpMethod.Post, "/api/media/reset", request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var reset = await response.Content.ReadFromJsonAsync<MediaDetailsDto>();
+        reset.Should().NotBeNull();
+        reset!.Extension.Should().Be(".png");
+        reset.Name.Should().Be(originalFileName);
+
+        // Verify content references were updated
+        var updatedContent = await GetTest<ContentDetailsDto>($"/api/content/{createdContent!.Id}", HttpStatusCode.OK);
+        updatedContent.Should().NotBeNull();
+        updatedContent!.CoverImageUrl.Should().Be($"/api/media/{scopeUid}/{originalFileName}");
+        updatedContent.Body.Should().Contain($"/api/media/{scopeUid}/{originalFileName}");
+        updatedContent.Body.Should().NotContain($"/api/media/{scopeUid}/{media.Name}");
+    }
+
+    [Fact]
+    public async Task OptimizeAll_ShouldUpdateContentReferences_WhenNamesChange()
+    {
+        TrackEntityType<Content>();
+
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "png");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string scopeUid = "media-optimize-all-ref";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var media = await UploadMediaAsync(imageBytes, "optimize-all-ref.png", scopeUid);
+
+        // Create content referencing the media
+        var content = new ContentCreateDto
+        {
+            Title = "Optimize All Content Reference",
+            Description = "Description for optimize all content reference test",
+            Body = $"Image reference /api/media/{scopeUid}/{media.Name}",
+            Slug = "optimize-all-content-ref",
+            Type = "blog-post",
+            Author = "Tester",
+            Language = "en",
+            Category = "Product",
+            Tags = new[] { "Tag1" },
+            AllowComments = true,
+            CoverImageUrl = $"/api/media/{scopeUid}/{media.Name}",
+        };
+
+        var createdContent = await PostTest<ContentDetailsDto>("/api/content", content, HttpStatusCode.Created);
+        createdContent.Should().NotBeNull();
+
+        // Change format and optimize all
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
+
+        var optimizeRequest = new MediaBulkOptimizeRequestDto { Folder = scopeUid };
+        var response = await Request(HttpMethod.Post, "/api/media/optimize-all", optimizeRequest);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Get the updated media
+        var mediaList = await GetTest<List<MediaDetailsDto>>($"/api/media?filter[where][scopeUid][eq]={scopeUid}", HttpStatusCode.OK);
+        var optimized = mediaList!.First();
+        optimized.Extension.Should().Be(".avif");
+
+        // Verify content references were updated
+        var updatedContent = await GetTest<ContentDetailsDto>($"/api/content/{createdContent!.Id}", HttpStatusCode.OK);
+        updatedContent.Should().NotBeNull();
+        updatedContent!.CoverImageUrl.Should().Be($"/api/media/{scopeUid}/{optimized.Name}");
+        updatedContent.Body.Should().Contain($"/api/media/{scopeUid}/{optimized.Name}");
+    }
+
+    [Fact]
+    public async Task ResetAll_ShouldUpdateContentReferences_WhenNamesChange()
+    {
+        TrackEntityType<Content>();
+
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "webp");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string scopeUid = "media-reset-all-ref";
+        const string originalFileName = "reset-all-ref.png";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var media = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+
+        // Verify it was optimized
+        media.Extension.Should().Be(".webp");
+        media.OriginalName.Should().Be(originalFileName);
+
+        // Create content referencing the optimized media
+        var content = new ContentCreateDto
+        {
+            Title = "Reset All Content Reference",
+            Description = "Description for reset all content reference test",
+            Body = $"Image reference /api/media/{scopeUid}/{media.Name}",
+            Slug = "reset-all-content-ref",
+            Type = "blog-post",
+            Author = "Tester",
+            Language = "en",
+            Category = "Product",
+            Tags = new[] { "Tag1" },
+            AllowComments = true,
+            CoverImageUrl = $"/api/media/{scopeUid}/{media.Name}",
+        };
+
+        var createdContent = await PostTest<ContentDetailsDto>("/api/content", content, HttpStatusCode.Created);
+        createdContent.Should().NotBeNull();
+
+        // Reset all in this folder
+        var resetRequest = new MediaBulkResetRequestDto { Folder = scopeUid };
+        var response = await Request(HttpMethod.Post, "/api/media/reset-all", resetRequest);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Get the updated media
+        var mediaList = await GetTest<List<MediaDetailsDto>>($"/api/media?filter[where][scopeUid][eq]={scopeUid}", HttpStatusCode.OK);
+        var reset = mediaList!.First();
+        reset.Extension.Should().Be(".png");
+        reset.Name.Should().Be(originalFileName);
+
+        // Verify content references were updated
+        var updatedContent = await GetTest<ContentDetailsDto>($"/api/content/{createdContent!.Id}", HttpStatusCode.OK);
+        updatedContent.Should().NotBeNull();
+        updatedContent!.CoverImageUrl.Should().Be($"/api/media/{scopeUid}/{originalFileName}");
+        updatedContent.Body.Should().Contain($"/api/media/{scopeUid}/{originalFileName}");
+        updatedContent.Body.Should().NotContain($"/api/media/{scopeUid}/{media.Name}");
     }
 
     [Fact]
