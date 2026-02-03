@@ -36,14 +36,16 @@ public class AzureDevOpsDeploymentService : IDeploymentService
     public Task<List<DeploymentTargetDto>> GetTargetsAsync()
     {
         EnsureConfigured();
-        var targets = settings.DeploymentTargets.Select(kvp => new DeploymentTargetDto
-        {
-            Id = kvp.Key,
-            Name = kvp.Value.Name,
-            Description = kvp.Value.Description,
-            Provider = "AzureDevOps",
-            Resource = kvp.Value.Resource,
-        }).ToList();
+        var targets = settings.DeploymentTargets
+            .Where(kvp => kvp.Value.BuildPipelineId > 0)
+            .Select(kvp => new DeploymentTargetDto
+            {
+                Id = kvp.Key,
+                Name = kvp.Value.Name,
+                Description = kvp.Value.Description,
+                Provider = "AzureDevOps",
+                Resource = kvp.Value.Resource,
+            }).ToList();
 
         return Task.FromResult(targets);
     }
@@ -273,7 +275,10 @@ public class AzureDevOpsDeploymentService : IDeploymentService
     /// <inheritdoc/>
     public async Task<DeploymentTriggerResultDto> TriggerAllAsync(string? triggeredById)
     {
-        var allTargetIds = settings.DeploymentTargets.Keys.ToList();
+        var allTargetIds = settings.DeploymentTargets
+            .Where(kvp => kvp.Value.BuildPipelineId > 0)
+            .Select(kvp => kvp.Key)
+            .ToList();
         return await TriggerAsync(allTargetIds, triggeredById);
     }
 
@@ -284,6 +289,11 @@ public class AzureDevOpsDeploymentService : IDeploymentService
 
         foreach (var kvp in settings.DeploymentTargets)
         {
+            if (kvp.Value.BuildPipelineId <= 0)
+            {
+                continue;
+            }
+
             // Match on BuildPipelineId
             if (kvp.Value.BuildPipelineId != definitionId)
             {
