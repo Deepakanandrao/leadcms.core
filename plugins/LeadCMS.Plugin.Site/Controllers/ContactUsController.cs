@@ -28,7 +28,7 @@ public class ContactUsController : Controller
     private readonly IContactService contactService;
     private readonly IHttpClientFactory httpClientFactory;
     private readonly ILeadNotificationService leadNotificationService;
-    private readonly IHttpContextHelper httpContextHelper;
+    private readonly IHttpContextHelper? httpContextHelper;
 
     public ContactUsController(
         IEmailFromTemplateService emailService,
@@ -89,7 +89,7 @@ public class ContactUsController : Controller
             [
                 new KeyValuePair<string, string>("secret", pluginSettings.RecaptchaSecretKey),
                 new KeyValuePair<string, string>("response", contactUsDto.RecaptchaToken),
-                new KeyValuePair<string, string>("remoteip", httpContextHelper.IpAddress ?? string.Empty),
+                new KeyValuePair<string, string>("remoteip", httpContextHelper?.IpAddress ?? string.Empty),
             ]);
             var response = await client.PostAsync("https://www.google.com/recaptcha/api/siteverify", postData);
             if (!response.IsSuccessStatusCode)
@@ -161,8 +161,8 @@ public class ContactUsController : Controller
             ExtraData = contactUsDto.ExtraData,
             Attachments = attachmentFiles.Count > 0 ? attachmentFiles : null,
             TimeZoneOffset = contactUsDto.TimeZoneOffset,
-            IpAddress = httpContextHelper.IpAddress,
-            UserAgent = httpContextHelper.UserAgent,
+            IpAddress = httpContextHelper?.IpAddress,
+            UserAgent = httpContextHelper?.UserAgent,
         };
 
         // Send lead notifications to all enabled channels (email, Telegram, Slack)
