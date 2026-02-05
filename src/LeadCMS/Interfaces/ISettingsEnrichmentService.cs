@@ -45,6 +45,13 @@ public interface ISettingsEnrichmentService
     Task EnrichWithMediaSettingsAsync(Dictionary<string, string?> settings, string? userId = null);
 
     /// <summary>
+    /// Enriches settings dictionary with lead capture defaults.
+    /// </summary>
+    /// <param name="settings">Dictionary of settings to enrich.</param>
+    /// <returns>A task that represents the asynchronous enrichment operation.</returns>
+    Task EnrichWithLeadCaptureSettingsAsync(Dictionary<string, string?> settings);
+
+    /// <summary>
     /// Enriches settings dictionary with all known settings categories.
     /// This is a convenience method that calls all specific enrichment methods.
     /// </summary>

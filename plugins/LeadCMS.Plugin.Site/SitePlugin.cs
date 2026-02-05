@@ -6,12 +6,16 @@ using LeadCMS.Data;
 using LeadCMS.Interfaces;
 using LeadCMS.Plugin.Site.Configuration;
 using LeadCMS.Plugin.Site.Data;
+using LeadCMS.Plugin.Site.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace LeadCMS.Plugin.Site;
 
-public class SitePlugin : IPlugin
+/// <summary>
+/// Site plugin providing website functionality including contact forms, subscriptions, and lead capture.
+/// </summary>
+public class SitePlugin : IPlugin, ICapabilityProvider
 {
     public static PluginSettings Settings { get; private set; } = new PluginSettings();
 
@@ -26,5 +30,12 @@ public class SitePlugin : IPlugin
 
         services.AddScoped<PluginDbContextBase, LeadCmsSiteDbContext>();
         services.AddScoped<LeadCmsSiteDbContext, LeadCmsSiteDbContext>();
+        services.AddScoped<ILeadNotificationService, LeadNotificationService>();
+    }
+
+    /// <inheritdoc/>
+    public IEnumerable<string> GetCapabilities()
+    {
+        yield return "Site";
     }
 }

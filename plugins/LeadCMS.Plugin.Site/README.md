@@ -15,6 +15,7 @@ The Site Plugin provides essential website functionality for LeadCMS, including 
 ## Key Features
 
 ### Contact Form Management
+
 - Process contact form submissions with file attachments
 - Automatic lead creation and enhancement from form data
 - Multi-language support for international websites
@@ -22,6 +23,7 @@ The Site Plugin provides essential website functionality for LeadCMS, including 
 - Automated email notifications to sales/support teams
 
 ### Lead Generation
+
 - **Automatic Lead Creation**: Convert website visitors into lead records
 - **Data Enrichment**: Populate lead fields from form submissions
 - **Source Attribution**: Track leads from "Contact Us" source
@@ -29,6 +31,7 @@ The Site Plugin provides essential website functionality for LeadCMS, including 
 - **Lead Scoring**: Initial lead scoring based on form interactions
 
 ### Email Integration
+
 - **Acknowledgment Emails**: Send confirmation emails to form submitters
 - **Internal Notifications**: Alert sales/support teams of new inquiries
 - **Template-Based Emails**: Use customizable email templates
@@ -36,6 +39,7 @@ The Site Plugin provides essential website functionality for LeadCMS, including 
 - **Attachment Handling**: Process and forward file attachments
 
 ### Newsletter Subscription
+
 - Newsletter signup form processing
 - Subscription management and preferences
 - Double opt-in confirmation workflows
@@ -74,6 +78,64 @@ The plugin configuration includes website settings and contact form configuratio
 
 Set the `RecaptchaSecretKey` to your Google reCAPTCHA secret to enable automated spam protection. If this value is left as the placeholder or blank, reCAPTCHA is not enforced.
 
+### Lead Capture Settings (Database)
+
+Lead Capture settings are stored in the database and can be configured via the Settings API. These settings allow you to configure notifications when a new lead is captured through the contact form.
+
+| Setting Key                    | Type       | Default | Description                                                                          |
+| ------------------------------ | ---------- | ------- | ------------------------------------------------------------------------------------ |
+| `LeadCapture.Email.Enabled`    | boolean    | `true`  | Enable/disable email notifications                                                   |
+| `LeadCapture.Email.To`         | JSON array | `[]`    | Email addresses to receive lead notifications. Falls back to `ContactUs.To` if empty |
+| `LeadCapture.Telegram.Enabled` | boolean    | `false` | Enable/disable Telegram notifications                                                |
+| `LeadCapture.Telegram.BotId`   | string     | `""`    | Your Telegram bot ID (create via [@BotFather](https://t.me/botfather))               |
+| `LeadCapture.Telegram.ChatId`  | string     | `""`    | The Telegram chat ID to send notifications to                                        |
+| `LeadCapture.Slack.Enabled`    | boolean    | `false` | Enable/disable Slack notifications                                                   |
+| `LeadCapture.Slack.WebhookUrl` | string     | `""`    | Your Slack incoming webhook URL                                                      |
+
+#### Configuring Lead Capture via API
+
+Use the Settings API to configure lead capture settings:
+
+```http
+POST /api/settings
+Content-Type: application/json
+
+{
+  "key": "LeadCapture.Email.Enabled",
+  "value": "true"
+}
+```
+
+For email recipients, use a JSON array:
+
+```http
+POST /api/settings
+Content-Type: application/json
+
+{
+  "key": "LeadCapture.Email.To",
+  "value": "[\"leads@example.com\", \"sales@example.com\"]"
+}
+```
+
+#### Notification Message Format
+
+When a lead is captured, the notification message includes all available lead information:
+
+```
+🥹 New demo request
+✔️ Name: Emily Lauren,
+✔️ Phone: 15154271358,
+✔️ Company: Acme Corp,
+✔️ Email: emily@example.com,
+✔️ Subject: Product inquiry,
+✔️ Message: I'm interested in learning more...
+```
+
+## Capabilities
+
+This plugin provides the `Site` capability, which can be queried via the capabilities API. When this capability is present, clients can display and configure the Lead Capture settings.
+
 ## API Endpoints
 
 ### Contact Form Processing
@@ -105,11 +167,13 @@ Set the `RecaptchaSecretKey` to your Google reCAPTCHA secret to enable automated
 The contact form endpoint processes the following data:
 
 **Required Fields:**
+
 - **Email**: Contact email address (used for lead creation)
 - **Message**: Contact message content
 - **Language**: Preferred language for responses
 
 **Optional Fields:**
+
 - **FirstName**: Contact's first name
 - **LastName**: Contact's last name
 - **Company**: Company or organization name
@@ -121,6 +185,7 @@ The contact form endpoint processes the following data:
 ## Use Cases
 
 ### Lead Generation
+
 - **Website Inquiries**: Capture leads from contact forms
 - **Product Interest**: Track interest in specific products/services
 - **Demo Requests**: Handle requests for product demonstrations
@@ -128,6 +193,7 @@ The contact form endpoint processes the following data:
 - **Support Requests**: Channel support inquiries to appropriate teams
 
 ### Customer Service
+
 - **General Inquiries**: Handle general customer questions
 - **Technical Support**: Process technical support requests
 - **Billing Questions**: Route billing and payment inquiries
@@ -135,6 +201,7 @@ The contact form endpoint processes the following data:
 - **Complaint Handling**: Process and track customer complaints
 
 ### Marketing and Communication
+
 - **Newsletter Signups**: Build email marketing lists
 - **Event Registration**: Collect event registration information
 - **Content Downloads**: Gate content downloads with lead capture
@@ -142,6 +209,7 @@ The contact form endpoint processes the following data:
 - **Survey Participation**: Collect survey responses and feedback
 
 ### Sales Support
+
 - **Lead Qualification**: Initial lead qualification through form data
 - **Sales Inquiries**: Route sales inquiries to appropriate team members
 - **Proposal Requests**: Handle requests for proposals and quotes
@@ -155,12 +223,14 @@ The contact form endpoint processes the following data:
 The plugin relies on email templates configured in LeadCMS:
 
 **Contact_Us Template:**
+
 - Used for internal notifications to sales/support teams
 - Should include all form data variables
 - Support for file attachments
 - Multi-language support
 
 **Acknowledgment Template:**
+
 - Used for confirmation emails to form submitters
 - Should include personalization (first name)
 - Professional and welcoming tone
@@ -169,6 +239,7 @@ The plugin relies on email templates configured in LeadCMS:
 ### Template Variables
 
 **Available Variables for Contact_Us Template:**
+
 - `{fromEmail}` - Submitter's email address
 - `{firstName}` - Submitter's first name
 - `{lastName}` - Submitter's last name
@@ -177,6 +248,7 @@ The plugin relies on email templates configured in LeadCMS:
 - `{message}` - Message content
 
 **Available Variables for Acknowledgment Template:**
+
 - `{firstName}` - Submitter's first name
 - Additional variables as configured in template
 

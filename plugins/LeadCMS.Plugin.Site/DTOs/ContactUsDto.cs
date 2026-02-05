@@ -13,6 +13,28 @@ namespace LeadCMS.Plugin.Site.DTOs
 
         public IFormFile? Attachment { get; set; }
 
+        /// <summary>
+        /// Gets or sets the notification title or topic provided by the client.
+        /// </summary>
+        public string? Title { get; set; }
+
+        /// <summary>
+        /// Gets or sets the template name for internal lead notification emails.
+        /// If not provided, the default template is used.
+        /// </summary>
+        public string? NotificationType { get; set; }
+
+        /// <summary>
+        /// Gets or sets the template name for acknowledgment emails.
+        /// If not provided, the default template is used.
+        /// </summary>
+        public string? AcknowledgmentType { get; set; }
+
+        /// <summary>
+        /// Gets or sets the source page URL for the contact submission.
+        /// </summary>
+        public string? PageUrl { get; set; }
+
         [Required]
         public string FirstName { get; set; } = string.Empty;
 

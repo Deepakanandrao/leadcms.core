@@ -1,4 +1,4 @@
-version: '3.4'
+version: "3.4"
 
 services:
   elastic:
@@ -31,8 +31,8 @@ services:
     container_name: postgres
     image: postgres:14.5
     environment:
-      TZ: 'UTC'
-      PGTZ: 'UTC'
+      TZ: "UTC"
+      PGTZ: "UTC"
       POSTGRES_DB: LeadCMS
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -50,10 +50,11 @@ services:
       MP_UI_BIND_ADDR: 0.0.0.0:8025
       MP_SMTP_BIND_ADDR: 0.0.0.0:1025
     ports:
-      - "1025:1025"  # SMTP
-      - "8025:8025"  # Web
+      - "1025:1025" # SMTP
+      - "8025:8025" # Web
     volumes:
       - ./mailpit_auth:/tmp/mailpit_auth:ro
+    restart: unless-stopped
 
 volumes:
   postgres-data:

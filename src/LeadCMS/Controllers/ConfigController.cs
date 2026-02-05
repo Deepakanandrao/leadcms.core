@@ -158,6 +158,7 @@ public class ConfigController : ControllerBase
 
         await settingsEnrichmentService.EnrichWithContentValidationSettingsAsync(settings);
         await settingsEnrichmentService.EnrichWithIdentitySettingsAsync(settings);
+        await settingsEnrichmentService.EnrichWithLeadCaptureSettingsAsync(settings);
 
         var configDto = new ConfigDto
         {

@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Text.Json;
 using LeadCMS.Constants;
 using LeadCMS.Interfaces;
 
@@ -131,6 +132,31 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
     }
 
     /// <summary>
+    /// Enriches settings dictionary with lead capture defaults.
+    /// Falls back to ContactUs.To configuration when LeadCapture.Email.To is missing or empty.
+    /// </summary>
+    /// <param name="settings">Dictionary of settings to enrich.</param>
+    public async Task EnrichWithLeadCaptureSettingsAsync(Dictionary<string, string?> settings)
+    {
+        const string leadCaptureEmailToKey = "LeadCapture.Email.To";
+
+        var hasValue = settings.TryGetValue(leadCaptureEmailToKey, out var value)
+            && !string.IsNullOrWhiteSpace(value)
+            && !string.Equals(value, "[]", StringComparison.Ordinal);
+
+        if (!hasValue)
+        {
+            var contactUsTo = configuration.GetSection("ContactUs:To").Get<string[]>();
+            if (contactUsTo != null && contactUsTo.Length > 0)
+            {
+                settings[leadCaptureEmailToKey] = JsonSerializer.Serialize(contactUsTo);
+            }
+        }
+
+        await Task.CompletedTask;
+    }
+
+    /// <summary>
     /// Enriches settings dictionary with all known settings categories.
     /// This is a convenience method that calls all specific enrichment methods.
     /// </summary>
@@ -142,6 +168,7 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
         await EnrichWithIdentitySettingsAsync(settings, userId);
         await EnrichWithApiSettingsAsync(settings);
         await EnrichWithMediaSettingsAsync(settings, userId);
+        await EnrichWithLeadCaptureSettingsAsync(settings);
     }
 
     /// <summary>
