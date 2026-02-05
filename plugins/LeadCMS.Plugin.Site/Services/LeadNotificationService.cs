@@ -20,6 +20,8 @@ namespace LeadCMS.Plugin.Site.Services;
 /// </summary>
 public class LeadNotificationService : ILeadNotificationService
 {
+    private const int TelegramMessageMaxLength = 4096;
+    private const int SlackMessageMaxLength = 40000;
     private readonly IEmailFromTemplateService emailService;
     private readonly ISettingService settingService;
     private readonly PluginSettings pluginSettings;
@@ -274,6 +276,26 @@ public class LeadNotificationService : ILeadNotificationService
         return $"UTC{sign}{absolute:hh\\:mm}";
     }
 
+    private static string TruncateMessage(string message, int maxLength)
+    {
+        if (string.IsNullOrEmpty(message) || maxLength <= 0)
+        {
+            return string.Empty;
+        }
+
+        if (message.Length <= maxLength)
+        {
+            return message;
+        }
+
+        if (maxLength == 1)
+        {
+            return "…";
+        }
+
+        return message.Substring(0, maxLength - 1) + "…";
+    }
+
     private async Task SendEmailNotificationAsync(LeadNotificationInfo leadInfo, Dictionary<string, string?> settings)
     {
         try
@@ -329,6 +351,7 @@ public class LeadNotificationService : ILeadNotificationService
         try
         {
             var message = BuildTextMessage(leadInfo);
+            message = TruncateMessage(message, TelegramMessageMaxLength);
 
             using var httpClient = new HttpClient();
 
@@ -400,6 +423,7 @@ public class LeadNotificationService : ILeadNotificationService
         try
         {
             var message = BuildTextMessage(leadInfo);
+            message = TruncateMessage(message, SlackMessageMaxLength);
 
             var payload = new SlackMessagePayload
             {
