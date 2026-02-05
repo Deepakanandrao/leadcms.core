@@ -189,16 +189,15 @@ public class LeadNotificationService : ILeadNotificationService
         // {
         //     sb.AppendLine($"✔️ User-Agent: {leadInfo.UserAgent}");
         // }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.Message))
-        {
-            sb.AppendLine($"✔️ Message: {leadInfo.Message}");
-        }
-
         // Add any extra data
         foreach (var item in leadInfo.ExtraData)
         {
             sb.AppendLine($"✔️ {item.Key}: {item.Value}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(leadInfo.Message))
+        {
+            sb.AppendLine($"✔️ Message: {leadInfo.Message}");
         }
 
         return sb.ToString().TrimEnd(',', ' ', '\n', '\r');
@@ -338,7 +337,6 @@ public class LeadNotificationService : ILeadNotificationService
             [
                 new KeyValuePair<string, string>("chat_id", chatId),
                 new KeyValuePair<string, string>("text", message),
-                new KeyValuePair<string, string>("parse_mode", "Markdown"),
             ]);
 
             var response = await httpClient.PostAsync(sendMessageUrl, messageContent, cancellationToken);
