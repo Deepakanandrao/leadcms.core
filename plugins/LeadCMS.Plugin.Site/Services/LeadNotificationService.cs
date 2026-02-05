@@ -156,16 +156,6 @@ public class LeadNotificationService : ILeadNotificationService
             sb.AppendLine($"✔️ Page URL: {leadInfo.PageUrl}");
         }
 
-        if (!string.IsNullOrWhiteSpace(leadInfo.Content))
-        {
-            sb.AppendLine($"✔️ Content: {leadInfo.Content}");
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.Term))
-        {
-            sb.AppendLine($"✔️ Term: {leadInfo.Term}");
-        }
-
         if (!string.IsNullOrWhiteSpace(leadInfo.Subject))
         {
             sb.AppendLine($"✔️ Subject: {leadInfo.Subject}");
@@ -216,6 +206,7 @@ public class LeadNotificationService : ILeadNotificationService
             { "company", leadInfo.Company ?? string.Empty },
             { "subject", leadInfo.Subject ?? string.Empty },
             { "message", leadInfo.Message ?? string.Empty },
+            { "title", leadInfo.Title ?? string.Empty },
         };
 
         if (!string.IsNullOrWhiteSpace(leadInfo.Phone))
@@ -226,16 +217,6 @@ public class LeadNotificationService : ILeadNotificationService
         if (!string.IsNullOrWhiteSpace(leadInfo.PageUrl))
         {
             templateArgs.Add("pageUrl", leadInfo.PageUrl);
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.Content))
-        {
-            templateArgs.Add("content", leadInfo.Content);
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.Term))
-        {
-            templateArgs.Add("term", leadInfo.Term);
         }
 
         var timeZoneText = FormatTimeZoneOffset(leadInfo.TimeZoneOffset);

@@ -64,16 +64,6 @@ public class LeadNotificationInfo
     public string? PageUrl { get; set; }
 
     /// <summary>
-    /// Gets or sets the content identifier.
-    /// </summary>
-    public string? Content { get; set; }
-
-    /// <summary>
-    /// Gets or sets the term or keyword.
-    /// </summary>
-    public string? Term { get; set; }
-
-    /// <summary>
     /// Gets or sets additional data as key-value pairs.
     /// </summary>
     public Dictionary<string, string> ExtraData { get; set; } = new();
