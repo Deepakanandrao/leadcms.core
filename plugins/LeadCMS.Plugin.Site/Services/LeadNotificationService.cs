@@ -20,20 +20,17 @@ namespace LeadCMS.Plugin.Site.Services;
 /// </summary>
 public class LeadNotificationService : ILeadNotificationService
 {
-    private readonly IHttpClientFactory httpClientFactory;
     private readonly IEmailFromTemplateService emailService;
     private readonly ISettingService settingService;
     private readonly PluginSettings pluginSettings;
     private readonly ILogger<LeadNotificationService> logger;
 
     public LeadNotificationService(
-        IHttpClientFactory httpClientFactory,
         IEmailFromTemplateService emailService,
         ISettingService settingService,
         IConfiguration configuration,
         ILogger<LeadNotificationService> logger)
     {
-        this.httpClientFactory = httpClientFactory;
         this.emailService = emailService;
         this.settingService = settingService;
         this.logger = logger;
@@ -334,7 +331,7 @@ public class LeadNotificationService : ILeadNotificationService
         {
             var message = BuildTextMessage(leadInfo);
 
-            using var httpClient = httpClientFactory.CreateClient();
+            using var httpClient = new HttpClient();
 
             var sendMessageUrl = $"https://api.telegram.org/bot{botId}/sendMessage";
             using var messageContent = new FormUrlEncodedContent(
@@ -411,7 +408,7 @@ public class LeadNotificationService : ILeadNotificationService
                 Text = message,
             };
 
-            using var httpClient = httpClientFactory.CreateClient();
+            using var httpClient = new HttpClient();
             var response = await httpClient.PostAsJsonAsync(webhookUrl, payload, cancellationToken);
 
             if (!response.IsSuccessStatusCode)

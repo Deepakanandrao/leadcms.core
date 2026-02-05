@@ -26,7 +26,6 @@ public class ContactUsController : Controller
     private readonly PluginSettings? pluginSettings;
     private readonly LeadCmsSiteDbContext dbContext;
     private readonly IContactService contactService;
-    private readonly IHttpClientFactory httpClientFactory;
     private readonly ILeadNotificationService leadNotificationService;
     private readonly IHttpContextHelper? httpContextHelper;
 
@@ -35,7 +34,6 @@ public class ContactUsController : Controller
         IConfiguration configuration,
         LeadCmsSiteDbContext dbContext,
         IContactService contactService,
-        IHttpClientFactory httpClientFactory,
         ILeadNotificationService leadNotificationService,
         IHttpContextHelper httpContextHelper)
     {
@@ -43,7 +41,6 @@ public class ContactUsController : Controller
         this.dbContext = dbContext;
         this.contactService = contactService;
         this.contactService.SetDBContext(dbContext);
-        this.httpClientFactory = httpClientFactory;
         this.leadNotificationService = leadNotificationService;
         this.httpContextHelper = httpContextHelper;
         var settings = configuration.Get<PluginSettings>();
@@ -84,7 +81,7 @@ public class ContactUsController : Controller
                 return BadRequest("Missing reCAPTCHA token.");
             }
 
-            var client = httpClientFactory.CreateClient();
+            using var client = new HttpClient();
             var postData = new FormUrlEncodedContent(
             [
                 new KeyValuePair<string, string>("secret", pluginSettings.RecaptchaSecretKey),
