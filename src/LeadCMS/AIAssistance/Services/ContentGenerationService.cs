@@ -157,7 +157,33 @@ public class ContentGenerationService : IContentGenerationService
     public async Task<ContentDetailsDto> GenerateContentEditAsync(ContentEditRequest request)
     {
         var requiredMediaSection = await BuildRequiredMediaSectionAsync(request.RequiredMediaPaths);
-        var systemPrompt = await BuildEditSystemPromptAsync(requiredMediaSection);
+        MdxComponentAnalysisDto? componentAnalysis = null;
+        ContentFormat? contentFormat = null;
+
+        if (!string.IsNullOrWhiteSpace(request.Type))
+        {
+            var contentType = await dbContext.ContentTypes!
+                .FirstOrDefaultAsync(ct => ct.Uid == request.Type);
+
+            if (contentType != null)
+            {
+                contentFormat = contentType.Format;
+
+                if (contentFormat == ContentFormat.MDX || contentFormat == ContentFormat.MD)
+                {
+                    try
+                    {
+                        componentAnalysis = await mdxComponentParserService.AnalyzeContentTypeAsync(request.Type);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Warning(ex, "Failed to analyze MDX components for content type {ContentType}, proceeding without component information", request.Type);
+                    }
+                }
+            }
+        }
+
+        var systemPrompt = await BuildEditSystemPromptAsync(requiredMediaSection, contentFormat, componentAnalysis);
         var userPrompt = BuildEditUserPrompt(request, request.Prompt, request.CharacterCount, request.WordCount, requiredMediaSection);
 
         var requiredMediaInputs = await BuildRequiredMediaInputsAsync(request.RequiredMediaPaths);
@@ -689,7 +715,7 @@ You MUST include all REQUIRED MEDIA in the body. Do not omit any required image 
         return string.Join("\n", items.Select(i => $"- {i}"));
     }
 
-    private async Task<string> BuildEditSystemPromptAsync(string requiredMediaSection)
+    private async Task<string> BuildEditSystemPromptAsync(string requiredMediaSection, ContentFormat? contentFormat, MdxComponentAnalysisDto? componentAnalysis)
     {
         // Get content length constraints from settings/configuration
         var (minTitleLength, maxTitleLength, minDescriptionLength, maxDescriptionLength) = await GetContentLengthConstraintsAsync();
@@ -740,6 +766,33 @@ Each line is url|description
 You MUST place each image in the body using the same formatting style as the existing content.
 If no image format is shown, use Markdown image syntax: ![alt](url)
 {requiredMediaSection}";
+        }
+
+        if (contentFormat == ContentFormat.MDX || contentFormat == ContentFormat.MD)
+        {
+            if (componentAnalysis != null && componentAnalysis.Components.Any())
+            {
+                prompt += $@"
+
+MDX COMPONENTS - STRICT ALLOWLIST:
+You may ONLY use the following MDX components. DO NOT invent or use any components not listed here:
+{string.Join("\n", componentAnalysis.Components.Select(c => FormatComponentInfo(c)))}
+
+IMPORTANT MDX RULES:
+- ONLY use components from the list above - do not invent new components
+- Follow the exact prop structure shown in the examples
+- If the content uses HTML elements, preserve only the exact same HTML patterns
+- Match the exact indentation and formatting style from the original body";
+            }
+            else
+            {
+                prompt += $@"
+
+MDX/MARKDOWN RULES:
+- Use ONLY standard Markdown syntax and patterns present in the original content
+- DO NOT use custom MDX components unless they appear in the original content
+- If the content uses any HTML, preserve only the exact same HTML patterns";
+            }
         }
 
         prompt += $@"
