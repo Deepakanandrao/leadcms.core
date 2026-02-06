@@ -30,7 +30,7 @@ public class ContentGenerationController : ControllerBase
     /// <returns>Generated content based on existing samples and user prompt.</returns>
     [HttpPost("ai-draft")]
     [SwaggerOperation(Tags = new[] { "Content" })]
-    public async Task<ActionResult<ContentDetailsDto>> GenerateContent([FromBody] ContentGenerationRequest request)
+    public async Task<ActionResult<ContentCreateDto>> GenerateContent([FromBody] ContentGenerationRequest request)
     {
         var response = await contentGenerationService.GenerateContentAsync(request);
         return Ok(response);
@@ -43,7 +43,7 @@ public class ContentGenerationController : ControllerBase
     /// <returns>Generated edits for the content based on user prompt.</returns>
     [HttpPost("ai-edit")]
     [SwaggerOperation(Tags = new[] { "Content" })]
-    public async Task<ActionResult<ContentDetailsDto>> EditContent([FromBody] ContentEditRequest request)
+    public async Task<ActionResult<ContentCreateDto>> EditContent([FromBody] ContentEditRequest request)
     {
         var response = await contentGenerationService.GenerateContentEditAsync(request);
         return Ok(response);

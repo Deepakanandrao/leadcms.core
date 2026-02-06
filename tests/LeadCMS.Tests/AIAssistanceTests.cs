@@ -527,7 +527,7 @@ public class AIAssistanceTests : BaseTestAutoLogin
             WordCount = 50,
         };
 
-        var response = await PostTest<ContentDetailsDto>("/api/content/ai-draft", request, HttpStatusCode.OK);
+        var response = await PostTest<ContentCreateDto>("/api/content/ai-draft", request, HttpStatusCode.OK);
 
         response.Should().NotBeNull();
         response!.Title.Should().Be("AI Title");
@@ -566,7 +566,7 @@ public class AIAssistanceTests : BaseTestAutoLogin
             AllowComments = true,
         };
 
-        var response = await PostTest<ContentDetailsDto>("/api/content/ai-edit", request, HttpStatusCode.OK);
+        var response = await PostTest<ContentCreateDto>("/api/content/ai-edit", request, HttpStatusCode.OK);
 
         response.Should().NotBeNull();
         response!.Title.Should().Be("Edited Title");

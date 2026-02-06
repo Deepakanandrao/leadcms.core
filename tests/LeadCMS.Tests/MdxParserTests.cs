@@ -2,7 +2,6 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
-using FluentAssertions;
 using LeadCMS.Services;
 
 namespace LeadCMS.Tests;
@@ -697,6 +696,103 @@ Regular paragraph.
         customTable!.AcceptsChildren.Should().BeTrue();
         // Example should contain the nested CustomRow
         customTable.Examples[0].Should().Contain("<CustomRow />");
+    }
+
+    /// <summary>
+    /// Tests that fenced code blocks are ignored when parsing components.
+    /// </summary>
+    [Fact]
+    public void ParseMdx_CodeBlocks_IgnoresComponentsInsideCode()
+    {
+        // Arrange
+        var parser = new MdxParser();
+        var mdxContent = @"# Title
+
+    ```tsx
+    <CodeBlockComponent prop=""value"" />
+    ```
+
+    ```
+    <PlainCodeComponent />
+    ```
+
+    <Alert type=""info"">Text</Alert>
+
+    ~~~js
+    <AnotherFakeComponent />
+    ~~~";
+
+        // Act
+        var result = parser.ParseMdx(mdxContent);
+
+        // Assert - Only the real component outside code fences should be parsed
+        result.Should().HaveCount(1);
+        result[0].Name.Should().Be("Alert");
+    }
+
+    /// <summary>
+    /// Tests that template literal props with ">" characters are parsed as a single prop value.
+    /// </summary>
+    [Fact]
+    public void ParseMdx_MermaidTemplateLiteral_ParsesChartPropOnly()
+    {
+        // Arrange
+        var parser = new MdxParser();
+        var mdxContent = @"<MermaidDiagram chart={`
+graph TB
+    subgraph VM[""Virtual Machine Architecture""]
+        Host[""Host Operating System""]
+        Hypervisor[""Hypervisor (VMware)""]
+        VM1[""VM 1<br/>Guest OS (2GB)<br/>App A""]
+        VM2[""VM 2<br/>Guest OS (2GB)<br/>App B""]
+        VM3[""VM 3<br/>Guest OS (2GB)<br/>App C""]
+
+        Host --> Hypervisor
+        Hypervisor --> VM1
+        Hypervisor --> VM2
+        Hypervisor --> VM3
+    end
+
+    Note[""Total overhead: 6GB+ just for OS""]
+
+    style VM fill:#f9f9f9,stroke:#333,stroke-width:2px
+    style Host fill:#e1f5ff,stroke:#0288d1
+    style Hypervisor fill:#fff3e0,stroke:#f57c00
+    style VM1 fill:#ffebee,stroke:#c62828
+    style VM2 fill:#e8f5e9,stroke:#2e7d32
+    style VM3 fill:#f3e5f5,stroke:#6a1b9a
+    style Note fill:#fff9c4,stroke:#f57f17
+`} />";
+
+        // Act
+        var result = parser.ParseMdx(mdxContent);
+
+        // Assert
+        result.Should().HaveCount(1);
+        result[0].Name.Should().Be("MermaidDiagram");
+        result[0].Properties.Select(p => p.Name).Should().BeEquivalentTo("chart");
+        result[0].Properties[0].ExampleValues.Should().NotBeEmpty();
+        result[0].Properties[0].ExampleValues[0].Should().StartWith("{");
+    }
+
+    /// <summary>
+    /// Tests that inline code spans do not produce components.
+    /// </summary>
+    [Fact]
+    public void ParseMdx_InlineCode_IgnoresComponentsInCodeSpans()
+    {
+        // Arrange
+        var parser = new MdxParser();
+        var mdxContent = @"<Callout type=""info"" title=""Static export considerations"">
+    When using Next.js with `output: ""export""` for static sites, built-in image optimization is disabled. You can still use the `<Image>` component with `unoptimized={true}` or implement your own optimization during the build process.
+    </Callout>";
+
+        // Act
+        var result = parser.ParseMdx(mdxContent);
+
+        // Assert
+        result.Should().HaveCount(1);
+        result[0].Name.Should().Be("Callout");
     }
 
     /// <summary>

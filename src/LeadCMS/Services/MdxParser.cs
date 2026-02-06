@@ -42,10 +42,50 @@ public class MdxParser
             return new List<MdxComponentInfo>();
         }
 
+        var sanitizedContent = StripInlineCodeSpans(StripFencedCodeBlocks(mdxContent));
+        if (string.IsNullOrWhiteSpace(sanitizedContent))
+        {
+            return new List<MdxComponentInfo>();
+        }
+
         // Only parse components since imports are not used
-        var components = ParseComponents(mdxContent);
+        var components = ParseComponents(sanitizedContent);
 
         return components;
+    }
+
+    private static string StripFencedCodeBlocks(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return string.Empty;
+        }
+
+        var withoutBackticks = System.Text.RegularExpressions.Regex.Replace(
+            content,
+            "```[\\s\\S]*?```",
+            string.Empty,
+            System.Text.RegularExpressions.RegexOptions.Multiline);
+
+        return System.Text.RegularExpressions.Regex.Replace(
+            withoutBackticks,
+            "~~~[\\s\\S]*?~~~",
+            string.Empty,
+            System.Text.RegularExpressions.RegexOptions.Multiline);
+    }
+
+    private static string StripInlineCodeSpans(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return string.Empty;
+        }
+
+        return System.Text.RegularExpressions.Regex.Replace(
+            content,
+            "(`+)([\\s\\S]*?)\\1",
+            string.Empty,
+            System.Text.RegularExpressions.RegexOptions.Multiline);
     }
 
     /// <summary>
@@ -104,25 +144,29 @@ public class MdxParser
         var components = new List<ComponentMatch>();
         var processedRanges = new List<(int Start, int End)>();
 
-        // Pattern to match JSX component opening tags (self-closing and opening tags)
-        var componentPattern = @"<([A-Z][a-zA-Z0-9]*(?:\.[A-Z][a-zA-Z0-9]*)*)\s*([^>]*?)(/?)>";
-        var matches = System.Text.RegularExpressions.Regex.Matches(
-            content,
-            componentPattern,
-            System.Text.RegularExpressions.RegexOptions.Singleline | System.Text.RegularExpressions.RegexOptions.Multiline);
-
-        foreach (System.Text.RegularExpressions.Match match in matches)
+        for (var index = 0; index < content.Length; index++)
         {
-            // Skip if this match is within an already processed top-level component
-            if (IsWithinProcessedRange(match.Index, processedRanges))
+            if (content[index] != '<')
             {
                 continue;
             }
 
-            var componentName = match.Groups[1].Value;
-            var propsString = match.Groups[2].Value;
-            var isSelfClosing = match.Groups[3].Value == "/";
-            var fullMatch = match.Value;
+            if (!TryParseOpeningTag(content, index, out var tag))
+            {
+                continue;
+            }
+
+            // Skip if this match is within an already processed top-level component
+            if (IsWithinProcessedRange(tag.StartIndex, processedRanges))
+            {
+                index = Math.Max(index, tag.EndIndex - 1);
+                continue;
+            }
+
+            var componentName = tag.Name;
+            var propsString = tag.Props;
+            var isSelfClosing = tag.IsSelfClosing;
+            var fullMatch = content.Substring(tag.StartIndex, tag.EndIndex - tag.StartIndex);
 
             // Skip standard HTML tags (only if they are lowercase, not React components)
             if (StandardHtmlTags.Contains(componentName) && componentName == componentName.ToLowerInvariant())
@@ -131,29 +175,29 @@ public class MdxParser
             }
 
             var hasChildren = false;
-            var componentEndIndex = match.Index + match.Length;
+            var componentEndIndex = tag.EndIndex;
 
             if (!isSelfClosing)
             {
                 // Find the matching closing tag, accounting for nested components of the same type
-                var closingTagEndIndex = FindMatchingClosingTag(content, match.Index + match.Length, componentName);
+                var closingTagEndIndex = FindMatchingClosingTag(content, tag.EndIndex, componentName);
 
                 if (closingTagEndIndex > 0)
                 {
                     hasChildren = true;
-                    fullMatch = content.Substring(match.Index, closingTagEndIndex - match.Index);
+                    fullMatch = content.Substring(tag.StartIndex, closingTagEndIndex - tag.StartIndex);
                     componentEndIndex = closingTagEndIndex;
                 }
                 else
                 {
                     // No closing tag found, but since it's not self-closing, assume it has children
                     hasChildren = true;
-                    fullMatch = match.Value.TrimEnd('>') + $">...</{componentName}>";
+                    fullMatch = fullMatch.TrimEnd('>') + $">...</{componentName}>";
                 }
             }
 
             // Mark this range as processed so nested components are skipped
-            processedRanges.Add((match.Index, componentEndIndex));
+            processedRanges.Add((tag.StartIndex, componentEndIndex));
 
             var properties = ParsePropsFromString(propsString);
 
@@ -164,9 +208,141 @@ public class MdxParser
                 HasChildren = hasChildren,
                 FullMatch = fullMatch,
             });
+
+            index = Math.Max(index, componentEndIndex - 1);
         }
 
         return components;
+    }
+
+    private bool TryParseOpeningTag(string content, int startIndex, out (int StartIndex, int EndIndex, string Name, string Props, bool IsSelfClosing) tag)
+    {
+        tag = default;
+
+        if (startIndex < 0 || startIndex >= content.Length || content[startIndex] != '<')
+        {
+            return false;
+        }
+
+        if (startIndex + 1 >= content.Length || content[startIndex + 1] == '/')
+        {
+            return false;
+        }
+
+        var nameStart = startIndex + 1;
+        if (!char.IsUpper(content[nameStart]))
+        {
+            return false;
+        }
+
+        var nameEnd = nameStart;
+        while (nameEnd < content.Length)
+        {
+            var ch = content[nameEnd];
+            if (char.IsLetterOrDigit(ch) || ch == '.')
+            {
+                nameEnd++;
+                continue;
+            }
+
+            break;
+        }
+
+        if (nameEnd == nameStart)
+        {
+            return false;
+        }
+
+        var componentName = content.Substring(nameStart, nameEnd - nameStart);
+
+        var propsStart = nameEnd;
+        var inDouble = false;
+        var inSingle = false;
+        var inBacktick = false;
+        var braceDepth = 0;
+
+        for (var i = propsStart; i < content.Length; i++)
+        {
+            var ch = content[i];
+            var prev = i > 0 ? content[i - 1] : '\0';
+
+            if (inBacktick)
+            {
+                if (ch == '`' && prev != '\\')
+                {
+                    inBacktick = false;
+                }
+
+                continue;
+            }
+
+            if (inDouble)
+            {
+                if (ch == '"' && prev != '\\')
+                {
+                    inDouble = false;
+                }
+
+                continue;
+            }
+
+            if (inSingle)
+            {
+                if (ch == '\'' && prev != '\\')
+                {
+                    inSingle = false;
+                }
+
+                continue;
+            }
+
+            if (ch == '`')
+            {
+                inBacktick = true;
+                continue;
+            }
+
+            if (ch == '"')
+            {
+                inDouble = true;
+                continue;
+            }
+
+            if (ch == '\'')
+            {
+                inSingle = true;
+                continue;
+            }
+
+            if (ch == '{')
+            {
+                braceDepth++;
+                continue;
+            }
+
+            if (ch == '}' && braceDepth > 0)
+            {
+                braceDepth--;
+                continue;
+            }
+
+            if (ch == '>' && braceDepth == 0)
+            {
+                var props = content.Substring(propsStart, i - propsStart);
+                var trimmedProps = props.TrimEnd();
+                var isSelfClosing = trimmedProps.EndsWith('/');
+
+                if (isSelfClosing)
+                {
+                    trimmedProps = trimmedProps.TrimEnd().TrimEnd('/');
+                }
+
+                tag = (startIndex, i + 1, componentName, trimmedProps, isSelfClosing);
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

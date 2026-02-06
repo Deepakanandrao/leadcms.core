@@ -47,7 +47,7 @@ public class ContentGenerationService : IContentGenerationService
         this.httpContextAccessor = httpContextAccessor;
     }
 
-    public async Task<ContentDetailsDto> GenerateContentAsync(ContentGenerationRequest request)
+    public async Task<ContentCreateDto> GenerateContentAsync(ContentGenerationRequest request)
     {
         Log.Information("Starting content generation for type {ContentType} in language {Language}", request.ContentType, request.Language);
 
@@ -134,7 +134,7 @@ public class ContentGenerationService : IContentGenerationService
             };
 
             // Map to ContentDetailsDto
-            var result = mapper.Map<ContentDetailsDto>(contentEntity);
+            var result = mapper.Map<ContentCreateDto>(contentEntity);
 
             Log.Information("Successfully generated content for type {ContentType} in language {Language}", request.ContentType, request.Language);
             return result;
@@ -154,7 +154,7 @@ public class ContentGenerationService : IContentGenerationService
         }
     }
 
-    public async Task<ContentDetailsDto> GenerateContentEditAsync(ContentEditRequest request)
+    public async Task<ContentCreateDto> GenerateContentEditAsync(ContentEditRequest request)
     {
         var requiredMediaSection = await BuildRequiredMediaSectionAsync(request.RequiredMediaPaths);
         MdxComponentAnalysisDto? componentAnalysis = null;
@@ -211,7 +211,7 @@ public class ContentGenerationService : IContentGenerationService
                 Log.Warning("Edited content does not meet length constraints, but proceeding with edit");
             }
 
-            return new ContentDetailsDto
+            return new ContentCreateDto
             {
                 Title = title,
                 Slug = contentData.TryGetProperty("slug", out var slugProp) ? (slugProp.GetString() ?? request.Slug ?? string.Empty) : (request.Slug ?? string.Empty),
@@ -620,7 +620,7 @@ You MUST include all REQUIRED MEDIA in the body. Do not omit any required image 
         return prompt;
     }
 
-    private ContentDetailsDto ParseGeneratedContent(string generatedJson)
+    private ContentCreateDto ParseGeneratedContent(string generatedJson)
     {
         try
         {
@@ -628,7 +628,7 @@ You MUST include all REQUIRED MEDIA in the body. Do not omit any required image 
 
             var root = document.RootElement;
 
-            return new ContentDetailsDto
+            return new ContentCreateDto
             {
                 Title = GetStringProperty(root, "title"),
                 Description = GetStringProperty(root, "description"),
@@ -730,7 +730,8 @@ CRITICAL RULES - READ CAREFULLY:
 2. NO HALLUCINATION: Do not add new MDX components, HTML elements, or JSON attributes that are not present in the original content
 3. MAINTAIN STRUCTURE: Keep the overall structure and organization of the original content
 4. CONSERVATIVE EDITS: When the user's request is ambiguous, make the minimum changes necessary to fulfill the request
-5. If the content uses MDX components, preserve them exactly - do not invent new components
+5. If the content uses MDX components, preserve them exactly - do not invent new components or props unless specifically asked to add a component that is in the allowlist.
+6. If the content uses HTML, preserve only the exact same HTML patterns.
 
 EDITING GUIDELINES:
 - Apply the user's requested changes while preserving the core structure
@@ -780,7 +781,8 @@ You may ONLY use the following MDX components. DO NOT invent or use any componen
 
 IMPORTANT MDX RULES:
 - ONLY use components from the list above - do not invent new components
-- Follow the exact prop structure shown in the examples
+- Follow the exact prop structure shown in the examples (do not add, remove, or rename props)
+- If the user asks to add or change a component, only use components and props from this allowlist
 - If the content uses HTML elements, preserve only the exact same HTML patterns
 - Match the exact indentation and formatting style from the original body";
             }
