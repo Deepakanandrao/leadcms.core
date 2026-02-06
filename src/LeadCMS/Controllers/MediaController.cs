@@ -1091,6 +1091,67 @@ public class MediaController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// Deletes all media files within a folder, including all subfolders.
+    /// </summary>
+    [HttpPost("delete-folder")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<MediaOptimizeResponseDto>> DeleteFolder([FromBody] MediaBulkDeleteRequestDto request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Folder))
+        {
+            return UnprocessableEntity(new ProblemDetails
+            {
+                Title = "Invalid delete folder request",
+                Detail = "Folder is required.",
+                Status = StatusCodes.Status422UnprocessableEntity,
+            });
+        }
+
+        var folder = request.Folder.Trim().Trim('/');
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            return UnprocessableEntity(new ProblemDetails
+            {
+                Title = "Invalid delete folder request",
+                Detail = "Folder must be non-empty after trimming.",
+                Status = StatusCodes.Status422UnprocessableEntity,
+            });
+        }
+
+        const int batchSize = 50;
+        var deletedCount = 0;
+        var prefix = folder + "/";
+
+        while (true)
+        {
+            var batch = await pgDbContext.Media!
+                .Where(m => m.ScopeUid == folder || m.ScopeUid.StartsWith(prefix))
+                .OrderBy(m => m.Id)
+                .Take(batchSize)
+                .ToListAsync();
+
+            if (batch.Count == 0)
+            {
+                break;
+            }
+
+            pgDbContext.Media!.RemoveRange(batch);
+            await pgDbContext.SaveChangesAsync();
+            deletedCount += batch.Count;
+        }
+
+        return Ok(new MediaOptimizeResponseDto
+        {
+            Updated = deletedCount,
+        });
+    }
+
     [HttpPost("rename")]
     [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(MediaDetailsDto), StatusCodes.Status200OK)]

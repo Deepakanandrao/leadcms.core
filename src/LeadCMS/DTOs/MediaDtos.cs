@@ -146,6 +146,19 @@ public class MediaBulkRenameRequestDto
     public string NewFolder { get; set; } = string.Empty;
 }
 
+/// <summary>
+/// Request DTO for bulk media folder delete.
+/// </summary>
+public class MediaBulkDeleteRequestDto
+{
+    /// <summary>
+    /// Gets or sets the folder path to delete (e.g., "folder1" or "folder1/subfolder").
+    /// All subfolders are included.
+    /// </summary>
+    [Required]
+    public string Folder { get; set; } = string.Empty;
+}
+
 public class MediaRenameRequestDto
 {
     [Required]

@@ -968,6 +968,50 @@ public class MediaTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task DeleteFolder_ShouldDeleteRecursively()
+    {
+        const string folder = "media-delete-folder";
+        const string childFolder = "media-delete-folder/child";
+        const string otherFolder = "media-delete-other";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        await UploadMediaAsync(imageBytes, "parent.png", folder);
+        await UploadMediaAsync(imageBytes, "child.png", childFolder);
+        await UploadMediaAsync(imageBytes, "other.png", otherFolder);
+
+        var request = new MediaBulkDeleteRequestDto
+        {
+            Folder = folder,
+        };
+
+        var response = await Request(HttpMethod.Post, "/api/media/delete-folder", request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var result = await response.Content.ReadFromJsonAsync<MediaOptimizeResponseDto>();
+        result.Should().NotBeNull();
+        result!.Updated.Should().Be(2);
+
+        var parentAfter = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?filter[where][scopeUid][eq]={Uri.EscapeDataString(folder)}",
+            HttpStatusCode.OK);
+        parentAfter.Should().NotBeNull();
+        parentAfter!.Should().BeEmpty();
+
+        var childAfter = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?filter[where][scopeUid][eq]={Uri.EscapeDataString(childFolder)}",
+            HttpStatusCode.OK);
+        childAfter.Should().NotBeNull();
+        childAfter!.Should().BeEmpty();
+
+        var otherAfter = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?filter[where][scopeUid][eq]={Uri.EscapeDataString(otherFolder)}",
+            HttpStatusCode.OK);
+        otherAfter.Should().NotBeNull();
+        otherAfter!.Should().ContainSingle();
+    }
+
+    [Fact]
     public async Task OptimizeMedia_ShouldUpdateDimensionsAndRespectLogin()
     {
         await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
