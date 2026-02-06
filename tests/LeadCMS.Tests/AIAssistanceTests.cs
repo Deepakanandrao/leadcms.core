@@ -170,6 +170,38 @@ public class AIAssistanceTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task CoverImageEdit_ShouldNotAccumulateCoverSuffixes()
+    {
+        var createRequest = new CoverImageGenerationRequest
+        {
+            ContentTitle = "Cover Suffix Test",
+            ContentDescription = "Ensure cover edits do not append repeated suffixes.",
+            ContentSlug = "my-super-cool-article",
+        };
+
+        var created = await PostTest<MediaDetailsDto>("/api/content/ai-cover", createRequest, HttpStatusCode.OK);
+        created.Should().NotBeNull();
+
+        var editRequest = new CoverImageEditRequest
+        {
+            CoverImageUrl = created!.Location,
+            ContentTitle = "Cover Suffix Test Updated",
+            ContentDescription = "First edit",
+            Prompt = "Add a subtle gradient",
+        };
+
+        var firstEdit = await PostTest<MediaDetailsDto>("/api/content/ai-cover/edit", editRequest, HttpStatusCode.OK);
+        firstEdit.Should().NotBeNull();
+        firstEdit!.Name.Should().Contain("-cover-");
+
+        editRequest.ContentDescription = "Second edit";
+        var secondEdit = await PostTest<MediaDetailsDto>("/api/content/ai-cover/edit", editRequest, HttpStatusCode.OK);
+        secondEdit.Should().NotBeNull();
+
+        CountOccurrences(secondEdit!.Name, "-cover-").Should().Be(1, "cover suffix should not be repeated across edits");
+    }
+
+    [Fact]
     public async Task CoverImageGeneration_WithOptimisationEnabled_UsesPreferredFormatAndCoverDimensions()
     {
         await SetSystemSettingAsync(SettingKeys.MediaCoverDimensions, "100x50");
@@ -576,6 +608,16 @@ public class AIAssistanceTests : BaseTestAutoLogin
         var lastRequest = TestAIProviderService.GetLastTextRequest();
         lastRequest.Should().NotBeNull();
         lastRequest!.UserPrompt.Should().Contain(request.Prompt);
+    }
+
+    private static int CountOccurrences(string value, string token)
+    {
+        if (string.IsNullOrEmpty(value) || string.IsNullOrEmpty(token))
+        {
+            return 0;
+        }
+
+        return value.Split(token).Length - 1;
     }
 
     private static byte[] LoadEmbeddedResource(string fileName)

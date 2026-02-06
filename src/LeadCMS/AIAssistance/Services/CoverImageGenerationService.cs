@@ -499,16 +499,42 @@ public class CoverImageGenerationService : ICoverImageGenerationService
 
     private static string BuildUniqueCoverFileName(string baseName, string extension)
     {
-        var normalizedBase = string.IsNullOrWhiteSpace(baseName)
+        var normalizedBase = NormalizeCoverBaseName(baseName);
+        normalizedBase = string.IsNullOrWhiteSpace(normalizedBase)
             ? CoverNameSuffix
-            : baseName.Slugify();
+            : normalizedBase.Slugify();
         if (string.IsNullOrWhiteSpace(normalizedBase))
         {
             normalizedBase = CoverNameSuffix;
         }
 
         var timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+        if (normalizedBase.EndsWith($"-{CoverNameSuffix}", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{normalizedBase}-{timestamp}{extension}";
+        }
+
         return $"{normalizedBase}-{CoverNameSuffix}-{timestamp}{extension}";
+    }
+
+    private static string NormalizeCoverBaseName(string? baseName)
+    {
+        if (string.IsNullOrWhiteSpace(baseName))
+        {
+            return string.Empty;
+        }
+
+        var normalized = baseName.Trim();
+        var suffixPattern = new System.Text.RegularExpressions.Regex(
+            $@"-{CoverNameSuffix}-\d{{8}}-\d{{6}}$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        while (suffixPattern.IsMatch(normalized))
+        {
+            normalized = suffixPattern.Replace(normalized, string.Empty);
+        }
+
+        return normalized;
     }
 
     private async Task<List<SampleImageInfo>> GetSampleImagesAsync(
@@ -658,6 +684,7 @@ public class CoverImageGenerationService : ICoverImageGenerationService
     private async Task<Media> UpdateExistingMediaAsync(Media existingMedia, string? title, byte[] imageData)
     {
         var baseName = Path.GetFileNameWithoutExtension(existingMedia.OriginalName ?? existingMedia.Name);
+        baseName = NormalizeCoverBaseName(baseName);
         return await SaveToMediaAsync(existingMedia.ScopeUid, title ?? existingMedia.Description, imageData, baseName);
     }
 
