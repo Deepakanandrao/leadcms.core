@@ -3,6 +3,7 @@
 // </copyright>
 
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Reflection;
 
 namespace LeadCMS.Helpers;
@@ -13,8 +14,8 @@ namespace LeadCMS.Helpers;
 /// </summary>
 public static class DtoCleanupHelper
 {
-    private static readonly Dictionary<Type, Dictionary<PropertyInfo, List<PropertyInfo>>> SecondLevelDtosCache
-        = new Dictionary<Type, Dictionary<PropertyInfo, List<PropertyInfo>>>();
+    private static readonly ConcurrentDictionary<Type, Dictionary<PropertyInfo, List<PropertyInfo>>> SecondLevelDtosCache
+        = new ConcurrentDictionary<Type, Dictionary<PropertyInfo, List<PropertyInfo>>>();
 
     /// <summary>
     /// Removes second-level navigation properties from a collection of DTOs.
@@ -68,11 +69,11 @@ public static class DtoCleanupHelper
     {
         var dtoType = typeof(TDto);
 
-        if (SecondLevelDtosCache.TryGetValue(dtoType, out var cached))
-        {
-            return cached;
-        }
+        return SecondLevelDtosCache.GetOrAdd(dtoType, BuildSecondLevelDtos);
+    }
 
+    private static Dictionary<PropertyInfo, List<PropertyInfo>> BuildSecondLevelDtos(Type dtoType)
+    {
         var result = new Dictionary<PropertyInfo, List<PropertyInfo>>();
         var properties = dtoType.GetProperties();
 
@@ -94,7 +95,6 @@ public static class DtoCleanupHelper
             }
         }
 
-        SecondLevelDtosCache[dtoType] = result;
         return result;
     }
 
