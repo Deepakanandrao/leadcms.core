@@ -128,6 +128,24 @@ public class MediaBulkResetRequestDto
     public bool IncludeSubfolders { get; set; } = false;
 }
 
+/// <summary>
+/// Request DTO for bulk media folder rename with optional subfolder handling.
+/// </summary>
+public class MediaBulkRenameRequestDto
+{
+    /// <summary>
+    /// Gets or sets the source folder path to rename (e.g., "folder1" or "folder1/subfolder").
+    /// </summary>
+    [Required]
+    public string Folder { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the new folder path.
+    /// </summary>
+    [Required]
+    public string NewFolder { get; set; } = string.Empty;
+}
+
 public class MediaRenameRequestDto
 {
     [Required]

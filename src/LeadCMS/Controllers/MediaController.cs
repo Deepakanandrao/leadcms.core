@@ -997,6 +997,100 @@ public class MediaController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// Renames (moves) all media files within a folder, optionally including subfolders.
+    /// Updates content references in a single batch to avoid multiple change log records.
+    /// </summary>
+    [HttpPost("rename-folder")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<MediaOptimizeResponseDto>> RenameFolder([FromBody] MediaBulkRenameRequestDto request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Folder) || string.IsNullOrWhiteSpace(request.NewFolder))
+        {
+            return UnprocessableEntity(new ProblemDetails
+            {
+                Title = "Invalid rename folder request",
+                Detail = "Folder and NewFolder are required.",
+                Status = StatusCodes.Status422UnprocessableEntity,
+            });
+        }
+
+        var folder = request.Folder.Trim().Trim('/');
+        var newFolder = request.NewFolder.Trim().Trim('/');
+
+        if (string.IsNullOrWhiteSpace(folder) || string.IsNullOrWhiteSpace(newFolder))
+        {
+            return UnprocessableEntity(new ProblemDetails
+            {
+                Title = "Invalid rename folder request",
+                Detail = "Folder and NewFolder must be non-empty after trimming.",
+                Status = StatusCodes.Status422UnprocessableEntity,
+            });
+        }
+
+        if (string.Equals(folder, newFolder, StringComparison.OrdinalIgnoreCase))
+        {
+            return UnprocessableEntity(new ProblemDetails
+            {
+                Title = "Invalid rename folder request",
+                Detail = "Folder and NewFolder must be different.",
+                Status = StatusCodes.Status422UnprocessableEntity,
+            });
+        }
+
+        var disallowedPrefix = folder + "/";
+        if (newFolder.StartsWith(disallowedPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return UnprocessableEntity(new ProblemDetails
+            {
+                Title = "Invalid rename folder request",
+                Detail = "NewFolder cannot be a subfolder of Folder.",
+                Status = StatusCodes.Status422UnprocessableEntity,
+            });
+        }
+
+        var prefix = folder + "/";
+        IQueryable<Media> query = pgDbContext.Media!.OrderBy(m => m.Id)
+            .Where(m => m.ScopeUid == folder || m.ScopeUid.StartsWith(prefix));
+
+        var mediaItems = await query.ToListAsync();
+        if (mediaItems.Count == 0)
+        {
+            return Ok(new MediaOptimizeResponseDto
+            {
+                Updated = 0,
+            });
+        }
+
+        var deferredUpdates = new List<ContentReferenceUpdate>();
+        var updatedCount = 0;
+
+        foreach (var media in mediaItems)
+        {
+            var newScopeUid = ResolveNewScopeUid(media.ScopeUid, folder, newFolder);
+            if (string.Equals(media.ScopeUid, newScopeUid, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            await RenameMediaAsync(media, newScopeUid, media.Name, deferredUpdates);
+            updatedCount++;
+        }
+
+        await ApplyDeferredContentUpdatesAsync(deferredUpdates);
+        await pgDbContext.SaveChangesAsync();
+
+        return Ok(new MediaOptimizeResponseDto
+        {
+            Updated = updatedCount,
+        });
+    }
+
     [HttpPost("rename")]
     [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(MediaDetailsDto), StatusCodes.Status200OK)]
@@ -1901,6 +1995,25 @@ public class MediaController : ControllerBase
         }
 
         return totalLinksUpdated;
+    }
+
+    private string ResolveNewScopeUid(string currentScopeUid, string folder, string newFolder)
+    {
+        if (string.Equals(currentScopeUid, folder, StringComparison.OrdinalIgnoreCase))
+        {
+            return newFolder;
+        }
+
+        var prefix = folder + "/";
+        if (currentScopeUid.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var suffix = currentScopeUid.Substring(prefix.Length);
+            return string.IsNullOrWhiteSpace(suffix)
+                ? newFolder
+                : newFolder + "/" + suffix;
+        }
+
+        return currentScopeUid;
     }
 
     private readonly struct CoverResizeResult

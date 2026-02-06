@@ -11,6 +11,7 @@ using LeadCMS.Constants;
 using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
 using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Tests;
 
@@ -891,6 +892,79 @@ public class MediaTests : BaseTestAutoLogin
         var newLinkPattern = $"/api/media/{renameRequest.NewScopeUid}/{renameRequest.NewFileName}";
         var occurrences = updatedContent.Body!.Split(newLinkPattern).Length - 1;
         occurrences.Should().Be(2, "both the original name link and current name link should be replaced with new current link");
+    }
+
+    [Fact]
+    public async Task RenameFolder_ShouldUpdateContentReferences_AndCreateSingleChangeLogEntry()
+    {
+        TrackEntityType<Content>();
+
+        const string folder = "media-rename-folder";
+        const string childFolder = "media-rename-folder/child";
+        const string newFolder = "media-renamed-folder";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        var mediaParent = await UploadMediaAsync(imageBytes, "parent.png", folder);
+        var mediaChild = await UploadMediaAsync(imageBytes, "child.png", childFolder);
+
+        var content = new ContentCreateDto
+        {
+            Title = "Rename Folder Content",
+            Description = "Description long enough for rename folder test",
+            Body = $"Links /api/media/{folder}/{mediaParent.Name} and /api/media/{childFolder}/{mediaChild.Name}.",
+            Slug = "rename-folder-content",
+            Type = "blog-post",
+            Author = "Tester",
+            Language = "en",
+            Category = "Product",
+            Tags = new[] { "Tag1" },
+            AllowComments = true,
+            CoverImageUrl = $"/api/media/{folder}/{mediaParent.Name}",
+        };
+
+        var createdContent = await PostTest<ContentDetailsDto>("/api/content", content, HttpStatusCode.Created);
+        createdContent.Should().NotBeNull();
+
+        var renameRequest = new MediaBulkRenameRequestDto
+        {
+            Folder = folder,
+            NewFolder = newFolder,
+        };
+
+        var response = await Request(HttpMethod.Post, "/api/media/rename-folder", renameRequest);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var result = await response.Content.ReadFromJsonAsync<MediaOptimizeResponseDto>();
+        result.Should().NotBeNull();
+        result!.Updated.Should().Be(2);
+
+        var updatedParentList = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?filter[where][scopeUid][eq]={Uri.EscapeDataString(newFolder)}",
+            HttpStatusCode.OK);
+        updatedParentList.Should().NotBeNull();
+        updatedParentList!.Should().ContainSingle(m => m.Name == mediaParent.Name);
+
+        var updatedChildList = await GetTest<List<MediaDetailsDto>>(
+            $"/api/media?filter[where][scopeUid][eq]={Uri.EscapeDataString(newFolder + "/child")}",
+            HttpStatusCode.OK);
+        updatedChildList.Should().NotBeNull();
+        updatedChildList!.Should().ContainSingle(m => m.Name == mediaChild.Name);
+
+        var updatedContent = await GetTest<ContentDetailsDto>($"/api/content/{createdContent!.Id}", HttpStatusCode.OK);
+        updatedContent.Should().NotBeNull();
+        updatedContent!.CoverImageUrl.Should().Be($"/api/media/{newFolder}/{mediaParent.Name}");
+        updatedContent.Body.Should().Contain($"/api/media/{newFolder}/{mediaParent.Name}");
+        updatedContent.Body.Should().Contain($"/api/media/{newFolder}/child/{mediaChild.Name}");
+        updatedContent.Body.Should().NotContain($"/api/media/{folder}/{mediaParent.Name}");
+        updatedContent.Body.Should().NotContain($"/api/media/{childFolder}/{mediaChild.Name}");
+
+        var dbContext = App.GetDbContext();
+        var changeLogs = dbContext!.ChangeLogs!
+            .Where(c => c.ObjectType == "Content" && c.ObjectId == createdContent.Id && c.EntityState == EntityState.Modified)
+            .ToList();
+
+        changeLogs.Count.Should().Be(1);
     }
 
     [Fact]
