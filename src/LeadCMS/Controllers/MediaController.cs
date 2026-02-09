@@ -330,6 +330,20 @@ public class MediaController : ControllerBase
         return NoContent();
     }
 
+    [HttpDelete("bulk")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult> DeleteMany([FromBody] List<int> ids)
+    {
+        return await BulkDeleteHelper.ExecuteAsync(
+            pgDbContext,
+            pgDbContext.Media!,
+            ids);
+    }
+
     /// <summary>
     /// Retrieves a list of media files, optionally including folder structure.
     /// Supports X-Media-Resolution header or mediaResolution query parameter: "absolute" for full URLs, otherwise returns relative paths.

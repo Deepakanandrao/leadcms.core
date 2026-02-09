@@ -271,6 +271,15 @@ public class BaseTest : IDisposable
         return response;
     }
 
+    protected async Task<HttpResponseMessage> DeleteTest(string url, object payload, HttpStatusCode expectedCode = HttpStatusCode.NoContent)
+    {
+        var response = await Request(HttpMethod.Delete, url, payload);
+
+        response.StatusCode.Should().Be(expectedCode);
+
+        return response;
+    }
+
     protected string GetResouceFileTextContent(string fileName)
     {
         var assembly = Assembly.GetExecutingAssembly();

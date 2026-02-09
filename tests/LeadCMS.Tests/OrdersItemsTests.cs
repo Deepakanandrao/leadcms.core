@@ -237,7 +237,7 @@ public class OrdersItemsTests : TableWithFKTests<OrderItem, TestOrderItem, Order
     [InlineData("orderItems.json", 3)]
     public async Task ImportFileAddUpdateTest(string fileName, int expectedCount)
     {
-        await CreateItem();
+        await CreateItem(string.Empty, (await CreateFKItemWithKnownRefNo()).Item1);
         await PostImportTest(itemsUrl, fileName);
 
         var allOrderItemsResponse = await GetTest(itemsUrl);
@@ -286,6 +286,29 @@ public class OrdersItemsTests : TableWithFKTests<OrderItem, TestOrderItem, Order
     }
 
     protected override async Task<(int, string)> CreateFKItem()
+    {
+        var uid = Guid.NewGuid().ToString("N")[..8];
+
+        var contactCreate = new TestContact(uid);
+
+        var contactUrl = await PostTest("/api/contacts", contactCreate, HttpStatusCode.Created);
+
+        var contact = await GetTest<Contact>(contactUrl);
+
+        contact.Should().NotBeNull();
+
+        var orderCreate = new TestOrder(uid, contact!.Id);
+
+        var orderUrl = await PostTest("/api/orders", orderCreate, HttpStatusCode.Created);
+
+        var order = await GetTest<Order>(orderUrl);
+
+        order.Should().NotBeNull();
+
+        return (order!.Id, orderUrl);
+    }
+
+    private async Task<(int, string)> CreateFKItemWithKnownRefNo()
     {
         var contactCreate = new TestContact();
 

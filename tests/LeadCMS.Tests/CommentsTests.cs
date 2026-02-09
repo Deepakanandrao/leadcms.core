@@ -430,7 +430,7 @@ public class CommentsTests : TableWithFKTests<Comment, TestComment, CommentUpdat
 
     protected override async Task<(int, string)> CreateFKItem()
     {
-        var fkItemCreate = new TestContent();
+        var fkItemCreate = new TestContent(Guid.NewGuid().ToString("N")[..8]);
 
         var fkUrl = await PostTest("/api/content", fkItemCreate);
 

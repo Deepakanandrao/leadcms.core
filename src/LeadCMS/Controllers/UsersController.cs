@@ -13,6 +13,7 @@ using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace LeadCMS.Controllers;
@@ -189,6 +190,43 @@ public class UsersController : ControllerBase
         if (result.Errors.Any())
         {
             throw new IdentityException(result.Errors);
+        }
+
+        return NoContent();
+    }
+
+    [HttpDelete("bulk")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public virtual async Task<ActionResult> DeleteMany([FromBody] List<string> ids)
+    {
+        var invalidResult = BulkDeleteHelper.ValidateIds(ids);
+        if (invalidResult != null)
+        {
+            return invalidResult;
+        }
+
+        var distinctIds = ids
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct()
+            .ToList();
+
+        var usersToDelete = await userManager.Users
+            .Where(user => distinctIds.Contains(user.Id))
+            .ToListAsync();
+
+        BulkDeleteHelper.ThrowIfMissingIds(typeof(User).Name, distinctIds, usersToDelete.Select(user => user.Id));
+
+        foreach (var user in usersToDelete)
+        {
+            var result = await userManager.DeleteAsync(user);
+            if (result.Errors.Any())
+            {
+                throw new IdentityException(result.Errors);
+            }
         }
 
         return NoContent();

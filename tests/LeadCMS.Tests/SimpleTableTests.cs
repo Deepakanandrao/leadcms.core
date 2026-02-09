@@ -104,6 +104,33 @@ public abstract class SimpleTableTests<T, TC, TU, TS> : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task BulkDeleteItemsTest()
+    {
+        var item1 = await CreateItem();
+        var item2 = await CreateItem();
+
+        var id1 = int.Parse(item1.Item2.Split('/').Last());
+        var id2 = int.Parse(item2.Item2.Split('/').Last());
+
+        await DeleteTest($"{itemsUrl}/bulk", new[] { id1, id2 });
+
+        await GetTest(item1.Item2, HttpStatusCode.NotFound);
+        await GetTest(item2.Item2, HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task BulkDeleteItems_EmptyBody_ShouldReturnUnprocessableEntity()
+    {
+        await DeleteTest($"{itemsUrl}/bulk", Array.Empty<int>(), HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task BulkDeleteItems_NonExistentIds_ShouldReturnNotFound()
+    {
+        await DeleteTest($"{itemsUrl}/bulk", new[] { 999998, 999999 }, HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task CreateAndDeleteCheckEntityState_ChangeLog()
     {
         var testCreateItem = await CreateItem();
@@ -210,7 +237,7 @@ public abstract class SimpleTableTests<T, TC, TU, TS> : BaseTestAutoLogin
 
     protected virtual async Task<(TC, string)> CreateItem()
     {
-        var testCreateItem = TestData.Generate<TC>();
+        var testCreateItem = TestData.Generate<TC>(Guid.NewGuid().ToString("N")[..8]);
 
         // Track the entity type being created
         TrackEntityType<T>();

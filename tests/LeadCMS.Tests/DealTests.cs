@@ -69,7 +69,7 @@ public class DealTests : SimpleTableTests<Deal, TestDeal, DealUpdateDto, IDealSe
     {
         var fkData = await CreateFKItems(new List<TestContact>());
 
-        var dealCreate = new TestDeal(string.Empty, fkData.ContactIds, fkData.AccountId, fkData.PipelineId, fkData.UserId);
+        var dealCreate = new TestDeal(Guid.NewGuid().ToString("N")[..8], fkData.ContactIds, fkData.AccountId, fkData.PipelineId, fkData.UserId);
         var dealUrl = await PostTest(itemsUrl, dealCreate);
 
         return (dealCreate, dealUrl);
@@ -115,25 +115,26 @@ public class DealTests : SimpleTableTests<Deal, TestDeal, DealUpdateDto, IDealSe
     private async Task<FKData> CreateFKItems(List<TestContact> testContacts)
     {
         var result = new FKData();
+        var uid = Guid.NewGuid().ToString("N")[..8];
 
-        var accountCreate = new TestAccount();
+        var accountCreate = new TestAccount(uid);
         var account = await PostTest<Account>("/api/accounts", accountCreate);
         account.Should().NotBeNull();
         result.AccountId = account!.Id;
 
-        var pipelineCreate = new TestDealPipeline();
+        var pipelineCreate = new TestDealPipeline(uid);
         var pipeline = await PostTest<DealPipeline>("/api/deal-pipelines", pipelineCreate);
         pipeline.Should().NotBeNull();
         result.PipelineId = pipeline!.Id;
 
-        var userCreate = new TestUser();
+        var userCreate = new TestUser(uid);
         var user = await PostTest<User>("/api/users", userCreate);
         user.Should().NotBeNull();
         result.UserId = user!.Id;
         // Track the created user for cleanup
         createdUserIds.Add(user.Id);
 
-        var stages = new TestPipelineStage[] { new TestPipelineStage(string.Empty, pipeline!.Id) { Order = 0 }, new TestPipelineStage(string.Empty, pipeline!.Id) { Order = 1 } };
+        var stages = new TestPipelineStage[] { new TestPipelineStage(uid + "0", pipeline!.Id) { Order = 0 }, new TestPipelineStage(uid + "1", pipeline!.Id) { Order = 1 } };
         foreach (var stage in stages)
         {
             var newStage = await PostTest<DealPipelineStage>("/api/deal-pipeline-stages", stage);

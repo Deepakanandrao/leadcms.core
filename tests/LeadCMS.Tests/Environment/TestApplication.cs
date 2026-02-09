@@ -185,7 +185,7 @@ public class TestApplication : WebApplicationFactory<Program>
                     // Table names are from DbContext model metadata, not user input
                     // RESTART IDENTITY resets auto-increment sequences
 #pragma warning disable EF1002
-                    context.Database.ExecuteSqlRaw($"TRUNCATE TABLE {table} RESTART IDENTITY CASCADE;");
+                    context.Database.ExecuteSqlRaw($"TRUNCATE TABLE \"{table}\" RESTART IDENTITY CASCADE;");
 #pragma warning restore EF1002
                 }
                 catch

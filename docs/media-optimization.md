@@ -774,6 +774,3 @@ Potential areas for expansion:
 This documentation is part of the LeadCMS project, licensed under the MIT License.
 
 ---
-
-**Last Updated:** February 2, 2026
-**Version:** 1.3.14-pre

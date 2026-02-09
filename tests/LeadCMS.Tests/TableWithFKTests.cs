@@ -56,7 +56,7 @@ public abstract class TableWithFKTests<T, TC, TU, TS> : SimpleTableTests<T, TC, 
 
         var fkId = fkItem.Item1;
 
-        return await CreateItem(string.Empty, fkId);
+        return await CreateItem(Guid.NewGuid().ToString("N")[..8], fkId);
     }
 
     protected override void GenerateBulkRecords(int dataCount, Action<TC>? populateAttributes = null)

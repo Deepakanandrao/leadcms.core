@@ -101,6 +101,27 @@ namespace LeadCMS.Controllers
             return NoContent();
         }
 
+        // DELETE api/{entity}s/bulk
+        [HttpDelete("bulk")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+        public virtual async Task<ActionResult> DeleteMany([FromBody] List<int> ids)
+        {
+            return await BulkDeleteHelper.ExecuteAsync(
+                dbContext,
+                dbSet,
+                ids,
+                onAfterDelete: async entities =>
+                {
+                    foreach (var entity in entities)
+                    {
+                        await OnAfterDeleteAsync(entity);
+                    }
+                });
+        }
+
         [HttpGet]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]

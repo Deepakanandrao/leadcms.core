@@ -4,6 +4,7 @@
 
 using AutoMapper;
 using LeadCMS.Exceptions;
+using LeadCMS.Helpers;
 using LeadCMS.Plugin.EmailSync.Data;
 using LeadCMS.Plugin.EmailSync.DTOs;
 using LeadCMS.Plugin.EmailSync.Entities;
@@ -103,6 +104,20 @@ public class ImapAccountsController : ControllerBase
         await dbContext.SaveChangesAsync();
 
         return NoContent();
+    }
+
+    [SwaggerOperation(Tags = new[] { "Users" })]
+    [HttpDelete("{userId}/imap-accounts")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public virtual async Task<ActionResult> DeleteMany(string userId, [FromBody] List<int> ids)
+    {
+        return await BulkDeleteHelper.ExecuteAsync(
+            dbContext,
+            dbContext.ImapAccounts!.Where(account => account.UserId == userId),
+            ids);
     }
 
     private async Task<ImapAccount> FindOrThrowNotFound(string userId, int id)

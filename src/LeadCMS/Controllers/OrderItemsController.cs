@@ -6,6 +6,7 @@ using AutoMapper;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
+using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -109,6 +110,20 @@ public class OrderItemsController : BaseControllerWithImport<OrderItem, OrderIte
         await dbContext.SaveChangesAsync();
 
         return NoContent();
+    }
+
+    [HttpDelete("bulk")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public override async Task<ActionResult> DeleteMany([FromBody] List<int> ids)
+    {
+        return await BulkDeleteHelper.ExecuteAsync(
+            dbContext,
+            dbContext.OrderItems!.Include(orderItem => orderItem.Order),
+            ids,
+            customDelete: items => items.ForEach(orderItemService.Delete));
     }
 
     protected override async Task SaveRangeAsync(List<OrderItem> newRecords)

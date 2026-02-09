@@ -479,7 +479,10 @@ public class OrdersTests : TableWithFKTests<Order, TestOrder, OrderUpdateDto, IE
     [Fact]
     public async Task ImportFileWithoutContactId()
     {
-        await CreateFKItem();
+        TrackEntityType<Order>();
+
+        var contactCreate = new TestContact();
+        await PostTest("/api/contacts", contactCreate, HttpStatusCode.Created);
         await PostImportTest(itemsUrl, "ordersNoFK.csv");
 
         var addedOrder = App.GetDbContext()!.Orders!.First(o => o.Id == 1);
@@ -538,7 +541,7 @@ public class OrdersTests : TableWithFKTests<Order, TestOrder, OrderUpdateDto, IE
 
     protected override async Task<(int, string)> CreateFKItem()
     {
-        var fkItemCreate = new TestContact();
+        var fkItemCreate = new TestContact(Guid.NewGuid().ToString("N")[..8]);
 
         var fkUrl = await PostTest("/api/contacts", fkItemCreate, HttpStatusCode.Created);
 
