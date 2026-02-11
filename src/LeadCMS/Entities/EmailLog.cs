@@ -6,6 +6,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 using LeadCMS.DataAnnotations;
+using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Entities
 {
@@ -36,6 +37,7 @@ namespace LeadCMS.Entities
 
         [JsonIgnore]
         [ForeignKey("ContactId")]
+        [DeleteBehavior(DeleteBehavior.SetNull)]
         public virtual Contact? Contact { get; set; }
 
         /// <summary>

@@ -5,6 +5,7 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 using LeadCMS.DataAnnotations;
+using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Entities;
 
@@ -20,5 +21,6 @@ public class Unsubscribe : BaseCreateByEntity
 
     [JsonIgnore]
     [ForeignKey("ContactId")]
+    [DeleteBehavior(DeleteBehavior.SetNull)]
     public virtual Contact? Contact { get; set; }
 }
