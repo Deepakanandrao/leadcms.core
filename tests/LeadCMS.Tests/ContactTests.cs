@@ -202,6 +202,124 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
     }
 
     [Fact]
+    public async Task DeleteContact_ShouldSetEmailLogContactIdToNull()
+    {
+        TrackEntityType<EmailLog>();
+
+        var testCreateItem = await CreateItem();
+        var contactId = Convert.ToInt32(testCreateItem.Item2.Split("/").Last());
+
+        var dbContext = App.GetDbContext()!;
+        var contact = await dbContext.Contacts!.FindAsync(contactId);
+        contact.Should().NotBeNull();
+
+        var emailLog = new EmailLog
+        {
+            ContactId = contactId,
+            Subject = "Delete behavior test",
+            Recipients = contact!.Email,
+            FromEmail = "sender@test.net",
+            TextBody = "Body",
+            MessageId = "delete-contact-email-log",
+            Status = EmailStatus.Sent,
+            CreatedAt = DateTime.UtcNow,
+        };
+
+        await dbContext.EmailLogs!.AddAsync(emailLog);
+        await dbContext.SaveChangesAsync();
+
+        await DeleteTest($"/api/contacts/{contactId}");
+
+        dbContext = App.GetDbContext()!;
+        var deletedContact = await dbContext.Contacts!.FindAsync(contactId);
+        deletedContact.Should().BeNull();
+
+        var persistedEmailLog = await dbContext.EmailLogs!.FindAsync(emailLog.Id);
+        persistedEmailLog.Should().NotBeNull();
+        persistedEmailLog!.ContactId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetOneWithIncludeAccountAndDomain()
+    {
+        TrackEntityType<Account>();
+        TrackEntityType<Domain>();
+
+        // Create a contact (which auto-creates a domain)
+        var item = TestData.Generate<TestContact>();
+        var createUrl = await PostTest(itemsUrl, item);
+        createUrl.Should().NotBeNull();
+
+        var contactId = Convert.ToInt32(createUrl.Split("/").Last());
+
+        // Create an account and link it to the contact
+        var dbContext = App.GetDbContext()!;
+        var account = new Account { Name = "IncludeTestAccount_" + Guid.NewGuid().ToString("N")[..8] };
+        dbContext.Accounts!.Add(account);
+        await dbContext.SaveChangesAsync();
+
+        var contact = dbContext.Contacts!.First(c => c.Id == contactId);
+        contact.AccountId = account.Id;
+        await dbContext.SaveChangesAsync();
+
+        // GET by ID without includes — navigation properties should be null
+        var resultWithoutIncludes = await GetTest<ContactDetailsDto>($"{itemsUrl}/{contactId}");
+        resultWithoutIncludes.Should().NotBeNull();
+        resultWithoutIncludes!.AccountId.Should().Be(account.Id);
+        resultWithoutIncludes.DomainId.Should().BeGreaterThan(0);
+        resultWithoutIncludes.Account.Should().BeNull();
+        resultWithoutIncludes.Domain.Should().BeNull();
+
+        // GET by ID with filter[include]=Account&filter[include]=Domain
+        var resultWithIncludes = await GetTest<ContactDetailsDto>($"{itemsUrl}/{contactId}?filter[include]=Account&filter[include]=Domain");
+        resultWithIncludes.Should().NotBeNull();
+        resultWithIncludes!.AccountId.Should().Be(account.Id);
+        resultWithIncludes.DomainId.Should().BeGreaterThan(0);
+        resultWithIncludes.Account.Should().NotBeNull();
+        resultWithIncludes.Account!.Id.Should().Be(account.Id);
+        resultWithIncludes.Domain.Should().NotBeNull();
+        resultWithIncludes.Domain!.Id.Should().Be(contact.DomainId);
+
+        // Second-level navigation properties should be cleaned up (null)
+        resultWithIncludes.Account.Contacts.Should().BeNull();
+        resultWithIncludes.Account.Domains.Should().BeNull();
+        resultWithIncludes.Domain.Account.Should().BeNull();
+        resultWithIncludes.Domain.Contacts.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task DeleteContact_ShouldSetUnsubscribeContactIdToNull()
+    {
+        TrackEntityType<Unsubscribe>();
+
+        var testCreateItem = await CreateItem();
+        var contactId = Convert.ToInt32(testCreateItem.Item2.Split("/").Last());
+
+        var dbContext = App.GetDbContext()!;
+
+        var unsubscribe = new Unsubscribe
+        {
+            ContactId = contactId,
+            Reason = "Delete behavior test",
+            CreatedAt = DateTime.UtcNow,
+            Source = "ContactTests",
+        };
+
+        await dbContext.Unsubscribes!.AddAsync(unsubscribe);
+        await dbContext.SaveChangesAsync();
+
+        await DeleteTest($"/api/contacts/{contactId}");
+
+        dbContext = App.GetDbContext()!;
+        var deletedContact = await dbContext.Contacts!.FindAsync(contactId);
+        deletedContact.Should().BeNull();
+
+        var persistedUnsubscribe = await dbContext.Unsubscribes!.FindAsync(unsubscribe.Id);
+        persistedUnsubscribe.Should().NotBeNull();
+        persistedUnsubscribe!.ContactId.Should().BeNull();
+    }
+
+    [Fact]
     public async Task DuplicatedRecordsImportTest()
     {
         // first attempt to import records with some duplicates

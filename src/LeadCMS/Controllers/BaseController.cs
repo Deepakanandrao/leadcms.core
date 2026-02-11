@@ -44,9 +44,16 @@ namespace LeadCMS.Controllers
         [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
         public virtual async Task<ActionResult<TD>> GetOne(int id)
         {
-            var result = await FindOrThrowNotFound(id);
+            var qp = queryProviderFactory.BuildQueryProvider(limit: 1, additionalQueryString: $"filter[where][id]={id}");
+            var result = await qp.GetResult();
 
-            var resultConverted = mapper.Map<TD>(result);
+            if (result.Records == null || result.Records.Count == 0)
+            {
+                throw new EntityNotFoundException(typeof(T).Name, id.ToString());
+            }
+
+            var resultConverted = mapper.Map<TD>(result.Records.First());
+            DtoCleanupHelper.RemoveSecondLevelObjects(new List<TD> { resultConverted });
 
             return Ok(resultConverted);
         }

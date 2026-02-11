@@ -36,9 +36,20 @@ namespace LeadCMS.Infrastructure
             this.httpContextHelper = httpContextHelper;
         }
 
-        public virtual IQueryProvider<T> BuildQueryProvider(int limit = -1)
+        public virtual IQueryProvider<T> BuildQueryProvider(int limit = -1, string? additionalQueryString = null)
         {
-            var queryCommands = QueryStringParser.Parse(httpContextHelper.Request.QueryString.HasValue ? HttpUtility.UrlDecode(httpContextHelper.Request.QueryString.ToString()) : string.Empty);
+            var rawQueryString = httpContextHelper.Request.QueryString.HasValue
+                ? HttpUtility.UrlDecode(httpContextHelper.Request.QueryString.ToString())
+                : string.Empty;
+
+            if (!string.IsNullOrEmpty(additionalQueryString))
+            {
+                rawQueryString = string.IsNullOrEmpty(rawQueryString)
+                    ? additionalQueryString
+                    : $"{rawQueryString}&{additionalQueryString}";
+            }
+
+            var queryCommands = QueryStringParser.Parse(rawQueryString);
 
             var queryBuilder = new QueryModelBuilder<T>(queryCommands, limit == -1 ? apiSettingsConfig.Value.MaxListSize : limit, dbContext);
 

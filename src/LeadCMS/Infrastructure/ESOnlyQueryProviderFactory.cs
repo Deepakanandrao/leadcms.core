@@ -19,18 +19,29 @@ namespace LeadCMS.Infrastructure
         {
         }
 
-        public override IQueryProvider<T> BuildQueryProvider(int limit = -1)
+        public override IQueryProvider<T> BuildQueryProvider(int limit = -1, string? additionalQueryString = null)
         {
+            var rawQueryString = httpContextHelper.Request.QueryString.HasValue
+                ? HttpUtility.UrlDecode(httpContextHelper.Request.QueryString.ToString())
+                : string.Empty;
+
+            if (!string.IsNullOrEmpty(additionalQueryString))
+            {
+                rawQueryString = string.IsNullOrEmpty(rawQueryString)
+                    ? additionalQueryString
+                    : $"{rawQueryString}&{additionalQueryString}";
+            }
+
             // If Elasticsearch is disabled, fall back to database query provider
             if (!esDbContext.IsElasticsearchEnabled || elasticClient == null)
             {
                 var dbSet = dbContext.Set<T>();
-                var queryCommands = QueryStringParser.Parse(httpContextHelper.Request.QueryString.HasValue ? HttpUtility.UrlDecode(httpContextHelper.Request.QueryString.ToString()) : string.Empty);
+                var queryCommands = QueryStringParser.Parse(rawQueryString);
                 var queryBuilder = new QueryModelBuilder<T>(queryCommands, limit == -1 ? apiSettingsConfig.Value.MaxListSize : limit, dbContext);
                 return new DBQueryProvider<T>(dbSet!.AsQueryable<T>(), queryBuilder);
             }
 
-            var queryCommands2 = QueryStringParser.Parse(httpContextHelper.Request.QueryString.HasValue ? HttpUtility.UrlDecode(httpContextHelper.Request.QueryString.ToString()) : string.Empty);
+            var queryCommands2 = QueryStringParser.Parse(rawQueryString);
 
             var queryBuilder2 = new QueryModelBuilder<T>(queryCommands2, limit == -1 ? apiSettingsConfig.Value.MaxListSize : limit, dbContext);
 

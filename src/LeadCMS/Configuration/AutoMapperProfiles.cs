@@ -207,6 +207,11 @@ public class AutoMapperProfiles : Profile
         CreateMap<ActivityLog, ActivityLogDetailsDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
 
+        CreateMap<EmailLog, ContactEmailCommunicationListItemDto>()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+        CreateMap<EmailLog, ContactEmailCommunicationDetailsDto>()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+
         CreateMap<Unsubscribe, UnsubscribeDto>().ReverseMap();
         CreateMap<Unsubscribe, UnsubscribeDetailsDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
