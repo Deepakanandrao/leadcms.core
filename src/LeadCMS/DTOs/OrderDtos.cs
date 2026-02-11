@@ -47,16 +47,31 @@ public class OrderUpdateDto : IPatchDto
     [JsonIgnore]
     public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-    [Required]
-    public string RefNo { get; set; } = string.Empty;
+    public int? ContactId { get; set; }
+
+    public string? RefNo { get; set; }
+
+    public string? OrderNumber { get; set; }
 
     public string? AffiliateName { get; set; }
 
+    public decimal? ExchangeRate { get; set; }
+
+    public string? Currency { get; set; }
+
+    public bool? TestOrder { get; set; }
+
     public string? Data { get; set; }
+
+    public string? Source { get; set; }
 
     public OrderStatus? Status { get; set; }
 
     public string[]? Tags { get; set; }
+
+    public decimal? Commission { get; set; }
+
+    public decimal? Refund { get; set; }
 }
 
 public class OrderDetailsDto : OrderCreateDto

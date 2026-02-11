@@ -14,7 +14,7 @@ using Microsoft.EntityFrameworkCore;
 namespace LeadCMS.Controllers
 {
     [Authorize(Roles = "Admin")]
-    [Route("api/dashboard")] 
+    [Route("api/dashboard")]
     public class DashboardController : ControllerBase
     {
         private readonly PgDbContext db;
@@ -150,75 +150,75 @@ namespace LeadCMS.Controllers
             switch (query.GroupBy)
             {
                 case TimeGroupBy.Day:
-                {
-                    var raw = await baseQ
-                        .GroupBy(o => o.CreatedAt.Date)
-                        .Select(g => new { PeriodStart = g.Key, Revenue = g.Sum(x => (double)x.Total), Orders = g.Count() })
-                        .OrderBy(x => x.PeriodStart)
-                        .ToListAsync();
-                    items = raw.Select(x => new SalesPerformancePointDto
                     {
-                        Period = FormatPeriodLabel(x.PeriodStart, TimeGroupBy.Day),
-                        Revenue = (decimal)x.Revenue,
-                        Orders = x.Orders,
-                    }).ToList();
-                    break;
-                }
+                        var raw = await baseQ
+                            .GroupBy(o => o.CreatedAt.Date)
+                            .Select(g => new { PeriodStart = g.Key, Revenue = g.Sum(x => (double)x.Total), Orders = g.Count() })
+                            .OrderBy(x => x.PeriodStart)
+                            .ToListAsync();
+                        items = raw.Select(x => new SalesPerformancePointDto
+                        {
+                            Period = FormatPeriodLabel(x.PeriodStart, TimeGroupBy.Day),
+                            Revenue = (decimal)x.Revenue,
+                            Orders = x.Orders,
+                        }).ToList();
+                        break;
+                    }
 
                 case TimeGroupBy.Month:
-                {
-                    var raw = await baseQ
-                        .GroupBy(o => new { o.CreatedAt.Year, o.CreatedAt.Month })
-                        .Select(g => new { g.Key.Year, g.Key.Month, Revenue = g.Sum(x => (double)x.Total), Orders = g.Count() })
-                        .OrderBy(x => x.Year).ThenBy(x => x.Month)
-                        .ToListAsync();
-                    items = raw.Select(x => new SalesPerformancePointDto
                     {
-                        Period = FormatPeriodLabel(new DateTime(x.Year, x.Month, 1, 0, 0, 0, DateTimeKind.Utc), TimeGroupBy.Month),
-                        Revenue = (decimal)x.Revenue,
-                        Orders = x.Orders,
-                    }).ToList();
-                    break;
-                }
+                        var raw = await baseQ
+                            .GroupBy(o => new { o.CreatedAt.Year, o.CreatedAt.Month })
+                            .Select(g => new { g.Key.Year, g.Key.Month, Revenue = g.Sum(x => (double)x.Total), Orders = g.Count() })
+                            .OrderBy(x => x.Year).ThenBy(x => x.Month)
+                            .ToListAsync();
+                        items = raw.Select(x => new SalesPerformancePointDto
+                        {
+                            Period = FormatPeriodLabel(new DateTime(x.Year, x.Month, 1, 0, 0, 0, DateTimeKind.Utc), TimeGroupBy.Month),
+                            Revenue = (decimal)x.Revenue,
+                            Orders = x.Orders,
+                        }).ToList();
+                        break;
+                    }
 
                 case TimeGroupBy.Year:
-                {
-                    var raw = await baseQ
-                        .GroupBy(o => o.CreatedAt.Year)
-                        .Select(g => new { Year = g.Key, Revenue = g.Sum(x => (double)x.Total), Orders = g.Count() })
-                        .OrderBy(x => x.Year)
-                        .ToListAsync();
-                    items = raw.Select(x => new SalesPerformancePointDto
                     {
-                        Period = x.Year.ToString("D4", CultureInfo.InvariantCulture),
-                        Revenue = (decimal)x.Revenue,
-                        Orders = x.Orders,
-                    }).ToList();
-                    break;
-                }
+                        var raw = await baseQ
+                            .GroupBy(o => o.CreatedAt.Year)
+                            .Select(g => new { Year = g.Key, Revenue = g.Sum(x => (double)x.Total), Orders = g.Count() })
+                            .OrderBy(x => x.Year)
+                            .ToListAsync();
+                        items = raw.Select(x => new SalesPerformancePointDto
+                        {
+                            Period = x.Year.ToString("D4", CultureInfo.InvariantCulture),
+                            Revenue = (decimal)x.Revenue,
+                            Orders = x.Orders,
+                        }).ToList();
+                        break;
+                    }
 
                 case TimeGroupBy.Week:
                 case TimeGroupBy.Quarter:
                 default:
-                {
-                    var raw = await baseQ
-                        .Select(o => new { o.CreatedAt, o.Total })
-                        .ToListAsync();
-                    var aggregated = raw
-                        .GroupBy(x => query.GroupBy == TimeGroupBy.Week
-                            ? GetIsoWeekStartUtc(x.CreatedAt)
-                            : GetQuarterStartUtc(x.CreatedAt))
-                        .Select(g => new { PeriodStart = g.Key, Revenue = g.Sum(x => (double)x.Total), Orders = g.Count() })
-                        .OrderBy(x => x.PeriodStart)
-                        .ToList();
-                    items = aggregated.Select(x => new SalesPerformancePointDto
                     {
-                        Period = FormatPeriodLabel(x.PeriodStart, query.GroupBy),
-                        Revenue = (decimal)x.Revenue,
-                        Orders = x.Orders,
-                    }).ToList();
-                    break;
-                }
+                        var raw = await baseQ
+                            .Select(o => new { o.CreatedAt, o.Total })
+                            .ToListAsync();
+                        var aggregated = raw
+                            .GroupBy(x => query.GroupBy == TimeGroupBy.Week
+                                ? GetIsoWeekStartUtc(x.CreatedAt)
+                                : GetQuarterStartUtc(x.CreatedAt))
+                            .Select(g => new { PeriodStart = g.Key, Revenue = g.Sum(x => (double)x.Total), Orders = g.Count() })
+                            .OrderBy(x => x.PeriodStart)
+                            .ToList();
+                        items = aggregated.Select(x => new SalesPerformancePointDto
+                        {
+                            Period = FormatPeriodLabel(x.PeriodStart, query.GroupBy),
+                            Revenue = (decimal)x.Revenue,
+                            Orders = x.Orders,
+                        }).ToList();
+                        break;
+                    }
             }
 
             return Ok(items);
@@ -274,7 +274,7 @@ namespace LeadCMS.Controllers
         [HttpGet("crm/recent-orders")]
         public async Task<ActionResult<List<OrderSummaryDto>>> GetRecentOrders([FromQuery] int limit = 5)
         {
-            var q = from o in db.Orders!.AsNoTracking().OrderByDescending(o => o.CreatedAt)
+            var q = from o in db.Orders!.AsNoTracking().Where(o => !o.TestOrder).OrderByDescending(o => o.CreatedAt)
                     join c in db.Contacts!.AsNoTracking() on o.ContactId equals c.Id
                     select new OrderSummaryDto
                     {
@@ -302,75 +302,75 @@ namespace LeadCMS.Controllers
             switch (query.GroupBy)
             {
                 case TimeGroupBy.Day:
-                {
-                    var raw = await contacts
-                        .GroupBy(c => c.CreatedAt.Date)
-                        .Select(g => new { PeriodStart = g.Key, Contacts = g.Count() })
-                        .OrderBy(x => x.PeriodStart)
-                        .ToListAsync();
-                    list = raw.Select(x => new ContactGrowthPointDto
                     {
-                        Period = FormatPeriodLabel(x.PeriodStart, TimeGroupBy.Day),
-                        Contacts = x.Contacts,
-                    }).ToList();
-                    break;
-                }
+                        var raw = await contacts
+                            .GroupBy(c => c.CreatedAt.Date)
+                            .Select(g => new { PeriodStart = g.Key, Contacts = g.Count() })
+                            .OrderBy(x => x.PeriodStart)
+                            .ToListAsync();
+                        list = raw.Select(x => new ContactGrowthPointDto
+                        {
+                            Period = FormatPeriodLabel(x.PeriodStart, TimeGroupBy.Day),
+                            Contacts = x.Contacts,
+                        }).ToList();
+                        break;
+                    }
 
                 case TimeGroupBy.Month:
-                {
-                    var raw = await contacts
-                        .GroupBy(c => new { c.CreatedAt.Year, c.CreatedAt.Month })
-                        .Select(g => new { g.Key.Year, g.Key.Month, Contacts = g.Count() })
-                        .OrderBy(x => x.Year).ThenBy(x => x.Month)
-                        .ToListAsync();
-                    list = raw.Select(x => new ContactGrowthPointDto
                     {
-                        Period = FormatPeriodLabel(new DateTime(x.Year, x.Month, 1, 0, 0, 0, DateTimeKind.Utc), TimeGroupBy.Month),
-                        Contacts = x.Contacts,
-                    }).ToList();
-                    break;
-                }
+                        var raw = await contacts
+                            .GroupBy(c => new { c.CreatedAt.Year, c.CreatedAt.Month })
+                            .Select(g => new { g.Key.Year, g.Key.Month, Contacts = g.Count() })
+                            .OrderBy(x => x.Year).ThenBy(x => x.Month)
+                            .ToListAsync();
+                        list = raw.Select(x => new ContactGrowthPointDto
+                        {
+                            Period = FormatPeriodLabel(new DateTime(x.Year, x.Month, 1, 0, 0, 0, DateTimeKind.Utc), TimeGroupBy.Month),
+                            Contacts = x.Contacts,
+                        }).ToList();
+                        break;
+                    }
 
                 case TimeGroupBy.Year:
-                {
-                    var raw = await contacts
-                        .GroupBy(c => c.CreatedAt.Year)
-                        .Select(g => new { Year = g.Key, Contacts = g.Count() })
-                        .OrderBy(x => x.Year)
-                        .ToListAsync();
-                    list = raw.Select(x => new ContactGrowthPointDto
                     {
-                        Period = x.Year.ToString("D4", CultureInfo.InvariantCulture),
-                        Contacts = x.Contacts,
-                    }).ToList();
-                    break;
-                }
+                        var raw = await contacts
+                            .GroupBy(c => c.CreatedAt.Year)
+                            .Select(g => new { Year = g.Key, Contacts = g.Count() })
+                            .OrderBy(x => x.Year)
+                            .ToListAsync();
+                        list = raw.Select(x => new ContactGrowthPointDto
+                        {
+                            Period = x.Year.ToString("D4", CultureInfo.InvariantCulture),
+                            Contacts = x.Contacts,
+                        }).ToList();
+                        break;
+                    }
 
                 case TimeGroupBy.Week:
                 case TimeGroupBy.Quarter:
                 default:
-                {
-                    var raw = await contacts
-                        .Select(c => new { c.CreatedAt })
-                        .ToListAsync();
-                    var aggregated = raw
-                        .GroupBy(x => query.GroupBy == TimeGroupBy.Week
-                            ? GetIsoWeekStartUtc(x.CreatedAt)
-                            : GetQuarterStartUtc(x.CreatedAt))
-                        .Select(g => new { PeriodStart = g.Key, Contacts = g.Count() })
-                        .OrderBy(x => x.PeriodStart)
-                        .ToList();
-                    list = aggregated.Select(x => new ContactGrowthPointDto
                     {
-                        Period = FormatPeriodLabel(x.PeriodStart, query.GroupBy),
-                        Contacts = x.Contacts,
-                    }).ToList();
-                    break;
-                }
+                        var raw = await contacts
+                            .Select(c => new { c.CreatedAt })
+                            .ToListAsync();
+                        var aggregated = raw
+                            .GroupBy(x => query.GroupBy == TimeGroupBy.Week
+                                ? GetIsoWeekStartUtc(x.CreatedAt)
+                                : GetQuarterStartUtc(x.CreatedAt))
+                            .Select(g => new { PeriodStart = g.Key, Contacts = g.Count() })
+                            .OrderBy(x => x.PeriodStart)
+                            .ToList();
+                        list = aggregated.Select(x => new ContactGrowthPointDto
+                        {
+                            Period = FormatPeriodLabel(x.PeriodStart, query.GroupBy),
+                            Contacts = x.Contacts,
+                        }).ToList();
+                        break;
+                    }
             }
 
             return Ok(list);
-    }
+        }
 
         // CMS: top content by comment count (proxy for engagement)
         [HttpGet("cms/top-content")]
@@ -439,71 +439,71 @@ namespace LeadCMS.Controllers
             switch (query.GroupBy)
             {
                 case TimeGroupBy.Day:
-                {
-                    var raw = await baseQ
-                        .GroupBy(c => c.CreatedAt.Date)
-                        .Select(g => new { PeriodStart = g.Key, Count = g.Count() })
-                        .OrderBy(x => x.PeriodStart)
-                        .ToListAsync();
-                    items = raw.Select(x => new ContentGrowthPointDto
                     {
-                        Period = FormatPeriodLabel(x.PeriodStart, TimeGroupBy.Day),
-                        Contents = x.Count,
-                    }).ToList();
-                    break;
-                }
+                        var raw = await baseQ
+                            .GroupBy(c => c.CreatedAt.Date)
+                            .Select(g => new { PeriodStart = g.Key, Count = g.Count() })
+                            .OrderBy(x => x.PeriodStart)
+                            .ToListAsync();
+                        items = raw.Select(x => new ContentGrowthPointDto
+                        {
+                            Period = FormatPeriodLabel(x.PeriodStart, TimeGroupBy.Day),
+                            Contents = x.Count,
+                        }).ToList();
+                        break;
+                    }
 
                 case TimeGroupBy.Month:
-                {
-                    var raw = await baseQ
-                        .GroupBy(c => new { c.CreatedAt.Year, c.CreatedAt.Month })
-                        .Select(g => new { g.Key.Year, g.Key.Month, Count = g.Count() })
-                        .OrderBy(x => x.Year).ThenBy(x => x.Month)
-                        .ToListAsync();
-                    items = raw.Select(x => new ContentGrowthPointDto
                     {
-                        Period = FormatPeriodLabel(new DateTime(x.Year, x.Month, 1, 0, 0, 0, DateTimeKind.Utc), TimeGroupBy.Month),
-                        Contents = x.Count,
-                    }).ToList();
-                    break;
-                }
+                        var raw = await baseQ
+                            .GroupBy(c => new { c.CreatedAt.Year, c.CreatedAt.Month })
+                            .Select(g => new { g.Key.Year, g.Key.Month, Count = g.Count() })
+                            .OrderBy(x => x.Year).ThenBy(x => x.Month)
+                            .ToListAsync();
+                        items = raw.Select(x => new ContentGrowthPointDto
+                        {
+                            Period = FormatPeriodLabel(new DateTime(x.Year, x.Month, 1, 0, 0, 0, DateTimeKind.Utc), TimeGroupBy.Month),
+                            Contents = x.Count,
+                        }).ToList();
+                        break;
+                    }
 
                 case TimeGroupBy.Year:
-                {
-                    var raw = await baseQ
-                        .GroupBy(c => c.CreatedAt.Year)
-                        .Select(g => new { Year = g.Key, Count = g.Count() })
-                        .OrderBy(x => x.Year)
-                        .ToListAsync();
-                    items = raw.Select(x => new ContentGrowthPointDto
                     {
-                        Period = x.Year.ToString("D4", CultureInfo.InvariantCulture),
-                        Contents = x.Count,
-                    }).ToList();
-                    break;
-                }
+                        var raw = await baseQ
+                            .GroupBy(c => c.CreatedAt.Year)
+                            .Select(g => new { Year = g.Key, Count = g.Count() })
+                            .OrderBy(x => x.Year)
+                            .ToListAsync();
+                        items = raw.Select(x => new ContentGrowthPointDto
+                        {
+                            Period = x.Year.ToString("D4", CultureInfo.InvariantCulture),
+                            Contents = x.Count,
+                        }).ToList();
+                        break;
+                    }
 
                 case TimeGroupBy.Week:
                 case TimeGroupBy.Quarter:
                 default:
-                {
-                    var raw = await baseQ
-                        .Select(c => new { c.CreatedAt })
-                        .ToListAsync();
-                    var aggregated = raw
-                        .GroupBy(x => query.GroupBy == TimeGroupBy.Week
-                            ? GetIsoWeekStartUtc(x.CreatedAt)
-                            : GetQuarterStartUtc(x.CreatedAt))
-                        .Select(g => new { PeriodStart = g.Key, Count = g.Count() })
-                        .OrderBy(x => x.PeriodStart)
-                        .ToList();
-                    items = aggregated.Select(x => new ContentGrowthPointDto
                     {
-                        Period = FormatPeriodLabel(x.PeriodStart, query.GroupBy),
-                        Contents = x.Count,
-                    }).ToList();
-                    break;
-                }
+                        var raw = await baseQ
+                            .Select(c => new { c.CreatedAt })
+                            .ToListAsync();
+                        var aggregated = raw
+                            .GroupBy(x => query.GroupBy == TimeGroupBy.Week
+                                ? GetIsoWeekStartUtc(x.CreatedAt)
+                                : GetQuarterStartUtc(x.CreatedAt))
+                            .Select(g => new { PeriodStart = g.Key, Count = g.Count() })
+                            .OrderBy(x => x.PeriodStart)
+                            .ToList();
+                        items = aggregated.Select(x => new ContentGrowthPointDto
+                        {
+                            Period = FormatPeriodLabel(x.PeriodStart, query.GroupBy),
+                            Contents = x.Count,
+                        }).ToList();
+                        break;
+                    }
             }
 
             return Ok(items);

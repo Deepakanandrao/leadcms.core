@@ -10,6 +10,7 @@ using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Controllers;
 
@@ -43,6 +44,22 @@ public class OrdersController : BaseControllerWithImport<Order, OrderCreateDto, 
     public async Task<ActionResult<List<CommentDetailsDto>>> GetComments(int id)
     {
         return commentableControllerExtension.ReturnComments(await commentableControllerExtension.GetCommentsForICommentable<Order>(id), this);
+    }
+
+    [HttpGet("currencies")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<List<string>>> GetCurrencies()
+    {
+        var currencies = await dbSet
+            .Where(order => !order.TestOrder)
+            .Select(order => order.Currency)
+            .Distinct()
+            .OrderBy(currency => currency)
+            .ToListAsync();
+
+        return Ok(currencies);
     }
 
     [AllowAnonymous]
