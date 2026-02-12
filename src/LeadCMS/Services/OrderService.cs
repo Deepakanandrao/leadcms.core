@@ -4,17 +4,20 @@
 
 using LeadCMS.Data;
 using LeadCMS.Entities;
+using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
 
 namespace LeadCMS.Services
 {
     public class OrderService : IOrderService
     {
+        private readonly IConfiguration configuration;
         private PgDbContext pgDbContext;
 
-        public OrderService(PgDbContext pgDbContext)
+        public OrderService(PgDbContext pgDbContext, IConfiguration configuration)
         {
             this.pgDbContext = pgDbContext;
+            this.configuration = configuration;
         }
 
         public void RecalculateOrder(Order order)
@@ -32,7 +35,8 @@ namespace LeadCMS.Services
             var itemsCurrencyTotalSum = order.OrderItems!.Sum(oi => oi.CurrencyTotal);
             order.CurrencyTotal = itemsCurrencyTotalSum - order.Discounts!.Sum(d => d.Value) - order.Refund;
 
-            order.Total = order.CurrencyTotal * order.ExchangeRate;
+            var exchangeRate = ResolveExchangeRate(order);
+            order.Total = order.CurrencyTotal * exchangeRate;
             order.Quantity = order.OrderItems!.Sum(oi => oi.Quantity);
         }
 
@@ -77,6 +81,18 @@ namespace LeadCMS.Services
         public void SetDBContext(PgDbContext pgDbContext)
         {
             this.pgDbContext = pgDbContext;
+        }
+
+        private decimal ResolveExchangeRate(Order order)
+        {
+            var primaryCurrency = CurrencyInfoHelper.GetPrimaryCurrencyCode(configuration);
+            if (!string.IsNullOrWhiteSpace(order.Currency)
+                && string.Equals(order.Currency, primaryCurrency, StringComparison.OrdinalIgnoreCase))
+            {
+                return 1m;
+            }
+
+            return order.ExchangeRate;
         }
     }
 }

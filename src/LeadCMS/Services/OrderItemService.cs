@@ -4,6 +4,7 @@
 
 using LeadCMS.Data;
 using LeadCMS.Entities;
+using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
 
 namespace LeadCMS.Services
@@ -11,12 +12,14 @@ namespace LeadCMS.Services
     public class OrderItemService : IOrderItemService
     {
         private readonly IOrderService orderService;
+        private readonly IConfiguration configuration;
         private PgDbContext pgDbContext;
 
-        public OrderItemService(PgDbContext pgDbContext, IOrderService orderService)
+        public OrderItemService(PgDbContext pgDbContext, IOrderService orderService, IConfiguration configuration)
         {
             this.pgDbContext = pgDbContext;
             this.orderService = orderService;
+            this.configuration = configuration;
         }
 
         public void Delete(OrderItem orderItem)
@@ -28,7 +31,7 @@ namespace LeadCMS.Services
         public async Task SaveAsync(OrderItem orderItem)
         {
             orderItem.CurrencyTotal = CalculateOrderItemCurrencyTotal(orderItem);
-            orderItem.Total = CalculateOrderItemTotal(orderItem, orderItem.Order!.ExchangeRate);
+            orderItem.Total = CalculateOrderItemTotal(orderItem, orderItem.Order!);
 
             if (orderItem.Id > 0)
             {
@@ -48,7 +51,7 @@ namespace LeadCMS.Services
             foreach (var item in items)
             {
                 item.CurrencyTotal = CalculateOrderItemCurrencyTotal(item);
-                item.Total = CalculateOrderItemTotal(item, item.Order!.ExchangeRate);
+                item.Total = CalculateOrderItemTotal(item, item.Order!);
             }
 
             var existing = items.Where(i => i.Id > 0).ToList();
@@ -91,9 +94,22 @@ namespace LeadCMS.Services
             return orderItem.UnitPrice * orderItem.Quantity;
         }
 
-        private decimal CalculateOrderItemTotal(OrderItem orderItem, decimal exchangeRate)
+        private decimal CalculateOrderItemTotal(OrderItem orderItem, Order order)
         {
+            var exchangeRate = ResolveExchangeRate(order);
             return orderItem.CurrencyTotal * exchangeRate;
+        }
+
+        private decimal ResolveExchangeRate(Order order)
+        {
+            var primaryCurrency = CurrencyInfoHelper.GetPrimaryCurrencyCode(configuration);
+            if (!string.IsNullOrWhiteSpace(order.Currency)
+                && string.Equals(order.Currency, primaryCurrency, StringComparison.OrdinalIgnoreCase))
+            {
+                return 1m;
+            }
+
+            return order.ExchangeRate;
         }
     }
 }

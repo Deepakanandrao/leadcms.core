@@ -2,12 +2,11 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
-using LeadCMS.Configuration;
 using LeadCMS.Data;
 using LeadCMS.Entities;
+using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 namespace LeadCMS.Services
 {
@@ -15,15 +14,15 @@ namespace LeadCMS.Services
     {
         private readonly IDomainService domainService;
         private readonly IEmailSchedulingService emailSchedulingService;
-        private readonly IOptions<ApiSettingsConfig> apiSettingsConfig;
+        private readonly IConfiguration configuration;
         private PgDbContext pgDbContext;
 
-        public ContactService(PgDbContext pgDbContext, IDomainService domainService, IEmailSchedulingService emailSchedulingService, IOptions<ApiSettingsConfig> apiSettingsConfig)
+        public ContactService(PgDbContext pgDbContext, IDomainService domainService, IEmailSchedulingService emailSchedulingService, IConfiguration configuration)
         {
             this.pgDbContext = pgDbContext;
             this.domainService = domainService;
-            this.apiSettingsConfig = apiSettingsConfig;
             this.emailSchedulingService = emailSchedulingService;
+            this.configuration = configuration;
         }
 
         public async Task SaveAsync(Contact contact)
@@ -94,7 +93,7 @@ namespace LeadCMS.Services
 
         public async Task Subscribe(Contact contact, string groupName)
         {
-            var language = contact.Language ?? apiSettingsConfig.Value.DefaultLanguage;
+            var language = contact.Language ?? LanguageHelper.GetDefaultLanguage(configuration);
 
             var emailSchedule = await emailSchedulingService.FindByGroupAndLanguage(groupName, language);
 

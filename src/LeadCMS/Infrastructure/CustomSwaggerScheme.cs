@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using AutoMapper.Internal;
 using LeadCMS.DataAnnotations;
+using LeadCMS.Helpers;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
@@ -17,6 +18,16 @@ namespace LeadCMS.Infrastructure
     public class CustomSwaggerScheme : ISchemaFilter
     {
         private static readonly string CurrencySymbolsRegex = CurrencyCodeAttribute.GetAllCurrencyCodesRegex();
+        private readonly string primaryCurrencyCode;
+
+        public CustomSwaggerScheme(IServiceProvider serviceProvider)
+        {
+            using var scope = serviceProvider.CreateScope();
+            var configuration = scope.ServiceProvider.GetService<IConfiguration>();
+            primaryCurrencyCode = configuration == null
+                ? "USD"
+                : CurrencyInfoHelper.GetPrimaryCurrencyCode(configuration);
+        }
 
         public void Apply(OpenApiSchema schema, SchemaFilterContext context)
         {
@@ -57,7 +68,7 @@ namespace LeadCMS.Infrastructure
                             else if (property.GetCustomAttribute<CurrencyCodeAttribute>() != null)
                             {
                                 propertySchema.Value.Pattern = CurrencySymbolsRegex;
-                                SetStringExample(property, propertySchema.Value, "USD");
+                                SetStringExample(property, propertySchema.Value, primaryCurrencyCode);
                             }
                             else
                             {

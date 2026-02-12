@@ -2,25 +2,24 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
-using LeadCMS.Configuration;
 using LeadCMS.Data;
 using LeadCMS.Entities;
+using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 namespace LeadCMS.Services;
 
 public class EmailSchedulingService : IEmailSchedulingService
 {
-    private readonly IOptions<ApiSettingsConfig> apiSettingsConfig;
+    private readonly IConfiguration configuration;
 
     private PgDbContext dbContext;
 
-    public EmailSchedulingService(PgDbContext dbContext, IOptions<ApiSettingsConfig> apiSettingsConfig)
+    public EmailSchedulingService(PgDbContext dbContext, IConfiguration configuration)
     {
         this.dbContext = dbContext;
-        this.apiSettingsConfig = apiSettingsConfig;
+        this.configuration = configuration;
     }
 
     public async Task<EmailSchedule?> FindByGroupAndLanguage(string groupName, string languageCode)
@@ -50,7 +49,7 @@ public class EmailSchedulingService : IEmailSchedulingService
 
         if (result == null)
         {
-            result = await emailSchedulesQuery.FirstOrDefaultAsync(e => e.Group!.Language == apiSettingsConfig.Value.DefaultLanguage);
+            result = await emailSchedulesQuery.FirstOrDefaultAsync(e => e.Group!.Language == LanguageHelper.GetDefaultLanguage(configuration));
         }
 
         return result;

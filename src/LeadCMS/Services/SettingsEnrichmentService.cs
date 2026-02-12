@@ -81,13 +81,11 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
     public async Task EnrichWithApiSettingsAsync(Dictionary<string, string?> settings)
     {
         // Get API settings directly from configuration since these don't typically have database overrides
-        var defaultLanguage = configuration["ApiSettings:DefaultLanguage"] ?? "en";
         var maxListSize = configuration["ApiSettings:MaxListSize"] ?? "100";
         var defaultFromEmail = configuration["ApiSettings:DefaultFromEmail"] ?? "no-reply@leadcms.ai";
         var defaultFromName = configuration["ApiSettings:DefaultFromName"] ?? "LeadCMS";
 
         // Update settings dictionary with fallback values where needed (handles null values)
-        SetSettingIfNullOrEmpty(settings, "ApiSettings.DefaultLanguage", defaultLanguage);
         SetSettingIfNullOrEmpty(settings, "ApiSettings.MaxListSize", maxListSize);
         SetSettingIfNullOrEmpty(settings, "ApiSettings.DefaultFromEmail", defaultFromEmail);
         SetSettingIfNullOrEmpty(settings, "ApiSettings.DefaultFromName", defaultFromName);

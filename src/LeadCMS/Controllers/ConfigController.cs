@@ -7,6 +7,7 @@ using LeadCMS.Configuration;
 using LeadCMS.Constants;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
+using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -48,7 +49,7 @@ public class ConfigController : ControllerBase
         var jwtConfig = configuration.GetSection("Jwt").Get<JwtConfig>() ?? new JwtConfig();
         var azureAdConfig = configuration.GetSection("AzureAd").Get<AzureADConfig>() ?? new AzureADConfig();
         var entitiesConfig = configuration.GetSection("Entities").Get<EntitiesConfig>() ?? new EntitiesConfig();
-        var supportedLanguagesConfig = configuration.GetSection("SupportedLanguages").Get<string[]>() ?? Array.Empty<string>();
+        var supportedLanguagesConfig = LanguageHelper.GetSupportedLanguages(configuration);
 
         var authMethods = new List<string>();
         if (jwtConfig.IsInitialized())
@@ -147,9 +148,7 @@ public class ConfigController : ControllerBase
 
         var settings = await settingService.GetSettingsByKeysAsync(publicSettingKeys, userId);
 
-        // Get DefaultLanguage from ApiSettings section
-        var apiSettingsSection = configuration.GetSection("ApiSettings");
-        var defaultLanguage = apiSettingsSection["DefaultLanguage"] ?? "en";
+        var defaultLanguage = supportedLanguagesConfig.First();
 
         var dynamicModules = PluginManager.GetAllDynamicModules();
 
@@ -159,6 +158,10 @@ public class ConfigController : ControllerBase
         await settingsEnrichmentService.EnrichWithContentValidationSettingsAsync(settings);
         await settingsEnrichmentService.EnrichWithIdentitySettingsAsync(settings);
         await settingsEnrichmentService.EnrichWithLeadCaptureSettingsAsync(settings);
+
+        var primaryCurrency = CurrencyInfoHelper.GetPrimaryCurrencyInfo(configuration)
+            ?? CurrencyInfoHelper.GetByCode("USD")
+            ?? CurrencyInfoHelper.GetAll().FirstOrDefault();
 
         var configDto = new ConfigDto
         {
@@ -173,6 +176,7 @@ public class ConfigController : ControllerBase
             DefaultLanguage = defaultLanguage,
             Modules = dynamicModules,
             Capabilities = capabilities,
+            PrimaryCurrency = primaryCurrency,
         };
 
         return Ok(configDto);
@@ -189,11 +193,13 @@ public class ConfigDto
 
     public Dictionary<string, string?> Settings { get; set; } = new Dictionary<string, string?>();
 
-    public string DefaultLanguage { get; set; } = "en";
+    public string DefaultLanguage { get; set; } = LanguageHelper.DefaultFallbackLanguage;
 
     public List<DynamicModuleDto>? Modules { get; set; }
 
     public IEnumerable<string> Capabilities { get; set; } = Array.Empty<string>();
+
+    public CurrencyInfoDto? PrimaryCurrency { get; set; }
 }
 
 public class AuthConfigDto

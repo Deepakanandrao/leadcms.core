@@ -83,8 +83,6 @@ public class ApiSettingsConfig
 
     public string MaxRequestBodySize { get; set; } = string.Empty;
 
-    public string DefaultLanguage { get; set; } = "en";
-
     public string DefaultFromEmail { get; set; } = "no-reply@leadcms.ai";
 
     public string DefaultFromName { get; set; } = "LeadCMS";

@@ -20,13 +20,16 @@ namespace LeadCMS.Services
 
         private readonly IEmailWithLogService emailWithLogService;
         private readonly PgDbContext pgDbContext;
-        private readonly IOptions<ApiSettingsConfig> apiSettingsConfig;
+        private readonly IConfiguration configuration;
 
-        public EmailFromTemplateService(IEmailWithLogService emailWithLogService, PgDbContext pgDbContext, IOptions<ApiSettingsConfig> apiSettingsConfig)
+        public EmailFromTemplateService(IEmailWithLogService emailWithLogService, PgDbContext pgDbContext, IOptions<ApiSettingsConfig> apiSettingsConfig, IConfiguration configuration)
         {
             this.emailWithLogService = emailWithLogService;
             this.pgDbContext = pgDbContext;
-            this.apiSettingsConfig = apiSettingsConfig;
+            this.configuration = configuration;
+
+            var defaultFromEmail = apiSettingsConfig.Value.DefaultFromEmail;
+            var defaultFromName = apiSettingsConfig.Value.DefaultFromName;
 
             // Initialize hardcoded templates with configuration values
             hardcodedTemplates = new Dictionary<string, EmailTemplate>
@@ -36,8 +39,8 @@ namespace LeadCMS.Services
                     Name = "Password_Reset",
                     Subject = "Password Reset",
                     BodyTemplate = "Click <a href=\"${ResetUrl}\">here</a> to reset your password.",
-                    FromEmail = apiSettingsConfig.Value.DefaultFromEmail,
-                    FromName = apiSettingsConfig.Value.DefaultFromName,
+                    FromEmail = defaultFromEmail,
+                    FromName = defaultFromName,
                 },
 
                 ["Account_Created"] = new EmailTemplate
@@ -45,8 +48,8 @@ namespace LeadCMS.Services
                     Name = "Account_Created",
                     Subject = "Your account has been created",
                     BodyTemplate = "Hello ${UserName},<br/>Your account has been created. Your password is: <b>${Password}</b>",
-                    FromEmail = apiSettingsConfig.Value.DefaultFromEmail,
-                    FromName = apiSettingsConfig.Value.DefaultFromName,
+                    FromEmail = defaultFromEmail,
+                    FromName = defaultFromName,
                 },
 
                 ["Password_Updated"] = new EmailTemplate
@@ -54,8 +57,8 @@ namespace LeadCMS.Services
                     Name = "Password_Updated",
                     Subject = "Your password has been updated",
                     BodyTemplate = "Hello ${UserName},<br/>Your password has been updated. Your new password is: <b>${Password}</b>",
-                    FromEmail = apiSettingsConfig.Value.DefaultFromEmail,
-                    FromName = apiSettingsConfig.Value.DefaultFromName,
+                    FromEmail = defaultFromEmail,
+                    FromName = defaultFromName,
                 },
             };
         }
@@ -106,7 +109,7 @@ namespace LeadCMS.Services
 
         private async Task<EmailTemplate?> GetEmailTemplateByLanguage(string name, string? language)
         {
-            string defaultLang = apiSettingsConfig.Value.DefaultLanguage!;
+            string defaultLang = LanguageHelper.GetDefaultLanguage(configuration);
 
             // set default if not set
             language ??= defaultLang;

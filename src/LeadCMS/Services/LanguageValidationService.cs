@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
 
 namespace LeadCMS.Services;
@@ -19,13 +20,7 @@ public class LanguageValidationService : ILanguageValidationService
     /// <param name="configuration">The configuration instance.</param>
     public LanguageValidationService(IConfiguration configuration)
     {
-        supportedLanguages = configuration.GetSection("SupportedLanguages").Get<string[]>()?.ToList() ?? new List<string>();
-
-        // If no supported languages are configured, default to English
-        if (supportedLanguages.Count == 0)
-        {
-            supportedLanguages.Add("en");
-        }
+        supportedLanguages = LanguageHelper.GetSupportedLanguages(configuration).ToList();
     }
 
     /// <inheritdoc/>
