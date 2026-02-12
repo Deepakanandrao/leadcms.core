@@ -42,27 +42,66 @@ namespace LeadCMS.Controllers
             var accountsQ = db.Accounts!.AsNoTracking().Where(a => a.CreatedAt >= start && a.CreatedAt <= end);
             var accountsCount = await accountsQ.LongCountAsync();
 
-            // Orders in range (exclude tests; revenue uses Total)
+            // Orders in range (exclude tests)
             var ordersQ = db.Orders!.AsNoTracking()
                 .Where(o => !o.TestOrder && o.CreatedAt >= start && o.CreatedAt <= end);
             var ordersCount = await ordersQ.LongCountAsync();
-            var revenue = (decimal)(await ordersQ.SumAsync(o => (double?)o.Total) ?? 0d);
 
-            double? contactsChange = null, accountsChange = null, ordersChange = null, revenueChange = null;
+            // Revenue & auxiliary totals
+            var revenue = (decimal)(await ordersQ.SumAsync(o => (double?)o.Total) ?? 0d);
+            var totalRefunds = (decimal)(await ordersQ.SumAsync(o => (double?)o.Refund) ?? 0d);
+            var totalCommissions = (decimal)(await ordersQ.SumAsync(o => (double?)o.Commission) ?? 0d);
+
+            // Paid contacts — distinct contacts created in range with at least one paid order in range
+            var paidOrdersQ = ordersQ.Where(o => o.Status == OrderStatus.Paid);
+            var paidContactsCount = await (
+                from o in paidOrdersQ
+                join c in contactsQ on o.ContactId equals c.Id
+                select o.ContactId
+            ).Distinct().LongCountAsync();
+
+            // Paid accounts — distinct accounts linked to contacts created in range with paid orders in range
+            var paidAccountsCount = await (
+                from o in paidOrdersQ
+                join c in contactsQ on o.ContactId equals c.Id
+                where c.AccountId != null
+                select c.AccountId!.Value
+            ).Distinct().LongCountAsync();
+
+            double? contactsChange = null, accountsChange = null, ordersChange = null;
+            double? revenueChange = null;
+            double? paidContactsChange = null, paidAccountsChange = null;
             if (prev.HasValue)
             {
                 var p = prev.Value;
-                var pContactsCount = await ApplyContactFilters(db.Contacts!.AsNoTracking(), query)
-                    .Where(c => c.CreatedAt >= p.from && c.CreatedAt <= p.to).LongCountAsync();
-                var pAccountsCount = await db.Accounts!.AsNoTracking().Where(a => a.CreatedAt >= p.from && a.CreatedAt <= p.to).LongCountAsync();
+                var pContactsQ = ApplyContactFilters(db.Contacts!.AsNoTracking(), query)
+                    .Where(c => c.CreatedAt >= p.from && c.CreatedAt <= p.to);
+                var pContactsCount = await pContactsQ.LongCountAsync();
+                var pAccountsQ = db.Accounts!.AsNoTracking().Where(a => a.CreatedAt >= p.from && a.CreatedAt <= p.to);
+                var pAccountsCount = await pAccountsQ.LongCountAsync();
                 var pOrdersQ = db.Orders!.AsNoTracking().Where(o => !o.TestOrder && o.CreatedAt >= p.from && o.CreatedAt <= p.to);
                 var pOrdersCount = await pOrdersQ.LongCountAsync();
                 var pRevenue = (decimal)(await pOrdersQ.SumAsync(o => (double?)o.Total) ?? 0d);
+
+                var pPaidOrdersQ = pOrdersQ.Where(o => o.Status == OrderStatus.Paid);
+                var pPaidContactsCount = await (
+                    from o in pPaidOrdersQ
+                    join c in pContactsQ on o.ContactId equals c.Id
+                    select o.ContactId
+                ).Distinct().LongCountAsync();
+                var pPaidAccountsCount = await (
+                    from o in pPaidOrdersQ
+                    join c in pContactsQ on o.ContactId equals c.Id
+                    where c.AccountId != null
+                    select c.AccountId!.Value
+                ).Distinct().LongCountAsync();
 
                 contactsChange = pContactsCount == 0 ? null : (contactsCount - pContactsCount) * 100.0 / pContactsCount;
                 accountsChange = pAccountsCount == 0 ? null : (accountsCount - pAccountsCount) * 100.0 / pAccountsCount;
                 ordersChange = pOrdersCount == 0 ? null : (ordersCount - pOrdersCount) * 100.0 / pOrdersCount;
                 revenueChange = pRevenue == 0 ? null : (double)((revenue - pRevenue) * 100m / pRevenue);
+                paidContactsChange = pPaidContactsCount == 0 ? null : (paidContactsCount - pPaidContactsCount) * 100.0 / pPaidContactsCount;
+                paidAccountsChange = pPaidAccountsCount == 0 ? null : (paidAccountsCount - pPaidAccountsCount) * 100.0 / pPaidAccountsCount;
             }
 
             var dto = new CrmMetricsDto
@@ -71,10 +110,16 @@ namespace LeadCMS.Controllers
                 ContactsChangePct = contactsChange,
                 TotalAccounts = accountsCount,
                 AccountsChangePct = accountsChange,
+                PaidContacts = paidContactsCount,
+                PaidContactsChangePct = paidContactsChange,
+                PaidAccounts = paidAccountsCount,
+                PaidAccountsChangePct = paidAccountsChange,
                 TotalOrders = ordersCount,
                 OrdersChangePct = ordersChange,
                 Revenue = revenue,
                 RevenueChangePct = revenueChange,
+                TotalRefunds = totalRefunds,
+                TotalCommissions = totalCommissions,
             };
 
             return Ok(dto);
@@ -153,15 +198,17 @@ namespace LeadCMS.Controllers
                     {
                         var raw = await baseQ
                             .GroupBy(o => o.CreatedAt.Date)
-                            .Select(g => new { PeriodStart = g.Key, Revenue = g.Sum(x => (double)x.Total), Orders = g.Count() })
+                            .Select(g => new
+                            {
+                                PeriodStart = g.Key,
+                                Revenue = g.Sum(x => (double)x.Total),
+                                Refunds = g.Sum(x => (double)x.Refund),
+                                Commissions = g.Sum(x => (double)x.Commission),
+                                Orders = g.Count(),
+                            })
                             .OrderBy(x => x.PeriodStart)
                             .ToListAsync();
-                        items = raw.Select(x => new SalesPerformancePointDto
-                        {
-                            Period = FormatPeriodLabel(x.PeriodStart, TimeGroupBy.Day),
-                            Revenue = (decimal)x.Revenue,
-                            Orders = x.Orders,
-                        }).ToList();
+                        items = raw.Select(x => MapSalesPoint(FormatPeriodLabel(x.PeriodStart, TimeGroupBy.Day), x.Revenue, x.Refunds, x.Commissions, x.Orders)).ToList();
                         break;
                     }
 
@@ -169,15 +216,18 @@ namespace LeadCMS.Controllers
                     {
                         var raw = await baseQ
                             .GroupBy(o => new { o.CreatedAt.Year, o.CreatedAt.Month })
-                            .Select(g => new { g.Key.Year, g.Key.Month, Revenue = g.Sum(x => (double)x.Total), Orders = g.Count() })
+                            .Select(g => new
+                            {
+                                g.Key.Year,
+                                g.Key.Month,
+                                Revenue = g.Sum(x => (double)x.Total),
+                                Refunds = g.Sum(x => (double)x.Refund),
+                                Commissions = g.Sum(x => (double)x.Commission),
+                                Orders = g.Count(),
+                            })
                             .OrderBy(x => x.Year).ThenBy(x => x.Month)
                             .ToListAsync();
-                        items = raw.Select(x => new SalesPerformancePointDto
-                        {
-                            Period = FormatPeriodLabel(new DateTime(x.Year, x.Month, 1, 0, 0, 0, DateTimeKind.Utc), TimeGroupBy.Month),
-                            Revenue = (decimal)x.Revenue,
-                            Orders = x.Orders,
-                        }).ToList();
+                        items = raw.Select(x => MapSalesPoint(FormatPeriodLabel(new DateTime(x.Year, x.Month, 1, 0, 0, 0, DateTimeKind.Utc), TimeGroupBy.Month), x.Revenue, x.Refunds, x.Commissions, x.Orders)).ToList();
                         break;
                     }
 
@@ -185,15 +235,17 @@ namespace LeadCMS.Controllers
                     {
                         var raw = await baseQ
                             .GroupBy(o => o.CreatedAt.Year)
-                            .Select(g => new { Year = g.Key, Revenue = g.Sum(x => (double)x.Total), Orders = g.Count() })
+                            .Select(g => new
+                            {
+                                Year = g.Key,
+                                Revenue = g.Sum(x => (double)x.Total),
+                                Refunds = g.Sum(x => (double)x.Refund),
+                                Commissions = g.Sum(x => (double)x.Commission),
+                                Orders = g.Count(),
+                            })
                             .OrderBy(x => x.Year)
                             .ToListAsync();
-                        items = raw.Select(x => new SalesPerformancePointDto
-                        {
-                            Period = x.Year.ToString("D4", CultureInfo.InvariantCulture),
-                            Revenue = (decimal)x.Revenue,
-                            Orders = x.Orders,
-                        }).ToList();
+                        items = raw.Select(x => MapSalesPoint(x.Year.ToString("D4", CultureInfo.InvariantCulture), x.Revenue, x.Refunds, x.Commissions, x.Orders)).ToList();
                         break;
                     }
 
@@ -202,21 +254,23 @@ namespace LeadCMS.Controllers
                 default:
                     {
                         var raw = await baseQ
-                            .Select(o => new { o.CreatedAt, o.Total })
+                            .Select(o => new { o.CreatedAt, o.Total, o.Refund, o.Commission })
                             .ToListAsync();
                         var aggregated = raw
                             .GroupBy(x => query.GroupBy == TimeGroupBy.Week
                                 ? GetIsoWeekStartUtc(x.CreatedAt)
                                 : GetQuarterStartUtc(x.CreatedAt))
-                            .Select(g => new { PeriodStart = g.Key, Revenue = g.Sum(x => (double)x.Total), Orders = g.Count() })
+                            .Select(g => new
+                            {
+                                PeriodStart = g.Key,
+                                Revenue = g.Sum(x => (double)x.Total),
+                                Refunds = g.Sum(x => (double)x.Refund),
+                                Commissions = g.Sum(x => (double)x.Commission),
+                                Orders = g.Count(),
+                            })
                             .OrderBy(x => x.PeriodStart)
                             .ToList();
-                        items = aggregated.Select(x => new SalesPerformancePointDto
-                        {
-                            Period = FormatPeriodLabel(x.PeriodStart, query.GroupBy),
-                            Revenue = (decimal)x.Revenue,
-                            Orders = x.Orders,
-                        }).ToList();
+                        items = aggregated.Select(x => MapSalesPoint(FormatPeriodLabel(x.PeriodStart, query.GroupBy), x.Revenue, x.Refunds, x.Commissions, x.Orders)).ToList();
                         break;
                     }
             }
@@ -667,6 +721,18 @@ namespace LeadCMS.Controllers
             dt = DateTime.SpecifyKind(dt, DateTimeKind.Utc);
             int quarter = (((dt.Month - 1) / 3) * 3) + 1;
             return new DateTime(dt.Year, quarter, 1, 0, 0, 0, DateTimeKind.Utc);
+        }
+
+        private static SalesPerformancePointDto MapSalesPoint(string period, double revenue, double refunds, double commissions, int orders)
+        {
+            return new SalesPerformancePointDto
+            {
+                Period = period,
+                Revenue = (decimal)revenue,
+                Refunds = (decimal)refunds,
+                Commissions = (decimal)commissions,
+                Orders = orders,
+            };
         }
     }
 }

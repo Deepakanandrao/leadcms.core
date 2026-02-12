@@ -47,13 +47,40 @@ public class CrmMetricsDto
 
     public double? AccountsChangePct { get; set; }
 
+    /// <summary>
+    /// Gets or sets the number of contacts that have at least one paid order in the period.
+    /// </summary>
+    public long PaidContacts { get; set; }
+
+    public double? PaidContactsChangePct { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of accounts that have at least one contact with a paid order in the period.
+    /// </summary>
+    public long PaidAccounts { get; set; }
+
+    public double? PaidAccountsChangePct { get; set; }
+
     public long TotalOrders { get; set; }
 
     public double? OrdersChangePct { get; set; }
 
+    /// <summary>
+    /// Gets or sets revenue — sum of Order.Total (vendor payout amount, excl. tax/discounts/commissions) for non-test orders.
+    /// </summary>
     public decimal Revenue { get; set; }
 
     public double? RevenueChangePct { get; set; }
+
+    /// <summary>
+    /// Gets or sets total refund amount in the period.
+    /// </summary>
+    public decimal TotalRefunds { get; set; }
+
+    /// <summary>
+    /// Gets or sets total affiliate / platform commissions in the period.
+    /// </summary>
+    public decimal TotalCommissions { get; set; }
 }
 
 public class SalesPerformancePointDto
@@ -62,7 +89,20 @@ public class SalesPerformancePointDto
     [Required]
     public string Period { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Gets or sets revenue — sum of Order.Total.
+    /// </summary>
     public decimal Revenue { get; set; }
+
+    /// <summary>
+    /// Gets or sets total refunds in the period.
+    /// </summary>
+    public decimal Refunds { get; set; }
+
+    /// <summary>
+    /// Gets or sets total commissions (affiliate / platform fees).
+    /// </summary>
+    public decimal Commissions { get; set; }
 
     public int Orders { get; set; }
 }
