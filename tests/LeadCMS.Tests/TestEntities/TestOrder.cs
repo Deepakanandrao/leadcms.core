@@ -11,7 +11,7 @@ public class TestOrder : OrderCreateDto
     public TestOrder(string uid = "", int contactId = 0)
     {
         RefNo = $"1000{uid}";
-        Currency = "USD";
+        Currency = "EUR";
         ExchangeRate = 1.234M;
         ContactId = contactId;
         Status = OrderStatus.Pending;

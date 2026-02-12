@@ -6,12 +6,14 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 using LeadCMS.DataAnnotations;
+using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Entities;
 
 [SupportsElastic]
 [SupportsChangeLog]
 [Table("order_item")]
+[Index(nameof(OrderId), nameof(LineNumber), IsUnique = true)]
 public class OrderItem : BaseEntity
 {
     /// <summary>
@@ -23,6 +25,13 @@ public class OrderItem : BaseEntity
     [JsonIgnore]
     [ForeignKey("OrderId")]
     public virtual Order? Order { get; set; }
+
+    /// <summary>
+    /// Gets or sets the line number (sequence) within the order.
+    /// </summary>
+    [Searchable]
+    [Required]
+    public int LineNumber { get; set; }
 
     /// <summary>
     /// Gets or sets the name of the product as defined by vendor.

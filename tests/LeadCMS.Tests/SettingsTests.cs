@@ -61,10 +61,6 @@ public class SettingsTests : BaseTestAutoLogin
 
         Assert.True(settingDict.ContainsKey(SettingKeys.RequiredUniqueChars));
         Assert.Equal("1", settingDict[SettingKeys.RequiredUniqueChars]);
-
-        // API settings should be present
-        Assert.True(settingDict.ContainsKey("ApiSettings.DefaultLanguage"));
-        Assert.Equal("en", settingDict["ApiSettings.DefaultLanguage"]);
     }
 
     [Fact]

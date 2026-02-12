@@ -1,0 +1,4 @@
+id,orderRefNo,createdAt,updatedAt,orderId,lineNumber,productName,unitPrice,currency,quantity,updatedByIp,updatedByUserAgent,createdByIp
+,1000,2023-01-15T17:32:02.074179Z,,,1,compositeProduct1,10,usd,100,127.0.0.0,,
+,1000,2023-01-15T17:32:02.074179Z,,,1,compositeProduct1Dup,99,usd,999,127.0.0.0,,
+,1000,2023-01-15T17:32:02.074179Z,,,2,compositeProduct2,20,usd,200,127.0.0.0,,

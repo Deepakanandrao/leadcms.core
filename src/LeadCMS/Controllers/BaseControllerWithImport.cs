@@ -84,6 +84,18 @@ public class BaseControllerWithImport<T, TC, TU, TD, TI> : BaseController<T, TC,
                 }
             }
 
+            // Try composite key matching
+            if (dbRecord == null && relatedTObjectsMap.CompositeKeyMap != null)
+            {
+                var compositeKey = BuildCompositeKeyForLookup(importRecord, relatedTObjectsMap, relatedObjectsMap);
+                if (compositeKey != null && relatedTObjectsMap.CompositeKeyMap.TryGetValue(compositeKey, out var existingRecord))
+                {
+                    dbRecord = existingRecord;
+                    mapper.Map(importRecord, dbRecord);
+                    FixDateKindIfNeeded((T)dbRecord!);
+                }
+            }
+
             if (dbRecord == null)
             {
                 dbRecord = mapper.Map<T>(importRecord);
@@ -264,6 +276,14 @@ public class BaseControllerWithImport<T, TC, TU, TD, TI> : BaseController<T, TC,
             typedRelatedObjectsMap[type] = relatedObjectsMap;
         }
 
+        // Handle composite alternate key (processed after all types to ensure surrogate FK maps are available)
+        if (typeIdentifiersMap[typeof(T)].CompositeKeyPropertyNames != null)
+        {
+            var tRelatedMap = typedRelatedObjectsMap[typeof(T)];
+            tRelatedMap.CompositeKeyPropertyNames = typeIdentifiersMap[typeof(T)].CompositeKeyPropertyNames;
+            BuildCompositeKeyLookup(tRelatedMap, typedRelatedObjectsMap, importRecords, duplicates);
+        }
+
         return typedRelatedObjectsMap;
     }
 
@@ -286,22 +306,31 @@ public class BaseControllerWithImport<T, TC, TU, TD, TI> : BaseController<T, TC,
             typeIdentifiersMap[typeof(T)].IdentifierPropertyNames.Add("Id");
         }
 
-        var uniqueIndexPropertyName = FindAlternateKeyPropertyName();
+        var alternateKeyPropertyNames = FindAlternateKeyPropertyNames();
 
-        if (uniqueIndexPropertyName != null)
+        if (alternateKeyPropertyNames != null)
         {
-            var property = typeof(TI).GetProperty(uniqueIndexPropertyName)!;
-
-            var uniqueValues = importRecords
-                                   .Where(r => property.GetValue(r) != null && property.GetValue(r)!.ToString() != string.Empty)
-                                   .Select(r => property.GetValue(r))
-                                   .Distinct()
-                                   .ToList();
-
-            if (uniqueValues.Count > 0)
+            if (alternateKeyPropertyNames.Length == 1)
             {
-                typeIdentifiersMap[typeof(T)][uniqueIndexPropertyName] = uniqueValues!;
-                typeIdentifiersMap[typeof(T)].IdentifierPropertyNames.Add(uniqueIndexPropertyName);
+                // Single-property alternate key
+                var property = typeof(TI).GetProperty(alternateKeyPropertyNames[0])!;
+
+                var uniqueValues = importRecords
+                                       .Where(r => property.GetValue(r) != null && property.GetValue(r)!.ToString() != string.Empty)
+                                       .Select(r => property.GetValue(r))
+                                       .Distinct()
+                                       .ToList();
+
+                if (uniqueValues.Count > 0)
+                {
+                    typeIdentifiersMap[typeof(T)][alternateKeyPropertyNames[0]] = uniqueValues!;
+                    typeIdentifiersMap[typeof(T)].IdentifierPropertyNames.Add(alternateKeyPropertyNames[0]);
+                }
+            }
+            else
+            {
+                // Composite alternate key — store property names for resolution in BuildRelatedObjectsMap
+                typeIdentifiersMap[typeof(T)].CompositeKeyPropertyNames = alternateKeyPropertyNames;
             }
         }
 
@@ -350,23 +379,27 @@ public class BaseControllerWithImport<T, TC, TU, TD, TI> : BaseController<T, TC,
         return typeIdentifiersMap;
     }
 
-    private string FindAlternateKeyPropertyName()
+    private string[]? FindAlternateKeyPropertyNames()
     {
-        var uniqueIndexPropertyName = typeof(T).GetCustomAttributes(typeof(IndexAttribute), true)
+        var indexAttribute = typeof(T).GetCustomAttributes(typeof(IndexAttribute), true)
                                .Select(a => (IndexAttribute)a)
-                               .Where(a => a.IsUnique)
-                               .Select(a => a.PropertyNames[0]) // for now the assumption is that we do not support composite indexes
-                               .FirstOrDefault(); // and we only support a single index per entity
+                               .FirstOrDefault(a => a.IsUnique);
 
-        if (uniqueIndexPropertyName is null)
+        if (indexAttribute != null)
         {
-            uniqueIndexPropertyName = typeof(T).GetCustomAttributes(typeof(SurrogateIdentityAttribute), true)
-                                   .Select(a => (SurrogateIdentityAttribute)a)
-                                   .Select(a => a.PropertyName) // for now the assumption is that we do not support composite indexes
-                                   .FirstOrDefault(); // and we only support a single index per entity
+            return indexAttribute.PropertyNames.ToArray();
         }
 
-        return uniqueIndexPropertyName!;
+        var surrogateIdentityAttribute = typeof(T).GetCustomAttributes(typeof(SurrogateIdentityAttribute), true)
+                                   .Select(a => (SurrogateIdentityAttribute)a)
+                                   .FirstOrDefault();
+
+        if (surrogateIdentityAttribute != null)
+        {
+            return new[] { surrogateIdentityAttribute.PropertyName };
+        }
+
+        return null;
     }
 
     private Func<object, bool> BuildPropertyValuesPredicate(Type targetType, string propertyName, List<object> propertyValues)
@@ -395,6 +428,140 @@ public class BaseControllerWithImport<T, TC, TU, TD, TI> : BaseController<T, TC,
         var lambdaExpression = Expression.Lambda<Func<object, bool>>(containsExpression, objectParam);
 
         return lambdaExpression.Compile();
+    }
+
+    private void BuildCompositeKeyLookup(
+        RelatedObjectsMap tRelatedMap,
+        TypedRelatedObjectsMap allRelatedMaps,
+        List<TI> importRecords,
+        Dictionary<TI, object> duplicates)
+    {
+        var compositePropertyNames = tRelatedMap.CompositeKeyPropertyNames!;
+        var entityProperties = compositePropertyNames.Select(n => typeof(T).GetProperty(n)!).ToArray();
+        var importProperties = compositePropertyNames.Select(n => typeof(TI).GetProperty(n)).ToArray();
+
+        // Resolve composite key values from import records, using surrogate FK resolution when needed
+        var resolvedKeys = new List<(CompositeKey Key, TI Record)>();
+        foreach (var importRecord in importRecords)
+        {
+            var keyValues = new object?[compositePropertyNames.Length];
+            var allResolved = true;
+
+            for (var i = 0; i < compositePropertyNames.Length; i++)
+            {
+                var value = importProperties[i]?.GetValue(importRecord);
+                if (value == null || value.ToString() == "0" || value.ToString() == string.Empty)
+                {
+                    value = ResolveFKValueFromSurrogateKey(importRecord, compositePropertyNames[i], tRelatedMap, allRelatedMaps);
+                }
+
+                if (value == null || value.ToString() == "0" || value.ToString() == string.Empty)
+                {
+                    allResolved = false;
+                    break;
+                }
+
+                keyValues[i] = value;
+            }
+
+            if (allResolved)
+            {
+                resolvedKeys.Add((new CompositeKey(keyValues!), importRecord));
+            }
+        }
+
+        // Detect duplicates in import batch
+        var groups = resolvedKeys.GroupBy(x => x.Key);
+        var duplicateRecords = groups
+            .Where(g => g.Count() > 1)
+            .SelectMany(g => g.Skip(1).Select(dup => new { dup.Record, Key = (object)g.Key }));
+
+        foreach (var dup in duplicateRecords)
+        {
+            if (!duplicates.ContainsKey(dup.Record))
+            {
+                duplicates[dup.Record] = dup.Key;
+            }
+        }
+
+        // Query DB for existing records using first key component for efficiency
+        var firstComponentValues = resolvedKeys
+            .Select(x => x.Key.Values[0])
+            .Distinct()
+            .ToList();
+
+        if (firstComponentValues.Count == 0)
+        {
+            tRelatedMap.CompositeKeyMap = new Dictionary<CompositeKey, BaseEntityWithId>();
+            return;
+        }
+
+        var predicate = BuildPropertyValuesPredicate(typeof(T), compositePropertyNames[0], firstComponentValues);
+        var candidateRecords = dbContext.SetDbEntity(typeof(T)).Where(predicate).AsQueryable().ToList();
+
+        tRelatedMap.CompositeKeyMap = new Dictionary<CompositeKey, BaseEntityWithId>();
+        foreach (var record in candidateRecords)
+        {
+            var entityKeyValues = entityProperties.Select(p => p.GetValue(record)!).ToArray();
+            var key = new CompositeKey(entityKeyValues);
+            tRelatedMap.CompositeKeyMap[key] = (BaseEntityWithId)record;
+        }
+    }
+
+    private CompositeKey? BuildCompositeKeyForLookup(TI importRecord, RelatedObjectsMap relatedTObjectsMap, TypedRelatedObjectsMap allRelatedMaps)
+    {
+        var compositePropertyNames = relatedTObjectsMap.CompositeKeyPropertyNames!;
+        var keyValues = new object?[compositePropertyNames.Length];
+
+        for (var i = 0; i < compositePropertyNames.Length; i++)
+        {
+            var prop = typeof(TI).GetProperty(compositePropertyNames[i]);
+            var value = prop?.GetValue(importRecord);
+
+            if (value == null || value.ToString() == "0" || value.ToString() == string.Empty)
+            {
+                value = ResolveFKValueFromSurrogateKey(importRecord, compositePropertyNames[i], relatedTObjectsMap, allRelatedMaps);
+            }
+
+            if (value == null || value.ToString() == "0" || value.ToString() == string.Empty)
+            {
+                return null;
+            }
+
+            keyValues[i] = value;
+        }
+
+        return new CompositeKey(keyValues!);
+    }
+
+    private object? ResolveFKValueFromSurrogateKey(TI importRecord, string fkPropertyName, RelatedObjectsMap relatedMap, TypedRelatedObjectsMap allRelatedMaps)
+    {
+        for (var j = 0; j < relatedMap.SurrogateKeyPropertyNames.Count; j++)
+        {
+            var surrogateAttr = relatedMap.SurrogateKeyPropertyAttributes[j];
+            if (surrogateAttr.SourceForeignKey != fkPropertyName)
+            {
+                continue;
+            }
+
+            var surrogateKeyProp = typeof(TI).GetProperty(relatedMap.SurrogateKeyPropertyNames[j]);
+            var surrogateKeyValue = surrogateKeyProp?.GetValue(importRecord);
+
+            if (surrogateKeyValue == null || surrogateKeyValue.ToString() == string.Empty)
+            {
+                continue;
+            }
+
+            if (allRelatedMaps.TryGetValue(surrogateAttr.RelatedType, out var relatedTypeMap)
+                && relatedTypeMap.TryGetValue(surrogateAttr.RelatedTypeUniqeIndex, out var relatedEntityMap)
+                && relatedEntityMap.TryGetValue(surrogateKeyValue, out var relatedEntity)
+                && relatedEntity != null)
+            {
+                return relatedEntity.Id;
+            }
+        }
+
+        return null;
     }
 
     protected class AdditionalImportChecker
@@ -453,6 +620,10 @@ internal class RelatedObjectsMap : Dictionary<string, Dictionary<object, BaseEnt
     public List<string> SurrogateKeyPropertyNames { get; set; } = new List<string>();
 
     public List<SurrogateForeignKeyAttribute> SurrogateKeyPropertyAttributes { get; set; } = new List<SurrogateForeignKeyAttribute>();
+
+    public string[]? CompositeKeyPropertyNames { get; set; }
+
+    public Dictionary<CompositeKey, BaseEntityWithId>? CompositeKeyMap { get; set; }
 }
 
 internal class TypeIdentifiers : Dictionary<Type, IdentifierValues>
@@ -466,4 +637,51 @@ internal class IdentifierValues : Dictionary<string, List<object>>
     public List<string> SurrogateKeyPropertyNames { get; set; } = new List<string>();
 
     public List<SurrogateForeignKeyAttribute> SurrogateKeyPropertyAttributes { get; set; } = new List<SurrogateForeignKeyAttribute>();
+
+    public string[]? CompositeKeyPropertyNames { get; set; }
+}
+
+internal class CompositeKey : IEquatable<CompositeKey>
+{
+    private readonly object[] values;
+
+    public CompositeKey(params object[] values)
+    {
+        this.values = values;
+    }
+
+    public object[] Values => values;
+
+    public override bool Equals(object? obj) => obj is CompositeKey other && Equals(other);
+
+    public bool Equals(CompositeKey? other)
+    {
+        if (other is null || values.Length != other.values.Length)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < values.Length; i++)
+        {
+            if (!Equals(values[i], other.values[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public override int GetHashCode()
+    {
+        var hash = default(HashCode);
+        foreach (var v in values)
+        {
+            hash.Add(v);
+        }
+
+        return hash.ToHashCode();
+    }
+
+    public override string ToString() => string.Join(", ", values);
 }

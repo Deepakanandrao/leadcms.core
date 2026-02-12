@@ -103,6 +103,18 @@
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>
     <EmbeddedResource Include="Resources\Orders\orderItemsNoRef.json" />
+    <EmbeddedResource Include="Resources\Orders\orderItemsCompositeKey.csv">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\Orders\orderItemsCompositeKey.json" />
+    <EmbeddedResource Include="Resources\Orders\orderItemsCompositeKeyUpdate.csv">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\Orders\orderItemsCompositeKeyUpdate.json" />
+    <EmbeddedResource Include="Resources\Orders\orderItemsCompositeKeyDuplicates.csv">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\Orders\orderItemsCompositeKeyDuplicates.json" />
     <EmbeddedResource Include="Resources\Orders\ordersNoFK.csv">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>

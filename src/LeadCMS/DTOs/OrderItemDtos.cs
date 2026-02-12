@@ -16,6 +16,8 @@ public class OrderItemCreateDto
     [Required]
     public int OrderId { get; set; }
 
+    public int? LineNumber { get; set; }
+
     [Required]
     public string ProductName { get; set; } = string.Empty;
 
@@ -55,6 +57,8 @@ public class OrderItemDetailsDto : OrderItemCreateDto
 {
     public int Id { get; set; }
 
+    public new int LineNumber { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }
@@ -75,6 +79,9 @@ public class OrderItemImportDto : BaseImportDto
     [Optional]
     [SurrogateForeignKey(typeof(Order), "RefNo", "OrderId")]
     public string? OrderRefNo { get; set; } = string.Empty;
+
+    [Optional]
+    public int? LineNumber { get; set; }
 
     [Optional]
     public string? ProductName { get; set; } = string.Empty;

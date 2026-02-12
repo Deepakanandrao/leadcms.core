@@ -152,8 +152,8 @@ public class OrdersTests : TableWithFKTests<Order, TestOrder, OrderUpdateDto, IE
 
         var fkItem = await CreateFKItem();
         var fkId = fkItem.Item1;
-        PopulateBulkData<Order, IEntityService<Order>>(mapper.Map<Order>(TestData.GenerateAndPopulateAttributes<TestOrder>("1", o => o.AffiliateName = affName, fkId)));
-        PopulateBulkData<Order, IEntityService<Order>>(mapper.Map<List<OrderItem>>(TestData.GenerateAndPopulateAttributes<TestOrderItem>(numberOfOrderItems, null, 1)));
+        PopulateBulkData<Order, IOrderService>(new List<Order> { mapper.Map<Order>(TestData.GenerateAndPopulateAttributes<TestOrder>("1", o => o.AffiliateName = affName, fkId)) });
+        PopulateBulkData<OrderItem, IOrderItemService>(mapper.Map<List<OrderItem>>(TestData.GenerateAndPopulateAttributes<TestOrderItem>(numberOfOrderItems, null, 1)));
         await SyncElasticSearch();
 
         var orderWithContactAndItems = await GetTest<List<OrderDetailsDto>>(itemsUrl + $"?query={affName}&filter[include]=Contact&filter[include]=OrderItems&filter[where][Id]=1");

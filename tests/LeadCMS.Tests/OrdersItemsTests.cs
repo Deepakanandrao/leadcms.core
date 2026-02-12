@@ -197,6 +197,27 @@ public class OrdersItemsTests : TableWithFKTests<OrderItem, TestOrderItem, Order
     }
 
     [Fact]
+    public async Task OrderItemTotalWithPrimaryCurrencyTest()
+    {
+        var orderDetails = await CreateFKItemWithPrimaryCurrency();
+
+        var orderItem = new TestOrderItem(string.Empty, orderDetails.Item1);
+
+        var orderItemUrl = await PostTest(itemsUrl, orderItem);
+
+        var addedOrderItem = await GetTest<OrderItemDetailsDto>(orderItemUrl);
+        addedOrderItem.Should().NotBeNull();
+
+        if (addedOrderItem != null)
+        {
+            addedOrderItem.CurrencyTotal.Should().Be(orderItem.Quantity * orderItem.UnitPrice);
+
+            // When order currency matches the primary currency (USD), exchange rate is treated as 1
+            addedOrderItem.Total.Should().Be(addedOrderItem.CurrencyTotal);
+        }
+    }
+
+    [Fact]
     public async Task ShouldNotUpdateTotalsTest()
     {
         var addedOrderItemDetails = await CreateItem();
@@ -269,6 +290,141 @@ public class OrdersItemsTests : TableWithFKTests<OrderItem, TestOrderItem, Order
         allOrderItems!.Count.Should().Be(expectedCount);
     }
 
+    [Theory]
+    [InlineData("orderItemsCompositeKey.csv")]
+    [InlineData("orderItemsCompositeKey.json")]
+    public async Task ImportCompositeKeyCreatesItemsTest(string fileName)
+    {
+        await CreateFKItemWithKnownRefNo();
+
+        var importResult = await PostImportTest(itemsUrl, fileName);
+
+        importResult.Added.Should().Be(3);
+        importResult.Updated.Should().Be(0);
+        importResult.Failed.Should().Be(0);
+
+        var allOrderItemsResponse = await GetTest(itemsUrl);
+        var content = await allOrderItemsResponse.Content.ReadAsStringAsync();
+        var allOrderItems = JsonSerializer.Deserialize<List<OrderItemDetailsDto>>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        allOrderItems.Should().NotBeNull();
+        allOrderItems!.Count.Should().Be(3);
+
+        allOrderItems.Should().Contain(x => x.LineNumber == 1 && x.ProductName == "compositeProduct1");
+        allOrderItems.Should().Contain(x => x.LineNumber == 2 && x.ProductName == "compositeProduct2");
+        allOrderItems.Should().Contain(x => x.LineNumber == 3 && x.ProductName == "compositeProduct3");
+    }
+
+    [Theory]
+    [InlineData("orderItemsCompositeKey.csv", "orderItemsCompositeKeyUpdate.csv")]
+    [InlineData("orderItemsCompositeKey.json", "orderItemsCompositeKeyUpdate.json")]
+    public async Task ImportCompositeKeyUpdatesExistingItemsTest(string initialFile, string updateFile)
+    {
+        await CreateFKItemWithKnownRefNo();
+
+        // First import: creates 3 items with line numbers 1, 2, 3
+        var firstResult = await PostImportTest(itemsUrl, initialFile);
+        firstResult.Added.Should().Be(3);
+
+        // Second import: lines 1 and 2 should update, line 4 should be new
+        var secondResult = await PostImportTest(itemsUrl, updateFile);
+        secondResult.Updated.Should().Be(2);
+        secondResult.Added.Should().Be(1);
+        secondResult.Failed.Should().Be(0);
+
+        var allOrderItemsResponse = await GetTest(itemsUrl);
+        var content = await allOrderItemsResponse.Content.ReadAsStringAsync();
+        var allOrderItems = JsonSerializer.Deserialize<List<OrderItemDetailsDto>>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        allOrderItems.Should().NotBeNull();
+
+        // Total: 3 original + 1 new = 4 (lines 1, 2 updated in place, line 3 untouched, line 4 new)
+        allOrderItems!.Count.Should().Be(4);
+
+        // Verify updated items have new product names
+        allOrderItems.Should().Contain(x => x.LineNumber == 1 && x.ProductName == "compositeProduct1Updated");
+        allOrderItems.Should().Contain(x => x.LineNumber == 2 && x.ProductName == "compositeProduct2Updated");
+
+        // Verify line 3 still exists from initial import (not touched by update)
+        allOrderItems.Should().Contain(x => x.LineNumber == 3 && x.ProductName == "compositeProduct3");
+
+        // Verify new item was added
+        allOrderItems.Should().Contain(x => x.LineNumber == 4 && x.ProductName == "compositeProduct4New");
+    }
+
+    [Theory]
+    [InlineData("orderItemsCompositeKeyDuplicates.csv")]
+    [InlineData("orderItemsCompositeKeyDuplicates.json")]
+    public async Task ImportCompositeKeyDuplicatesInBatchTest(string fileName)
+    {
+        await CreateFKItemWithKnownRefNo();
+
+        var importResult = await PostImportTest(itemsUrl, fileName);
+
+        // Row with line 1 appears twice — the second occurrence should be flagged as duplicate
+        importResult.Added.Should().Be(2);
+        importResult.Failed.Should().Be(1);
+        importResult.Errors.Should().NotBeNull();
+        importResult.Errors!.Count.Should().Be(1);
+
+        var allOrderItemsResponse = await GetTest(itemsUrl);
+        var content = await allOrderItemsResponse.Content.ReadAsStringAsync();
+        var allOrderItems = JsonSerializer.Deserialize<List<OrderItemDetailsDto>>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        allOrderItems.Should().NotBeNull();
+        allOrderItems!.Count.Should().Be(2);
+
+        // Only the first occurrence of line 1 should be imported
+        allOrderItems.Should().Contain(x => x.LineNumber == 1 && x.ProductName == "compositeProduct1");
+        allOrderItems.Should().Contain(x => x.LineNumber == 2 && x.ProductName == "compositeProduct2");
+    }
+
+    [Theory]
+    [InlineData("orderItemsCompositeKey.csv")]
+    [InlineData("orderItemsCompositeKey.json")]
+    public async Task ImportCompositeKeyReimportSameDataIsIdempotentTest(string fileName)
+    {
+        await CreateFKItemWithKnownRefNo();
+
+        // First import
+        var firstResult = await PostImportTest(itemsUrl, fileName);
+        firstResult.Added.Should().Be(3);
+
+        // Re-import same file — all items match by composite key but data is identical,
+        // so EF Core detects no actual changes and they are skipped
+        var secondResult = await PostImportTest(itemsUrl, fileName);
+        secondResult.Added.Should().Be(0);
+        secondResult.Failed.Should().Be(0);
+        secondResult.Skipped.Should().Be(3);
+
+        var allOrderItemsResponse = await GetTest(itemsUrl);
+        var content = await allOrderItemsResponse.Content.ReadAsStringAsync();
+        var allOrderItems = JsonSerializer.Deserialize<List<OrderItemDetailsDto>>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        allOrderItems.Should().NotBeNull();
+        allOrderItems!.Count.Should().Be(3);
+    }
+
+    protected override void MustBeEquivalent(object? expected, object? result)
+    {
+        // Exclude auto-assigned fields that don't exist on the create DTO
+        result.Should().BeEquivalentTo(expected, options => options
+            .Excluding(ctx => ctx.Path == "LineNumber"));
+    }
+
+    protected override void GenerateBulkRecords(int dataCount, Action<TestOrderItem>? populateAttributes = null)
+    {
+        var fkItem = CreateFKItem().Result;
+        var fkId = fkItem.Item1;
+
+        var bulkList = TestData.GenerateAndPopulateAttributes<TestOrderItem>(dataCount, populateAttributes, fkId);
+        var bulkEntitiesList = mapper.Map<List<OrderItem>>(bulkList);
+
+        // Assign sequential line numbers to avoid unique constraint violations
+        for (var i = 0; i < bulkEntitiesList.Count; i++)
+        {
+            bulkEntitiesList[i].LineNumber = i + 1;
+        }
+
+        PopulateBulkData<OrderItem, IEntityService<OrderItem>>(bulkEntitiesList);
+    }
+
     protected override async Task<(TestOrderItem, string)> CreateItem(string uid, int fkId)
     {
         var testOrderItem = new TestOrderItem(uid, fkId);
@@ -319,6 +475,33 @@ public class OrdersItemsTests : TableWithFKTests<OrderItem, TestOrderItem, Order
         contact.Should().NotBeNull();
 
         var orderCreate = new TestOrder(string.Empty, contact!.Id);
+
+        var orderUrl = await PostTest("/api/orders", orderCreate, HttpStatusCode.Created);
+
+        var order = await GetTest<Order>(orderUrl);
+
+        order.Should().NotBeNull();
+
+        return (order!.Id, orderUrl);
+    }
+
+    private async Task<(int, string)> CreateFKItemWithPrimaryCurrency()
+    {
+        var uid = Guid.NewGuid().ToString("N")[..8];
+
+        var contactCreate = new TestContact(uid);
+
+        var contactUrl = await PostTest("/api/contacts", contactCreate, HttpStatusCode.Created);
+
+        var contact = await GetTest<Contact>(contactUrl);
+
+        contact.Should().NotBeNull();
+
+        var orderCreate = new TestOrder(uid, contact!.Id)
+        {
+            Currency = "USD",
+            ExchangeRate = 1m,
+        };
 
         var orderUrl = await PostTest("/api/orders", orderCreate, HttpStatusCode.Created);
 
