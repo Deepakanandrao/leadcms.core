@@ -78,6 +78,8 @@ public class Domain : BaseEntityWithIdAndDates
 
     public AccountSyncStatus AccountStatus { get; set; } = AccountSyncStatus.NotIntended;
 
+    public int ContactCount { get; set; }
+
     [JsonIgnore]
     public virtual ICollection<Contact>? Contacts { get; set; }
 

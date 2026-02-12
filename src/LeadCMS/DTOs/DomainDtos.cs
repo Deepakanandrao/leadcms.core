@@ -82,6 +82,8 @@ public class DomainDetailsDto : DomainCreateDto
 
     public DateTime? UpdatedAt { get; set; }
 
+    public int ContactCount { get; set; }
+
     [Ignore]
     public AccountDetailsDto? Account { get; set; }
 
