@@ -41,6 +41,60 @@ public class LeadNotificationService : ILeadNotificationService
         pluginSettings = settings ?? new PluginSettings();
     }
 
+    /// <summary>
+    /// Builds template arguments from lead notification info for use in email templates.
+    /// </summary>
+    /// <param name="leadInfo">The lead notification information.</param>
+    /// <returns>Dictionary of template arguments.</returns>
+    public static Dictionary<string, string> BuildEmailTemplateArguments(LeadNotificationInfo leadInfo)
+    {
+        var templateArgs = new Dictionary<string, string>
+        {
+            { "email", leadInfo.Email },
+            { "fromEmail", leadInfo.Email },
+            { "firstName", leadInfo.FirstName ?? string.Empty },
+            { "lastName", leadInfo.LastName ?? string.Empty },
+            { "company", leadInfo.Company ?? string.Empty },
+            { "subject", leadInfo.Subject ?? string.Empty },
+            { "message", leadInfo.Message ?? string.Empty },
+            { "title", leadInfo.Title ?? string.Empty },
+        };
+
+        if (!string.IsNullOrWhiteSpace(leadInfo.Phone))
+        {
+            templateArgs.Add("phone", leadInfo.Phone);
+        }
+
+        if (!string.IsNullOrWhiteSpace(leadInfo.PageUrl))
+        {
+            templateArgs.Add("pageUrl", leadInfo.PageUrl);
+        }
+
+        var timeZoneText = FormatTimeZoneOffset(leadInfo.TimeZoneOffset);
+        if (!string.IsNullOrWhiteSpace(timeZoneText))
+        {
+            templateArgs.Add("timezone", timeZoneText);
+        }
+
+        if (!string.IsNullOrWhiteSpace(leadInfo.IpAddress))
+        {
+            templateArgs.Add("ipAddress", leadInfo.IpAddress);
+        }
+
+        if (!string.IsNullOrWhiteSpace(leadInfo.UserAgent))
+        {
+            templateArgs.Add("userAgent", leadInfo.UserAgent);
+        }
+
+        foreach (var item in leadInfo.ExtraData)
+        {
+            templateArgs.Add($"{item.Key}", item.Value);
+            templateArgs.Add($"extraData[{item.Key}]", item.Value);
+        }
+
+        return templateArgs;
+    }
+
     /// <inheritdoc/>
     public async Task SendLeadNotificationAsync(LeadNotificationInfo leadInfo, CancellationToken cancellationToken = default)
     {
@@ -195,55 +249,6 @@ public class LeadNotificationService : ILeadNotificationService
         return sb.ToString().TrimEnd(',', ' ', '\n', '\r');
     }
 
-    private static Dictionary<string, string> BuildEmailTemplateArguments(LeadNotificationInfo leadInfo)
-    {
-        var templateArgs = new Dictionary<string, string>
-        {
-            { "email", leadInfo.Email },
-            { "fromEmail", leadInfo.Email },
-            { "firstName", leadInfo.FirstName ?? string.Empty },
-            { "lastName", leadInfo.LastName ?? string.Empty },
-            { "company", leadInfo.Company ?? string.Empty },
-            { "subject", leadInfo.Subject ?? string.Empty },
-            { "message", leadInfo.Message ?? string.Empty },
-            { "title", leadInfo.Title ?? string.Empty },
-        };
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.Phone))
-        {
-            templateArgs.Add("phone", leadInfo.Phone);
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.PageUrl))
-        {
-            templateArgs.Add("pageUrl", leadInfo.PageUrl);
-        }
-
-        var timeZoneText = FormatTimeZoneOffset(leadInfo.TimeZoneOffset);
-        if (!string.IsNullOrWhiteSpace(timeZoneText))
-        {
-            templateArgs.Add("timezone", timeZoneText);
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.IpAddress))
-        {
-            templateArgs.Add("ipAddress", leadInfo.IpAddress);
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.UserAgent))
-        {
-            templateArgs.Add("userAgent", leadInfo.UserAgent);
-        }
-
-        foreach (var item in leadInfo.ExtraData)
-        {
-            templateArgs.Add($"{item.Key}", item.Value);
-            templateArgs.Add($"extraData[{item.Key}]", item.Value);
-        }
-
-        return templateArgs;
-    }
-
     private static string? FormatTimeZoneOffset(int? offsetMinutes)
     {
         if (!offsetMinutes.HasValue)
@@ -307,7 +312,8 @@ public class LeadNotificationService : ILeadNotificationService
                 leadInfo.Language ?? "en",
                 targetEmails,
                 templateArgs,
-                leadInfo.Attachments);
+                leadInfo.Attachments,
+                leadInfo.ContactId ?? 0);
 
             logger.LogInformation("Lead notification email sent successfully to {Recipients}", string.Join(", ", targetEmails));
         }

@@ -94,6 +94,11 @@ public class LeadNotificationInfo
     public string? UserAgent { get; set; }
 
     /// <summary>
+    /// Gets or sets the contact ID associated with this lead.
+    /// </summary>
+    public int? ContactId { get; set; }
+
+    /// <summary>
     /// Gets the full name of the lead.
     /// </summary>
     public string FullName

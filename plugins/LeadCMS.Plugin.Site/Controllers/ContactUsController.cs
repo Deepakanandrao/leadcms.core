@@ -160,6 +160,7 @@ public class ContactUsController : Controller
             TimeZoneOffset = contactUsDto.TimeZoneOffset,
             IpAddress = httpContextHelper?.IpAddress,
             UserAgent = httpContextHelper?.UserAgent,
+            ContactId = contact.Id,
         };
 
         // Send lead notifications to all enabled channels (email, Telegram, Slack)
@@ -168,21 +169,22 @@ public class ContactUsController : Controller
         // Send acknowledgment to the user only if the email is present and valid
         if (!string.IsNullOrWhiteSpace(contactUsDto.Email) && MailboxAddress.TryParse(contactUsDto.Email, out _))
         {
-            await emailService.SendAsync(
-                string.IsNullOrWhiteSpace(contactUsDto.AcknowledgmentType)
-                    ? "Acknowledgment"
-                    : contactUsDto.AcknowledgmentType,
-                contactUsDto.Language,
-                [contactUsDto.Email],
-                new Dictionary<string, string> { { "firstName", Encode(contactUsDto.FirstName) } },
+            var acknowledgmentTemplate = string.IsNullOrWhiteSpace(contactUsDto.AcknowledgmentType)
+                ? "Acknowledgment"
+                : contactUsDto.AcknowledgmentType;
+
+            // Use same template arguments as notification email
+            var templateArgs = LeadNotificationService.BuildEmailTemplateArguments(leadInfo);
+
+            await emailService.SendToContactAsync(
+                contact.Id,
+                acknowledgmentTemplate,
+                templateArgs,
                 null);
         }
 
         return Ok(contactUsDto);
     }
-
-    [return: NotNullIfNotNull(nameof(value))]
-    private static string? Encode(string? value) => System.Web.HttpUtility.HtmlEncode(value);
 }
 
 public static class FormFileExtensions

@@ -21,7 +21,7 @@ namespace LeadCMS.Services
             this.pgDbContext = pgDbContext;
         }
 
-        public async Task SendAsync(string subject, string fromEmail, string fromName, string[] recipients, string body, List<AttachmentDto>? attachments, int templateId = 0)
+        public async Task SendAsync(string subject, string fromEmail, string fromName, string[] recipients, string body, List<AttachmentDto>? attachments, int templateId = 0, int contactId = 0)
         {
             var emailStatus = false;
             var emails = string.Join(";", recipients);
@@ -43,7 +43,7 @@ namespace LeadCMS.Services
             }
             finally
             {
-                await AddEmailLogEntry(subject, fromEmail, body, emails, emailStatus, messageId, templateId: templateId);
+                await AddEmailLogEntry(subject, fromEmail, body, emails, emailStatus, messageId, contactId, templateId: templateId);
             }
         }
 

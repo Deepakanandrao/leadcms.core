@@ -63,14 +63,14 @@ namespace LeadCMS.Services
             };
         }
 
-        public async Task SendAsync(string templateName, string language, string[] recipients, Dictionary<string, string>? templateArguments, List<AttachmentDto>? attachments)
+        public async Task SendAsync(string templateName, string language, string[] recipients, Dictionary<string, string>? templateArguments, List<AttachmentDto>? attachments, int contactId = 0)
         {
             var template = await GetEmailTemplateByLanguageOrHardcoded(templateName, language);
 
             var body = EvaluateTemplate(template.BodyTemplate, templateArguments);
             var subject = EvaluateTemplate(template.Subject, templateArguments);
 
-            await emailWithLogService.SendAsync(subject, template.FromEmail, template.FromName, recipients, body, attachments, template.Id);
+            await emailWithLogService.SendAsync(subject, template.FromEmail, template.FromName, recipients, body, attachments, template.Id, contactId);
         }
 
         public async Task SendToContactAsync(int contactId, string templateName, Dictionary<string, string>? templateArguments, List<AttachmentDto>? attachments, int scheduleId = 0)
