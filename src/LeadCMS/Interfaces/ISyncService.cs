@@ -34,4 +34,22 @@ public interface ISyncService
         string? query = null)
         where TEntity : BaseEntityWithId, new()
         where TDto : class;
+
+    /// <summary>
+    /// Performs synchronization specifically for media files.
+    /// Returns changed media entities and deleted/renamed-away file paths (scopeUid + name)
+    /// since the last sync token. Deleted paths are extracted from ChangeLog entries:
+    /// Deleted entries provide the path of actually deleted files, and Modified entries
+    /// provide the old path of renamed files.
+    /// </summary>
+    /// <param name="queryProviderFactory">Factory for building media queries with optional filtering.</param>
+    /// <param name="mapper">AutoMapper instance for entity to DTO mapping.</param>
+    /// <param name="syncToken">Optional sync token indicating the last sync time.</param>
+    /// <param name="query">Optional query string for additional filtering.</param>
+    /// <returns>ActionResult containing sync response with items and deleted file paths.</returns>
+    Task<IActionResult> SyncMediaAsync(
+        QueryProviderFactory<Media> queryProviderFactory,
+        IMapper mapper,
+        string? syncToken = null,
+        string? query = null);
 }

@@ -30,6 +30,7 @@ public class MediaController : ControllerBase
     private readonly IMediaResolver mediaResolver;
     private readonly IMediaOptimizationService mediaOptimizationService;
     private readonly ISettingService settingService;
+    private readonly IMediaChangeLogService mediaChangeLogService;
 
     public MediaController(
         PgDbContext pgDbContext,
@@ -38,7 +39,8 @@ public class MediaController : ControllerBase
         IMapper mapper,
         IMediaResolver mediaResolver,
         IMediaOptimizationService mediaOptimizationService,
-        ISettingService settingService)
+        ISettingService settingService,
+        IMediaChangeLogService mediaChangeLogService)
     {
         this.pgDbContext = pgDbContext;
         this.queryProviderFactory = queryProviderFactory;
@@ -47,6 +49,7 @@ public class MediaController : ControllerBase
         this.mediaResolver = mediaResolver;
         this.mediaOptimizationService = mediaOptimizationService;
         this.settingService = settingService;
+        this.mediaChangeLogService = mediaChangeLogService;
     }
 
     /// <summary>
@@ -324,6 +327,7 @@ public class MediaController : ControllerBase
             throw new EntityNotFoundException(nameof(Media), pathToFile);
         }
 
+        await mediaChangeLogService.LogMediaDeletedAsync(mediaToDelete);
         pgDbContext.Media!.Remove(mediaToDelete);
         await pgDbContext.SaveChangesAsync();
 
@@ -341,7 +345,11 @@ public class MediaController : ControllerBase
         return await BulkDeleteHelper.ExecuteAsync(
             pgDbContext,
             pgDbContext.Media!,
-            ids);
+            ids,
+            onAfterDelete: async (deletedEntities) =>
+            {
+                await mediaChangeLogService.LogMediaDeletedBatchAsync(deletedEntities);
+            });
     }
 
     /// <summary>
@@ -1155,6 +1163,7 @@ public class MediaController : ControllerBase
                 break;
             }
 
+            await mediaChangeLogService.LogMediaDeletedBatchAsync(batch);
             pgDbContext.Media!.RemoveRange(batch);
             await pgDbContext.SaveChangesAsync();
             deletedCount += batch.Count;
@@ -1420,7 +1429,7 @@ public class MediaController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> Sync([FromQuery] string? syncToken = null, [FromQuery] string? query = null)
     {
-        var result = await syncService.SyncAsync<Media, MediaDetailsDto>(queryProviderFactory, mapper, syncToken, query);
+        var result = await syncService.SyncMediaAsync(queryProviderFactory, mapper, syncToken, query);
 
         // Calculate Location for each MediaDetailsDto if we have items in the result
         if (result is OkObjectResult okResult && okResult.Value != null)
@@ -1808,6 +1817,9 @@ public class MediaController : ControllerBase
         {
             return 0;
         }
+
+        // Log the old file path as a Modified ChangeLog entry so sync clients can detect the rename
+        await mediaChangeLogService.LogMediaRenamedAsync(media.Id, currentScope, currentName);
 
         if (nameChanged && !string.IsNullOrWhiteSpace(media.OriginalName))
         {

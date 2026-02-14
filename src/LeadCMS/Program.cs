@@ -103,6 +103,7 @@ public class Program
         builder.Services.AddSingleton<IMediaResolver, MediaResolver>();
         builder.Services.AddScoped<IMediaOptimizationService, MediaOptimizationService>();
         builder.Services.AddScoped<IMediaUsageService, MediaUsageService>();
+        builder.Services.AddScoped<IMediaChangeLogService, MediaChangeLogService>();
         builder.Services.AddScoped<IRedirectService, RedirectService>();
         builder.Services.AddScoped<IMdxComponentParserService, MdxComponentParserService>();
         builder.Services.AddScoped<IChangeLogService, ChangeLogService>();

@@ -3,8 +3,10 @@
 // </copyright>
 
 using System.Reflection;
+using System.Text.Json;
 using AutoMapper;
 using LeadCMS.Data;
+using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Exceptions;
 using LeadCMS.Helpers;
@@ -40,6 +42,144 @@ public class SyncService : ISyncService
         where TEntity : BaseEntityWithId, new()
         where TDto : class
     {
+        return await SyncCoreAsync<TEntity, TDto>(
+            queryProviderFactory,
+            mapper,
+            syncToken,
+            async (lastSyncTime) =>
+            {
+                var objectType = typeof(TEntity).Name;
+                var deletedQuery = dbContext.ChangeLogs!.AsNoTracking()
+                    .Where(cl => cl.ObjectType == objectType && cl.EntityState == EntityState.Deleted && cl.CreatedAt > lastSyncTime);
+
+                var deletedIds = await deletedQuery.Select(cl => cl.ObjectId).Distinct().ToListAsync();
+
+                DateTime? maxDeleted = deletedIds.Any()
+                    ? await deletedQuery.MaxAsync(cl => (DateTime?)cl.CreatedAt)
+                    : null;
+
+                return new DeletedInfo(deletedIds, deletedIds.Count, maxDeleted);
+            });
+    }
+
+    /// <inheritdoc/>
+    public async Task<IActionResult> SyncMediaAsync(
+        QueryProviderFactory<Media> queryProviderFactory,
+        IMapper mapper,
+        string? syncToken = null,
+        string? query = null)
+    {
+        return await SyncCoreAsync<Media, MediaDetailsDto>(
+            queryProviderFactory,
+            mapper,
+            syncToken,
+            async (lastSyncTime) =>
+            {
+                // Get deleted file paths from ChangeLog (Deleted entries)
+                var deletedChangeLogs = await dbContext.ChangeLogs!.AsNoTracking()
+                    .Where(cl => cl.ObjectType == nameof(Media) && cl.EntityState == EntityState.Deleted && cl.CreatedAt > lastSyncTime)
+                    .Select(cl => cl.Data)
+                    .ToListAsync();
+
+                var deletedPaths = new List<MediaDeletedDto>();
+                foreach (var data in deletedChangeLogs)
+                {
+                    var parsed = ParseDeletedMediaPath(data);
+                    if (parsed != null)
+                    {
+                        deletedPaths.Add(parsed);
+                    }
+                }
+
+                // Get old paths from renamed files (Modified entries) — these represent paths that no longer exist
+                var renamedChangeLogs = await dbContext.ChangeLogs!.AsNoTracking()
+                    .Where(cl => cl.ObjectType == nameof(Media) && cl.EntityState == EntityState.Modified && cl.CreatedAt > lastSyncTime)
+                    .Select(cl => cl.Data)
+                    .ToListAsync();
+
+                foreach (var data in renamedChangeLogs)
+                {
+                    var parsed = ParseRenamedMediaOldPath(data);
+                    if (parsed != null)
+                    {
+                        deletedPaths.Add(parsed);
+                    }
+                }
+
+                // Max changelog time across both Deleted and Modified
+                var changeLogMaxTime = await dbContext.ChangeLogs!.AsNoTracking()
+                    .Where(cl => cl.ObjectType == nameof(Media) && cl.CreatedAt > lastSyncTime &&
+                        (cl.EntityState == EntityState.Deleted || cl.EntityState == EntityState.Modified))
+                    .Select(cl => (DateTime?)cl.CreatedAt)
+                    .MaxAsync() ?? null;
+
+                return new DeletedInfo(deletedPaths, deletedPaths.Count, changeLogMaxTime);
+            });
+    }
+
+    /// <summary>
+    /// Parses the Data JSON of a Deleted ChangeLog entry to extract the scopeUid and name.
+    /// </summary>
+    private static MediaDeletedDto? ParseDeletedMediaPath(string data)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(data);
+            var root = doc.RootElement;
+            var scopeUid = root.TryGetProperty("scopeUid", out var s) ? s.GetString() : null;
+            var name = root.TryGetProperty("name", out var n) ? n.GetString() : null;
+
+            if (!string.IsNullOrEmpty(scopeUid) && !string.IsNullOrEmpty(name))
+            {
+                return new MediaDeletedDto { ScopeUid = scopeUid, Name = name };
+            }
+        }
+        catch
+        {
+            // Ignore malformed data
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Parses the Data JSON of a Modified (renamed) ChangeLog entry to extract the old path.
+    /// </summary>
+    private static MediaDeletedDto? ParseRenamedMediaOldPath(string data)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(data);
+            var root = doc.RootElement;
+            var oldScopeUid = root.TryGetProperty("oldScopeUid", out var s) ? s.GetString() : null;
+            var oldName = root.TryGetProperty("oldName", out var n) ? n.GetString() : null;
+
+            if (!string.IsNullOrEmpty(oldScopeUid) && !string.IsNullOrEmpty(oldName))
+            {
+                return new MediaDeletedDto { ScopeUid = oldScopeUid, Name = oldName };
+            }
+        }
+        catch
+        {
+            // Ignore malformed data
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Core sync logic shared by all entity types. The <paramref name="resolveDeleted"/> delegate
+    /// is responsible for querying the ChangeLog and returning the deleted payload (which can be
+    /// a list of IDs for standard entities or a list of path DTOs for media).
+    /// </summary>
+    private async Task<IActionResult> SyncCoreAsync<TEntity, TDto>(
+        QueryProviderFactory<TEntity> queryProviderFactory,
+        IMapper mapper,
+        string? syncToken,
+        Func<DateTime, Task<DeletedInfo>> resolveDeleted)
+        where TEntity : BaseEntityWithId, new()
+        where TDto : class
+    {
         var now = DateTime.UtcNow;
         DateTime lastSyncTime = DateTime.MinValue;
 
@@ -72,11 +212,8 @@ public class SyncService : ISyncService
         var items = mapper.Map<List<TDto>>(changedEntities);
         DtoCleanupHelper.RemoveSecondLevelObjects(items);
 
-        // Get deletions from ChangeLog
-        var objectType = typeof(TEntity).Name;
-        var deletedQuery = dbContext.ChangeLogs!.AsNoTracking()
-            .Where(cl => cl.ObjectType == objectType && cl.EntityState == EntityState.Deleted && cl.CreatedAt > lastSyncTime);
-        var deletedIds = await deletedQuery.Select(cl => cl.ObjectId).Distinct().ToListAsync();
+        // Resolve deleted data via the strategy delegate
+        var deletedInfo = await resolveDeleted(lastSyncTime);
 
         // Determine nextSyncToken (max updated_at/created_at/deleted)
         DateTime? maxTime = null;
@@ -105,13 +242,9 @@ public class SyncService : ISyncService
             }
         }
 
-        if (deletedIds.Any())
+        if (deletedInfo.MaxChangeLogTime != null && (maxTime == null || deletedInfo.MaxChangeLogTime > maxTime))
         {
-            var maxDeleted = await deletedQuery.MaxAsync(cl => (DateTime?)cl.CreatedAt);
-            if (maxDeleted != null && (maxTime == null || maxDeleted > maxTime))
-            {
-                maxTime = maxDeleted;
-            }
+            maxTime = deletedInfo.MaxChangeLogTime;
         }
 
         // Use lastSyncTime as nextSyncTime if no new maxTime is found
@@ -126,11 +259,40 @@ public class SyncService : ISyncService
             response.Headers.Append(ResponseHeaderNames.AccessControlExposeHeader, ResponseHeaderNames.TotalCount);
         }
 
-        if (items.Count == 0 && deletedIds.Count == 0)
+        if (items.Count == 0 && deletedInfo.Count == 0)
         {
             return new NoContentResult();
         }
 
-        return new OkObjectResult(new { items, deleted = deletedIds });
+        return new OkObjectResult(new { items, deleted = deletedInfo.Payload });
+    }
+
+    /// <summary>
+    /// Holds the result of the deleted-data resolution strategy, carrying the serialisable
+    /// payload, its count, and the maximum ChangeLog timestamp for sync-token calculation.
+    /// </summary>
+    private sealed class DeletedInfo
+    {
+        public DeletedInfo(object payload, int count, DateTime? maxChangeLogTime)
+        {
+            Payload = payload;
+            Count = count;
+            MaxChangeLogTime = maxChangeLogTime;
+        }
+
+        /// <summary>
+        /// Gets the serialisable deleted data (e.g. <c>List&lt;int&gt;</c> or <c>List&lt;MediaDeletedDto&gt;</c>).
+        /// </summary>
+        public object Payload { get; }
+
+        /// <summary>
+        /// Gets the number of deleted entries.
+        /// </summary>
+        public int Count { get; }
+
+        /// <summary>
+        /// Gets the maximum ChangeLog CreatedAt among the resolved entries, used for sync token calculation.
+        /// </summary>
+        public DateTime? MaxChangeLogTime { get; }
     }
 }

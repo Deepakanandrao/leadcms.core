@@ -93,6 +93,23 @@ public class MediaOptimizeResponseDto
 }
 
 /// <summary>
+/// Represents a deleted or renamed-away media file path returned by the media sync API.
+/// Clients use the ScopeUid and Name to identify which local file should be removed.
+/// </summary>
+public class MediaDeletedDto
+{
+    /// <summary>
+    /// Gets or sets the folder path (scope) of the deleted/old media file.
+    /// </summary>
+    public string ScopeUid { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the file name of the deleted/old media file.
+    /// </summary>
+    public string Name { get; set; } = string.Empty;
+}
+
+/// <summary>
 /// Request DTO for bulk media optimization with optional folder filtering.
 /// </summary>
 public class MediaBulkOptimizeRequestDto
