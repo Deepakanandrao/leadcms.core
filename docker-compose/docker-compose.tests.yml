@@ -1,4 +1,4 @@
-﻿version: '3.4'
+﻿version: "3.4"
 
 services:
   elastic-test:
@@ -10,17 +10,29 @@ services:
       - xpack.security.enabled=false
       - "discovery.type=single-node"
       - "ES_JAVA_OPTS=-Xms1024m -Xmx1024m"
+    healthcheck:
+      test:
+        ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
     restart: unless-stopped
 
   postgres-test:
     container_name: postgres-test
     image: postgres:14.5
     environment:
-      TZ: 'UTC'
-      PGTZ: 'UTC'
+      TZ: "UTC"
+      PGTZ: "UTC"
       POSTGRES_DB: LeadCMS-test
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
       - "15432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
