@@ -183,6 +183,11 @@ namespace LeadCMS.Controllers
             return Ok(res);
         }
 
+        /// <summary>
+        /// Synchronizes entity data based on a sync token for incremental updates.
+        /// Returns a <c>SyncResponseDto&lt;TD, int&gt;</c> containing changed items and deleted entity IDs.
+        /// Derived controllers should override and add a concrete <c>ProducesResponseType</c> attribute.
+        /// </summary>
         [HttpGet("sync")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]

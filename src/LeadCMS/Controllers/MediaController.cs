@@ -1422,7 +1422,7 @@ public class MediaController : ControllerBase
     /// </summary>
     [HttpGet("sync")]
     [AllowAnonymous]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(SyncResponseDto<MediaDetailsDto, MediaDeletedDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -1432,16 +1432,11 @@ public class MediaController : ControllerBase
         var result = await syncService.SyncMediaAsync(queryProviderFactory, mapper, syncToken, query);
 
         // Calculate Location for each MediaDetailsDto if we have items in the result
-        if (result is OkObjectResult okResult && okResult.Value != null)
+        if (result is OkObjectResult okResult && okResult.Value is SyncResponseDto<MediaDetailsDto, MediaDeletedDto> syncResponse)
         {
-            var resultData = okResult.Value;
-            var itemsProperty = resultData.GetType().GetProperty("items");
-            if (itemsProperty?.GetValue(resultData) is List<MediaDetailsDto> items)
+            foreach (var item in syncResponse.Items)
             {
-                foreach (var item in items)
-                {
-                    item.Location = CalculateMediaLocation(item.ScopeUid, item.Name);
-                }
+                item.Location = CalculateMediaLocation(item.ScopeUid, item.Name);
             }
         }
 

@@ -66,6 +66,18 @@ public class DealsController : BaseController<Deal, DealCreateDto, DealUpdateDto
         return Ok(resultsToClient);
     }
 
+    /// <inheritdoc/>
+    [HttpGet("sync")]
+    [ProducesResponseType(typeof(SyncResponseDto<DealDetailsDto, int>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public override Task<IActionResult> Sync([FromQuery] string? syncToken = null, [FromQuery] string? query = null)
+    {
+        return base.Sync(syncToken, query);
+    }
+
     private List<Contact> GetContactsFromContactIds(HashSet<int> contactIds)
     {
         var contacts = dbContext.Contacts!.Where(c => contactIds.Contains(c.Id)).ToList();

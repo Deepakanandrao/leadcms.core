@@ -73,6 +73,18 @@ public class OrdersController : BaseControllerWithImport<Order, OrderCreateDto, 
         return await commentableControllerExtension.PostComment(commentableControllerExtension.CreateCommentForICommentable<Order>(value, id), this);
     }
 
+    /// <inheritdoc/>
+    [HttpGet("sync")]
+    [ProducesResponseType(typeof(SyncResponseDto<OrderDetailsDto, int>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public override Task<IActionResult> Sync([FromQuery] string? syncToken = null, [FromQuery] string? query = null)
+    {
+        return base.Sync(syncToken, query);
+    }
+
     protected override async Task SaveRangeAsync(List<Order> newRecords)
     {
         await orderService.SaveRangeAsync(newRecords);

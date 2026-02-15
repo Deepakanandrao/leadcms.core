@@ -208,6 +208,18 @@ public class ContactsController : BaseControllerWithImport<Contact, ContactCreat
         return await commentableControllerExtension.PostComment(commentableControllerExtension.CreateCommentForICommentable<Contact>(value, id), this);
     }
 
+    /// <inheritdoc/>
+    [HttpGet("sync")]
+    [ProducesResponseType(typeof(SyncResponseDto<ContactDetailsDto, int>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public override Task<IActionResult> Sync([FromQuery] string? syncToken = null, [FromQuery] string? query = null)
+    {
+        return base.Sync(syncToken, query);
+    }
+
     protected override async Task SaveRangeAsync(List<Contact> newRecords)
     {
         await contactService.SaveRangeAsync(newRecords);

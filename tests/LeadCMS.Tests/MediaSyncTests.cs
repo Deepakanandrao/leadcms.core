@@ -4,6 +4,7 @@
 
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using LeadCMS.DTOs;
 using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
 using Microsoft.AspNetCore.StaticFiles;
@@ -247,7 +248,7 @@ public class MediaSyncTests : BaseTestAutoLogin
         return media!;
     }
 
-    private async Task<SyncResult?> GetSyncResult(string url)
+    private async Task<MediaSyncResult?> GetSyncResult(string url)
     {
         var response = await GetRequest(url);
 
@@ -259,10 +260,9 @@ public class MediaSyncTests : BaseTestAutoLogin
                 token = tokenValues.FirstOrDefault();
             }
 
-            return new SyncResult
+            return new MediaSyncResult
             {
-                Items = new List<MediaDetailsDto>(),
-                Deleted = new List<MediaDeletedDto>(),
+                Response = new SyncResponseDto<MediaDetailsDto, MediaDeletedDto>(),
                 NextSyncToken = token,
             };
         }
@@ -270,21 +270,25 @@ public class MediaSyncTests : BaseTestAutoLogin
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var content = await response.Content.ReadAsStringAsync();
-        var result = JsonHelper.Deserialize<SyncResult>(content);
+        var syncResponse = JsonHelper.Deserialize<SyncResponseDto<MediaDetailsDto, MediaDeletedDto>>(content);
+
+        var result = new MediaSyncResult { Response = syncResponse! };
 
         if (response.Headers.TryGetValues(ResponseHeaderNames.NextSyncToken, out var values))
         {
-            result!.NextSyncToken = values.FirstOrDefault();
+            result.NextSyncToken = values.FirstOrDefault();
         }
 
         return result;
     }
 
-    private class SyncResult
+    private class MediaSyncResult
     {
-        public List<MediaDetailsDto>? Items { get; set; }
+        public SyncResponseDto<MediaDetailsDto, MediaDeletedDto> Response { get; set; } = new();
 
-        public List<MediaDeletedDto>? Deleted { get; set; }
+        public List<MediaDetailsDto> Items => Response.Items;
+
+        public List<MediaDeletedDto> Deleted => Response.Deleted;
 
         public string? NextSyncToken { get; set; }
     }

@@ -61,6 +61,18 @@ public class ContentTypesController : BaseControllerWithImport<ContentType, Cont
         return baseResult;
     }
 
+    /// <inheritdoc/>
+    [HttpGet("sync")]
+    [ProducesResponseType(typeof(SyncResponseDto<ContentTypeDetailsDto, int>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public override Task<IActionResult> Sync([FromQuery] string? syncToken = null, [FromQuery] string? query = null)
+    {
+        return base.Sync(syncToken, query);
+    }
+
     /// <summary>
     /// Enriches the ContentType DTOs with the count of related content records.
     /// </summary>

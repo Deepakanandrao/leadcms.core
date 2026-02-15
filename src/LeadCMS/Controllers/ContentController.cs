@@ -345,7 +345,7 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
 
     [HttpGet("sync")]
     [AllowAnonymous]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(SyncResponseDto<ContentDetailsDto, int>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

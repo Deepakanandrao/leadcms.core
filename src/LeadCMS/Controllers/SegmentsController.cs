@@ -117,4 +117,16 @@ public class SegmentsController : BaseController<Segment, SegmentCreateDto, Segm
 
         return Ok(dto);
     }
+
+    /// <inheritdoc/>
+    [HttpGet("sync")]
+    [ProducesResponseType(typeof(SyncResponseDto<SegmentDetailsDto, int>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public override Task<IActionResult> Sync([FromQuery] string? syncToken = null, [FromQuery] string? query = null)
+    {
+        return base.Sync(syncToken, query);
+    }
 }

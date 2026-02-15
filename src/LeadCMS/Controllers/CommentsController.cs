@@ -199,7 +199,7 @@ public class CommentsController : BaseControllerWithImport<Comment, CommentCreat
 
     [HttpGet("sync")]
     [AllowAnonymous]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(SyncResponseDto<CommentDetailsDto, int>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -220,25 +220,18 @@ public class CommentsController : BaseControllerWithImport<Comment, CommentCreat
         else
         {
             // Transform the result for anonymous users
-            if (baseResult is OkObjectResult okResult && okResult.Value != null)
+            if (baseResult is OkObjectResult okResult && okResult.Value is SyncResponseDto<CommentDetailsDto, int> syncResponse)
             {
-                var resultData = okResult.Value;
-                var itemsProperty = resultData.GetType().GetProperty("items");
-                var deletedProperty = resultData.GetType().GetProperty("deleted");
+                // Map to anonymous DTOs
+                var anonymousItems = syncResponse.Items.Select(item => mapper.Map<AnonymousCommentDetailsDto>(item)).ToList();
 
-                if (itemsProperty?.GetValue(resultData) is List<CommentDetailsDto> items)
+                var anonymousResponse = new SyncResponseDto<AnonymousCommentDetailsDto, int>
                 {
-                    // Map to anonymous DTOs
-                    var anonymousItems = items.Select(item => mapper.Map<AnonymousCommentDetailsDto>(item)).ToList();
+                    Items = anonymousItems,
+                    Deleted = syncResponse.Deleted,
+                };
 
-                    var anonymousResult = new
-                    {
-                        items = anonymousItems,
-                        deleted = deletedProperty?.GetValue(resultData),
-                    };
-
-                    return Ok(anonymousResult);
-                }
+                return Ok(anonymousResponse);
             }
 
             // Return the original result if transformation is not possible

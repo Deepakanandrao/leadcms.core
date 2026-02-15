@@ -42,7 +42,7 @@ public class SyncService : ISyncService
         where TEntity : BaseEntityWithId, new()
         where TDto : class
     {
-        return await SyncCoreAsync<TEntity, TDto>(
+        return await SyncCoreAsync<TEntity, TDto, int>(
             queryProviderFactory,
             mapper,
             syncToken,
@@ -58,7 +58,7 @@ public class SyncService : ISyncService
                     ? await deletedQuery.MaxAsync(cl => (DateTime?)cl.CreatedAt)
                     : null;
 
-                return new DeletedInfo(deletedIds, deletedIds.Count, maxDeleted);
+                return new DeletedInfo<int>(deletedIds, maxDeleted);
             });
     }
 
@@ -69,7 +69,7 @@ public class SyncService : ISyncService
         string? syncToken = null,
         string? query = null)
     {
-        return await SyncCoreAsync<Media, MediaDetailsDto>(
+        return await SyncCoreAsync<Media, MediaDetailsDto, MediaDeletedDto>(
             queryProviderFactory,
             mapper,
             syncToken,
@@ -113,7 +113,7 @@ public class SyncService : ISyncService
                     .Select(cl => (DateTime?)cl.CreatedAt)
                     .MaxAsync() ?? null;
 
-                return new DeletedInfo(deletedPaths, deletedPaths.Count, changeLogMaxTime);
+                return new DeletedInfo<MediaDeletedDto>(deletedPaths, changeLogMaxTime);
             });
     }
 
@@ -172,11 +172,14 @@ public class SyncService : ISyncService
     /// is responsible for querying the ChangeLog and returning the deleted payload (which can be
     /// a list of IDs for standard entities or a list of path DTOs for media).
     /// </summary>
-    private async Task<IActionResult> SyncCoreAsync<TEntity, TDto>(
+    /// <typeparam name="TEntity">The entity type.</typeparam>
+    /// <typeparam name="TDto">The DTO type for changed items.</typeparam>
+    /// <typeparam name="TDeleted">The type of deleted entry identifiers.</typeparam>
+    private async Task<IActionResult> SyncCoreAsync<TEntity, TDto, TDeleted>(
         QueryProviderFactory<TEntity> queryProviderFactory,
         IMapper mapper,
         string? syncToken,
-        Func<DateTime, Task<DeletedInfo>> resolveDeleted)
+        Func<DateTime, Task<DeletedInfo<TDeleted>>> resolveDeleted)
         where TEntity : BaseEntityWithId, new()
         where TDto : class
     {
@@ -242,9 +245,9 @@ public class SyncService : ISyncService
             }
         }
 
-        if (deletedInfo.MaxChangeLogTime != null && (maxTime == null || deletedInfo.MaxChangeLogTime > maxTime))
+        if (deletedInfo.MaxTime != null && (maxTime == null || deletedInfo.MaxTime > maxTime))
         {
-            maxTime = deletedInfo.MaxChangeLogTime;
+            maxTime = deletedInfo.MaxTime;
         }
 
         // Use lastSyncTime as nextSyncTime if no new maxTime is found
@@ -259,40 +262,41 @@ public class SyncService : ISyncService
             response.Headers.Append(ResponseHeaderNames.AccessControlExposeHeader, ResponseHeaderNames.TotalCount);
         }
 
-        if (items.Count == 0 && deletedInfo.Count == 0)
+        if (items.Count == 0 && deletedInfo.Payload.Count == 0)
         {
             return new NoContentResult();
         }
 
-        return new OkObjectResult(new { items, deleted = deletedInfo.Payload });
+        var syncResponse = new SyncResponseDto<TDto, TDeleted>
+        {
+            Items = items,
+            Deleted = deletedInfo.Payload,
+        };
+
+        return new OkObjectResult(syncResponse);
     }
 
     /// <summary>
-    /// Holds the result of the deleted-data resolution strategy, carrying the serialisable
-    /// payload, its count, and the maximum ChangeLog timestamp for sync-token calculation.
+    /// Holds the result of the deleted-data resolution strategy, carrying the typed
+    /// payload and the maximum ChangeLog timestamp for sync-token calculation.
     /// </summary>
-    private sealed class DeletedInfo
+    /// <typeparam name="T">The type of deleted entry identifiers.</typeparam>
+    private sealed class DeletedInfo<T>
     {
-        public DeletedInfo(object payload, int count, DateTime? maxChangeLogTime)
+        public DeletedInfo(List<T> payload, DateTime? maxTime)
         {
             Payload = payload;
-            Count = count;
-            MaxChangeLogTime = maxChangeLogTime;
+            MaxTime = maxTime;
         }
 
         /// <summary>
-        /// Gets the serialisable deleted data (e.g. <c>List&lt;int&gt;</c> or <c>List&lt;MediaDeletedDto&gt;</c>).
+        /// Gets the typed list of deleted entry identifiers.
         /// </summary>
-        public object Payload { get; }
-
-        /// <summary>
-        /// Gets the number of deleted entries.
-        /// </summary>
-        public int Count { get; }
+        public List<T> Payload { get; }
 
         /// <summary>
         /// Gets the maximum ChangeLog CreatedAt among the resolved entries, used for sync token calculation.
         /// </summary>
-        public DateTime? MaxChangeLogTime { get; }
+        public DateTime? MaxTime { get; }
     }
 }
