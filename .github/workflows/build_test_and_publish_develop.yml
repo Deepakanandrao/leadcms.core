@@ -76,6 +76,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nuget-
 
+      - name: Set vm.max_map_count for Elasticsearch
+        if: ${{ github.event.inputs.run_tests == 'true' }}
+        run: sudo sysctl -w vm.max_map_count=262144
+
       - name: Docker Compose Setup
         if: ${{ github.event.inputs.run_tests == 'true' }}
         run: docker compose -f ./docker-compose/docker-compose.tests.yml up -d --wait
