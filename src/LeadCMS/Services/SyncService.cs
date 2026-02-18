@@ -38,7 +38,8 @@ public class SyncService : ISyncService
         QueryProviderFactory<TEntity> queryProviderFactory,
         IMapper mapper,
         string? syncToken = null,
-        string? query = null)
+        string? query = null,
+        bool includeBase = false)
         where TEntity : BaseEntityWithId, new()
         where TDto : class
     {
@@ -46,6 +47,7 @@ public class SyncService : ISyncService
             queryProviderFactory,
             mapper,
             syncToken,
+            includeBase,
             async (lastSyncTime) =>
             {
                 var objectType = typeof(TEntity).Name;
@@ -73,6 +75,7 @@ public class SyncService : ISyncService
             queryProviderFactory,
             mapper,
             syncToken,
+            includeBase: false,
             async (lastSyncTime) =>
             {
                 // Get deleted file paths from ChangeLog (Deleted entries)
@@ -179,6 +182,7 @@ public class SyncService : ISyncService
         QueryProviderFactory<TEntity> queryProviderFactory,
         IMapper mapper,
         string? syncToken,
+        bool includeBase,
         Func<DateTime, Task<DeletedInfo<TDeleted>>> resolveDeleted)
         where TEntity : BaseEntityWithId, new()
         where TDto : class
@@ -214,6 +218,89 @@ public class SyncService : ISyncService
 
         var items = mapper.Map<List<TDto>>(changedEntities);
         DtoCleanupHelper.RemoveSecondLevelObjects(items);
+
+        // Resolve base versions from ChangeLog for three-way merge support.
+        // Base versions are only relevant when explicitly requested via includeBase,
+        // a syncToken is provided (incremental sync), and there are changed entities.
+        Dictionary<int, TDto>? baseItems = null;
+        if (includeBase && !string.IsNullOrEmpty(syncToken) && changedEntities.Any())
+        {
+            baseItems = new Dictionary<int, TDto>();
+            // Identify entities that existed before lastSyncTime (modified, not newly created)
+            var modifiedEntityIds = changedEntities
+                .Where(e => e is IHasCreatedAt created && created.CreatedAt <= lastSyncTime)
+                .Select(e => e.Id)
+                .ToList();
+
+            if (modifiedEntityIds.Any())
+            {
+                var objectType = typeof(TEntity).Name;
+
+                // Fetch all non-deleted ChangeLog entries for the modified entities
+                // and determine the base version using ordering rather than strict
+                // timestamp comparison. This avoids precision issues where
+                // ChangeLog.CreatedAt can differ slightly from entity timestamps
+                // (they are set with separate DateTime.UtcNow calls in PgDbContext).
+                var allChangeLogEntries = await dbContext.ChangeLogs!.AsNoTracking()
+                    .Where(cl => cl.ObjectType == objectType
+                        && modifiedEntityIds.Contains(cl.ObjectId)
+                        && cl.EntityState != EntityState.Deleted)
+                    .OrderBy(cl => cl.CreatedAt)
+                    .ToListAsync();
+
+                foreach (var group in allChangeLogEntries.GroupBy(e => e.ObjectId))
+                {
+                    var entries = group.OrderBy(e => e.CreatedAt).ToList();
+
+                    // Find the first ChangeLog entry after lastSyncTime — this is
+                    // the first change the client hasn't seen yet.
+                    var firstPostSyncIndex = entries.FindIndex(e => e.CreatedAt > lastSyncTime);
+
+                    ChangeLog? baseEntry = null;
+                    if (firstPostSyncIndex > 0)
+                    {
+                        // Normal case: take the entry just before the first unseen change.
+                        baseEntry = entries[firstPostSyncIndex - 1];
+                    }
+                    else if (firstPostSyncIndex == 0)
+                    {
+                        // All ChangeLog entries are after lastSyncTime due to timestamp
+                        // drift. The entity existed before lastSyncTime (CreatedAt <= lastSyncTime),
+                        // so the earliest entry is its creation state — use it as the base.
+                        baseEntry = entries[0];
+                    }
+                    else
+                    {
+                        // No entries after lastSyncTime found (unlikely edge case).
+                        // Use the most recent entry as the base.
+                        baseEntry = entries.Last();
+                    }
+
+                    if (baseEntry != null)
+                    {
+                        try
+                        {
+                            var baseEntity = JsonHelper.Deserialize<TEntity>(baseEntry.Data);
+                            if (baseEntity != null)
+                            {
+                                var baseDto = mapper.Map<TDto>(baseEntity);
+                                baseItems[group.Key] = baseDto;
+                            }
+                        }
+                        catch
+                        {
+                            // Skip entries that fail to deserialize — the base version
+                            // won't be available for this entity but sync continues.
+                        }
+                    }
+                }
+
+                if (baseItems.Any())
+                {
+                    DtoCleanupHelper.RemoveSecondLevelObjects(baseItems.Values.ToList());
+                }
+            }
+        }
 
         // Resolve deleted data via the strategy delegate
         var deletedInfo = await resolveDeleted(lastSyncTime);
@@ -271,6 +358,7 @@ public class SyncService : ISyncService
         {
             Items = items,
             Deleted = deletedInfo.Payload,
+            BaseItems = baseItems,
         };
 
         return new OkObjectResult(syncResponse);

@@ -189,7 +189,6 @@ namespace LeadCMS.Controllers
         /// Derived controllers should override and add a concrete <c>ProducesResponseType</c> attribute.
         /// </summary>
         [HttpGet("sync")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]

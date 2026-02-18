@@ -26,12 +26,14 @@ public interface ISyncService
     /// <param name="mapper">AutoMapper instance for entity to DTO mapping.</param>
     /// <param name="syncToken">Optional sync token indicating the last sync time.</param>
     /// <param name="query">Optional query string for additional filtering.</param>
+    /// <param name="includeBase">When true, includes base versions of modified entities (the version at sync token time) for three-way merge support.</param>
     /// <returns>ActionResult containing sync response with items, deleted IDs, and headers.</returns>
     Task<IActionResult> SyncAsync<TEntity, TDto>(
         QueryProviderFactory<TEntity> queryProviderFactory,
         IMapper mapper,
         string? syncToken = null,
-        string? query = null)
+        string? query = null,
+        bool includeBase = false)
         where TEntity : BaseEntityWithId, new()
         where TDto : class;
 

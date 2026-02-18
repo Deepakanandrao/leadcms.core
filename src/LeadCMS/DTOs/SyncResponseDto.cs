@@ -2,6 +2,8 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Text.Json.Serialization;
+
 namespace LeadCMS.DTOs;
 
 /// <summary>
@@ -23,4 +25,16 @@ public class SyncResponseDto<TItem, TDeleted>
     /// For media this is a list of <see cref="MediaDeletedDto"/> containing the file paths.
     /// </summary>
     public List<TDeleted> Deleted { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets a dictionary mapping entity IDs to the base version of the item
+    /// (the version that was current at the time of the client's sync token).
+    /// Only populated when explicitly requested via the <c>includeBase</c> query parameter
+    /// and a sync token is provided. Contains the entity state at the time of the sync token,
+    /// i.e. the version the client last received. Clients can use this together with the
+    /// current version in <see cref="Items"/> to perform a three-way merge of local changes
+    /// with remote changes.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<int, TItem>? BaseItems { get; set; }
 }
