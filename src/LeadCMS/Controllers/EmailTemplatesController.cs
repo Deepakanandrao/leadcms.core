@@ -3,6 +3,7 @@
 // </copyright>
 
 using AutoMapper;
+using LeadCMS.Attributes;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
@@ -54,13 +55,18 @@ public class EmailTemplatesController : BaseController<EmailTemplate, EmailTempl
 
     /// <inheritdoc/>
     [HttpGet("sync")]
+    [IncludeBaseParameter(Description = "Include base versions of modified items for three-way merge support")]
     [ProducesResponseType(typeof(SyncResponseDto<EmailTemplateDetailsDto, int>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public override Task<IActionResult> Sync([FromQuery] string? syncToken = null, [FromQuery] string? query = null)
+    public override async Task<IActionResult> Sync([FromQuery] string? syncToken = null, [FromQuery] string? query = null)
     {
-        return base.Sync(syncToken, query);
+        var includeBase = HttpContext.Request.Query.ContainsKey("includeBase")
+            && bool.TryParse(HttpContext.Request.Query["includeBase"], out var val)
+            && val;
+
+        return await syncService.SyncAsync<EmailTemplate, EmailTemplateDetailsDto>(queryProviderFactory, mapper, syncToken, query, includeBase);
     }
 }
