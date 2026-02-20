@@ -8,11 +8,13 @@ using System.Text.Json.Serialization;
 using LeadCMS.DataAnnotations;
 using LeadCMS.Enums;
 using LeadCMS.Interfaces;
+using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Entities
 {
     [Table("email_template")]
     [SupportsChangeLog]
+    [Index(nameof(Name), nameof(Language), IsUnique = true)]
     public class EmailTemplate : BaseEntity, ITranslatable
     {
         [Required]

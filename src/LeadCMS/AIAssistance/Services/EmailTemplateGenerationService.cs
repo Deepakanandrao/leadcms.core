@@ -450,7 +450,9 @@ OUTPUT FORMAT - Return ONLY valid JSON with this exact structure:
   ""bodyTemplate"": ""<the template body in {formatLabel} format>"",
   ""fromName"": ""Sender Name"",
   ""format"": ""{formatLabel}""
-}}";
+}}
+
+IMPORTANT: The 'name' field is used as a localisation key and must NEVER be translated. Keep the original template name exactly as-is.";
     }
 
     private static string BuildSystemPrompt(EmailTemplate sampleTemplate, EmailTemplateFormat targetFormat)
@@ -494,6 +496,7 @@ OUTPUT FORMAT - Return ONLY valid JSON with this exact structure:
   ""format"": ""{formatLabel}""
 }}
 
+IMPORTANT: The 'name' field is used as a localisation key and must NEVER be translated. Keep the original template name exactly as-is.
 The bodyTemplate must be valid {formatLabel}.";
     }
 

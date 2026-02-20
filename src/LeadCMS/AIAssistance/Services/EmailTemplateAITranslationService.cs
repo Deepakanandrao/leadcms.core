@@ -20,17 +20,20 @@ public class EmailTemplateAITranslationService : IEmailTemplateAITranslationServ
     private readonly ITranslationService translationService;
     private readonly ITextGenerationService textGenerationService;
     private readonly ILanguageValidationService languageValidationService;
+    private readonly IEmailGroupResolutionService emailGroupResolutionService;
 
     public EmailTemplateAITranslationService(
         IMapper mapper,
         ITranslationService translationService,
         ITextGenerationService textGenerationService,
-        ILanguageValidationService languageValidationService)
+        ILanguageValidationService languageValidationService,
+        IEmailGroupResolutionService emailGroupResolutionService)
     {
         this.mapper = mapper;
         this.translationService = translationService;
         this.textGenerationService = textGenerationService;
         this.languageValidationService = languageValidationService;
+        this.emailGroupResolutionService = emailGroupResolutionService;
     }
 
     public async Task<EmailTemplateDetailsDto> CreateAITranslationDraftAsync(int emailTemplateId, string targetLanguage, int? targetEmailGroupId = null)
@@ -51,10 +54,14 @@ public class EmailTemplateAITranslationService : IEmailTemplateAITranslationServ
         originalDraft.BodyTemplate = translatedMetadata.BodyTemplate;
         originalDraft.FromName = translatedMetadata.FromName;
 
-        // Set the target email group if specified, otherwise keep the original group
+        // Set the target email group if specified, otherwise try to find the matching group in the target language
         if (targetEmailGroupId.HasValue)
         {
             originalDraft.EmailGroupId = targetEmailGroupId.Value;
+        }
+        else
+        {
+            originalDraft.EmailGroupId = await emailGroupResolutionService.ResolveTargetEmailGroupIdAsync(originalDraft.EmailGroupId, targetLanguage);
         }
 
         // Update source to indicate AI translation
@@ -120,7 +127,7 @@ CRITICAL RULES - STRICT STRUCTURE PRESERVATION:
 1. Return ONLY valid JSON with the EXACT same structure as the input
 2. Translate all human-readable text values to {targetLanguage}
 3. Keep all JSON property names unchanged - do not translate keys
-4. For 'Name': Translate the descriptive part but keep technical identifiers if present
+4. For 'Name': DO NOT translate — this value is used as a localisation key and must be preserved exactly as-is
 5. For 'Subject': Translate naturally while maintaining the email subject line tone
 6. For 'BodyTemplate':
    - Preserve ALL markup tags, attributes, and styles EXACTLY as they appear

@@ -96,6 +96,7 @@ public class Program
         builder.Services.AddTransient<CommentableControllerExtension, CommentableControllerExtension>();
         builder.Services.AddScoped<ILanguageValidationService, LanguageValidationService>();
         builder.Services.AddScoped<ITranslationService, TranslationService>();
+        builder.Services.AddScoped<IEmailGroupResolutionService, EmailGroupResolutionService>();
         builder.Services.AddScoped<IDealService, DealService>();
         builder.Services.AddTransient<IOrderService, OrderService>();
         builder.Services.AddTransient<IDiscountService, DiscountService>();

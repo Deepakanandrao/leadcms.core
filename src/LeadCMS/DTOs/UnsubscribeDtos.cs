@@ -22,6 +22,9 @@ public class UnsubscribeDetailsDto : UnsubscribeDto
     public int Id { get; set; }
 
     public DateTime CreatedAt { get; set; }
+
+    [Ignore]
+    public ContactDetailsDto? Contact { get; set; }
 }
 
 public class UnsubscribeImportDto : BaseImportDtoWithIdAndSource

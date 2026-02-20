@@ -9,10 +9,12 @@ using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Enums;
+using LeadCMS.Exceptions;
 using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace LeadCMS.Controllers;
@@ -23,14 +25,40 @@ public class EmailTemplatesController : BaseController<EmailTemplate, EmailTempl
 {
     private readonly ITranslationService translationService;
     private readonly IChangeLogService changeLogService;
+    private readonly IEmailGroupResolutionService emailGroupResolutionService;
     private readonly IOptions<ApiSettingsConfig> apiSettingsConfig;
 
-    public EmailTemplatesController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<EmailTemplate> queryProviderFactory, ITranslationService translationService, ISyncService syncService, IChangeLogService changeLogService, IOptions<ApiSettingsConfig> apiSettingsConfig)
+    public EmailTemplatesController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<EmailTemplate> queryProviderFactory, ITranslationService translationService, ISyncService syncService, IChangeLogService changeLogService, IEmailGroupResolutionService emailGroupResolutionService, IOptions<ApiSettingsConfig> apiSettingsConfig)
         : base(dbContext, mapper, esDbContext, queryProviderFactory, syncService)
     {
         this.translationService = translationService;
         this.changeLogService = changeLogService;
+        this.emailGroupResolutionService = emailGroupResolutionService;
         this.apiSettingsConfig = apiSettingsConfig;
+    }
+
+    /// <inheritdoc/>
+    public override async Task<ActionResult<EmailTemplateDetailsDto>> Post([FromBody] EmailTemplateCreateDto value)
+    {
+        await ThrowIfDuplicateNameLanguageAsync(value.Name, value.Language);
+        return await base.Post(value);
+    }
+
+    /// <inheritdoc/>
+    public override async Task<ActionResult<EmailTemplateDetailsDto>> Patch(int id, [FromBody] EmailTemplateUpdateDto value)
+    {
+        var existingEntity = await FindOrThrowNotFound(id);
+
+        var effectiveName = value.Name ?? existingEntity.Name;
+        var effectiveLanguage = value.Language ?? existingEntity.Language;
+
+        // Only check for duplicates if name or language is actually changing
+        if (value.Name != null || value.Language != null)
+        {
+            await ThrowIfDuplicateNameLanguageAsync(effectiveName, effectiveLanguage, id);
+        }
+
+        return await Patch(existingEntity, value);
     }
 
     [HttpGet("{id}/translation-draft/{language}")]
@@ -43,6 +71,10 @@ public class EmailTemplatesController : BaseController<EmailTemplate, EmailTempl
     public async Task<ActionResult<EmailTemplateDetailsDto>> GetTranslationDraft(int id, string language, [FromQuery] TranslationTransformerType transformer = TranslationTransformerType.EmptyCopy)
     {
         var translationDraft = await translationService.CreateTranslationDraftAsync<EmailTemplate>(id, language, transformer);
+
+        // Resolve the target email group in the target language, or clear it if not found
+        translationDraft.EmailGroupId = await emailGroupResolutionService.ResolveTargetEmailGroupIdAsync(translationDraft.EmailGroupId, language);
+
         var draftDto = mapper.Map<EmailTemplateDetailsDto>(translationDraft);
 
         return Ok(draftDto);
@@ -150,5 +182,16 @@ public class EmailTemplatesController : BaseController<EmailTemplate, EmailTempl
         Response.Headers.Append(ResponseHeaderNames.AccessControlExposeHeader, ResponseHeaderNames.TotalCount);
 
         return Ok(changeLogDtos);
+    }
+
+    private async Task ThrowIfDuplicateNameLanguageAsync(string name, string language, int? excludeId = null)
+    {
+        var duplicateExists = await dbContext.EmailTemplates!
+            .AnyAsync(et => et.Name == name && et.Language == language && (!excludeId.HasValue || et.Id != excludeId.Value));
+
+        if (duplicateExists)
+        {
+            throw new ConflictException($"An email template with name '{name}' already exists for language '{language}'.");
+        }
     }
 }
