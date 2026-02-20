@@ -25,6 +25,8 @@ public class SubscribeDto
         }
     }
 
+    public string Group { get; set; } = "SubscriberNewsletters";
+
     [Required]
     public int TimeZoneOffset { get; set; }
 

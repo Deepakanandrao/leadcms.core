@@ -13,6 +13,10 @@ public class PluginSettings
     public string SupportEmail { get; set; } = "support@leadcms.ai";
 
     public string RecaptchaSecretKey { get; set; } = string.Empty;
+
+    public string ConfirmationUrlTemplate { get; set; } = "{siteUrl}/confirm-subscription?token={token}";
+
+    public string SubscriptionTokenSecret { get; set; } = string.Empty;
 }
 
 public class ContactUsConfig

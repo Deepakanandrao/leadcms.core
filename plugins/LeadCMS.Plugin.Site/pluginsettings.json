@@ -1,8 +1,10 @@
 ﻿{
   "SiteUrl": "https://leadcms.ai",
   "ContactUs": {
-    "To": [ "$CONTACTUS__TO__0" ]
+    "To": ["$CONTACTUS__TO__0"]
   },
   "SupportEmail": "support@leadcms.ai",
-  "RecaptchaSecretKey": "$RECAPTCHA_SECRET_KEY"
+  "RecaptchaSecretKey": "$RECAPTCHA_SECRET_KEY",
+  "ConfirmationUrlTemplate": "{siteUrl}/confirm-subscription?token={token}",
+  "SubscriptionTokenSecret": "$SUBSCRIPTION_TOKEN_SECRET"
 }

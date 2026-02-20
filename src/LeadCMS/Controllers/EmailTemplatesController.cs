@@ -4,6 +4,7 @@
 
 using AutoMapper;
 using LeadCMS.Attributes;
+using LeadCMS.Configuration;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
@@ -12,6 +13,7 @@ using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace LeadCMS.Controllers;
 
@@ -20,11 +22,15 @@ namespace LeadCMS.Controllers;
 public class EmailTemplatesController : BaseController<EmailTemplate, EmailTemplateCreateDto, EmailTemplateUpdateDto, EmailTemplateDetailsDto>
 {
     private readonly ITranslationService translationService;
+    private readonly IChangeLogService changeLogService;
+    private readonly IOptions<ApiSettingsConfig> apiSettingsConfig;
 
-    public EmailTemplatesController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<EmailTemplate> queryProviderFactory, ITranslationService translationService, ISyncService syncService)
+    public EmailTemplatesController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<EmailTemplate> queryProviderFactory, ITranslationService translationService, ISyncService syncService, IChangeLogService changeLogService, IOptions<ApiSettingsConfig> apiSettingsConfig)
         : base(dbContext, mapper, esDbContext, queryProviderFactory, syncService)
     {
         this.translationService = translationService;
+        this.changeLogService = changeLogService;
+        this.apiSettingsConfig = apiSettingsConfig;
     }
 
     [HttpGet("{id}/translation-draft/{language}")]
@@ -68,5 +74,81 @@ public class EmailTemplatesController : BaseController<EmailTemplate, EmailTempl
             && val;
 
         return await syncService.SyncAsync<EmailTemplate, EmailTemplateDetailsDto>(queryProviderFactory, mapper, syncToken, query, includeBase);
+    }
+
+    /// <summary>
+    /// Get change log records for a specific email template.
+    /// Supports standard query parameters for filtering, sorting, and pagination like other endpoints.
+    /// Query format: /api/emailtemplates/{id}/change-log?filter[limit]=10&amp;filter[skip]=0&amp;filter[order]=CreatedAt&amp;filter[where][eq][EntityState]=Modified.
+    /// </summary>
+    /// <param name="id">The ID of the email template to get change logs for.</param>
+    /// <param name="query">Query string with filter parameters (same format as other endpoints).</param>
+    /// <returns>Paginated list of change log records with parsed email template data.</returns>
+    [HttpGet("{id}/change-log")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<List<ChangeLogDetailsDto<EmailTemplateUpdateDto>>>> GetChangeLog(int id, [FromQuery] string? query)
+    {
+        await FindOrThrowNotFound(id);
+
+        var queryCommands = QueryStringParser.Parse(Request.QueryString.HasValue ?
+            System.Web.HttpUtility.UrlDecode(Request.QueryString.ToString()) : string.Empty);
+
+        var queryBuilder = new QueryModelBuilder<ChangeLog>(
+            queryCommands,
+            apiSettingsConfig.Value.MaxListSize,
+            dbContext);
+
+        var baseQuery = dbContext.Set<ChangeLog>().AsQueryable()
+            .Where(cl => cl.ObjectType == "EmailTemplate" && cl.ObjectId == id);
+
+        var dbQueryProvider = new DBQueryProvider<ChangeLog>(baseQuery, queryBuilder);
+
+        var queryResult = await dbQueryProvider.GetResult();
+        var changeLogs = queryResult.Records ?? new List<ChangeLog>();
+        var totalCount = queryResult.TotalCount;
+
+        var allUserIds = new List<string?>();
+        var userIdMap = new Dictionary<int, (string? createdById, string? updatedById)>();
+
+        foreach (var cl in changeLogs)
+        {
+            var createdById = changeLogService.ExtractCreatedById(cl.Data);
+            var updatedById = changeLogService.ExtractUpdatedById(cl.Data);
+
+            userIdMap[cl.Id] = (createdById, updatedById);
+            allUserIds.Add(createdById);
+            allUserIds.Add(updatedById);
+        }
+
+        var userDisplayNames = await changeLogService.BatchResolveUserDisplayNamesAsync(allUserIds);
+
+        var changeLogDtos = changeLogs.Select(cl =>
+        {
+            var (createdById, updatedById) = userIdMap[cl.Id];
+
+            return new ChangeLogDetailsDto<EmailTemplateUpdateDto>
+            {
+                Id = cl.Id,
+                ObjectType = cl.ObjectType,
+                ObjectId = cl.ObjectId,
+                EntityState = cl.EntityState,
+                Data = changeLogService.SafeParseData<EmailTemplateUpdateDto>(cl.Data),
+                CreatedAt = cl.CreatedAt,
+                Source = cl.Source,
+                CreatedById = createdById,
+                UpdatedById = updatedById,
+                CreatedBy = createdById != null && userDisplayNames.TryGetValue(createdById, out var createdByName) ? createdByName : null,
+                UpdatedBy = updatedById != null && userDisplayNames.TryGetValue(updatedById, out var updatedByName) ? updatedByName : null,
+            };
+        }).ToList();
+
+        Response.Headers.Append(ResponseHeaderNames.TotalCount, totalCount.ToString());
+        Response.Headers.Append(ResponseHeaderNames.AccessControlExposeHeader, ResponseHeaderNames.TotalCount);
+
+        return Ok(changeLogDtos);
     }
 }

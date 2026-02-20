@@ -5,8 +5,10 @@
 using LeadCMS.Entities;
 using LeadCMS.Exceptions;
 using LeadCMS.Interfaces;
+using LeadCMS.Plugin.Site.Configuration;
 using LeadCMS.Plugin.Site.Data;
 using LeadCMS.Plugin.Site.DTOs;
+using LeadCMS.Plugin.Site.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -17,19 +19,26 @@ namespace LeadCMS.Plugin.Site.Controllers;
 [AllowAnonymous]
 public class SubscribesController : Controller
 {
-    private const string OnboardingGuidesGroupName = "Onboarding Guides";
+    private const string DefaultGroup = "SubscriberNewsletters";
 
     private readonly LeadCmsSiteDbContext dbContext;
     private readonly IContactService contactService;
     private readonly IHttpContextHelper httpContextHelper;
     private readonly IEmailFromTemplateService emailService;
+    private readonly ISubscriptionTokenService tokenService;
 
-    public SubscribesController(LeadCmsSiteDbContext dbContext, IContactService contactService, IHttpContextHelper httpContextHelper, IEmailFromTemplateService emailService)
+    public SubscribesController(
+        LeadCmsSiteDbContext dbContext,
+        IContactService contactService,
+        IHttpContextHelper httpContextHelper,
+        IEmailFromTemplateService emailService,
+        ISubscriptionTokenService tokenService)
     {
         this.dbContext = dbContext;
         this.contactService = contactService;
         this.httpContextHelper = httpContextHelper;
         this.emailService = emailService;
+        this.tokenService = tokenService;
         this.contactService.SetDBContext(dbContext);
     }
 
@@ -40,18 +49,57 @@ public class SubscribesController : Controller
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult> Subscribe([FromBody] SubscribeDto subscribeDto)
     {
-        var contact = await contactService.FindOrCreate(subscribeDto.Email, subscribeDto.Language, subscribeDto.TimeZoneOffset);
+        var group = string.IsNullOrWhiteSpace(subscribeDto.Group) ? DefaultGroup : subscribeDto.Group;
+
+        var token = tokenService.Generate(
+            subscribeDto.Email,
+            group,
+            subscribeDto.Language,
+            subscribeDto.TimeZoneOffset);
+
+        var confirmationUrl = SitePlugin.Settings.ConfirmationUrlTemplate
+            .Replace("{siteUrl}", SitePlugin.Settings.SiteUrl.TrimEnd('/'))
+            .Replace("{token}", Uri.EscapeDataString(token));
+
+        await emailService.SendAsync(
+            "Subscription_Email_Confirmation",
+            subscribeDto.Language,
+            new[] { subscribeDto.Email },
+            new Dictionary<string, string>
+            {
+                { "email", subscribeDto.Email },
+                { "confirmationUrl", confirmationUrl },
+            },
+            null);
+
+        return Ok();
+    }
+
+    [HttpPost("api/subscribe/confirm")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult> ConfirmSubscription([FromBody] ConfirmSubscribeDto confirmDto)
+    {
+        var payload = tokenService.Validate(confirmDto.Token);
+        if (payload == null)
+        {
+            return BadRequest("Invalid or expired confirmation token.");
+        }
+
+        var contact = await contactService.FindOrCreate(payload.Email, payload.Language, payload.TimeZoneOffset);
 
         contact.Source = "Subscribed";
 
-        await contactService.Subscribe(contact, OnboardingGuidesGroupName);
+        await contactService.Subscribe(contact, payload.Group);
 
         await dbContext.SaveChangesAsync();
-        
+
         await emailService.SendAsync(
             "Subscription_Confirmation",
-            subscribeDto.Language,
-            [contact.Email],
+            payload.Language,
+            new[] { contact.Email },
             new Dictionary<string, string> { { "email", contact.Email } },
             null);
 

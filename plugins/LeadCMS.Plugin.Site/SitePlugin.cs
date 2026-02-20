@@ -31,6 +31,8 @@ public class SitePlugin : IPlugin, ICapabilityProvider
         services.AddScoped<PluginDbContextBase, LeadCmsSiteDbContext>();
         services.AddScoped<LeadCmsSiteDbContext, LeadCmsSiteDbContext>();
         services.AddScoped<ILeadNotificationService, LeadNotificationService>();
+        services.AddSingleton<ISubscriptionTokenService>(_ =>
+            new SubscriptionTokenService(Settings.SubscriptionTokenSecret));
     }
 
     /// <inheritdoc/>
