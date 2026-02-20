@@ -5,6 +5,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using CsvHelper.Configuration.Attributes;
+using LeadCMS.Enums;
 using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
@@ -19,6 +20,8 @@ public class EmailTemplateCreateDto
 
     [Required]
     public string BodyTemplate { get; set; } = string.Empty;
+
+    public EmailTemplateFormat Format { get; set; } = EmailTemplateFormat.Html;
 
     [Required]
     [EmailAddress]
@@ -50,6 +53,8 @@ public class EmailTemplateUpdateDto : IPatchDto
 
     [MinLength(1)]
     public string? BodyTemplate { get; set; }
+
+    public EmailTemplateFormat? Format { get; set; }
 
     [EmailAddress]
     public string? FromEmail { get; set; }

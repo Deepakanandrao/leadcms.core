@@ -104,12 +104,17 @@ public class EmailTemplateAITranslationService : IEmailTemplateAITranslationServ
             Subject = emailTemplate.Subject,
             BodyTemplate = emailTemplate.BodyTemplate,
             FromName = emailTemplate.FromName,
+            Format = emailTemplate.Format,
         };
 
         var metadataJson = JsonHelper.Serialize(metadata);
 
+        var formatLabel = emailTemplate.Format == EmailTemplateFormat.Mjml ? "MJML" : "HTML";
+
         var systemPrompt =
 $@"You are a professional translator for an AI-powered CMS, specializing in email template translation. Translate the prompted JSON object containing email template data to {targetLanguage}.
+
+The template body is in {formatLabel} format.
 
 CRITICAL RULES - STRICT STRUCTURE PRESERVATION:
 1. Return ONLY valid JSON with the EXACT same structure as the input
@@ -118,36 +123,39 @@ CRITICAL RULES - STRICT STRUCTURE PRESERVATION:
 4. For 'Name': Translate the descriptive part but keep technical identifiers if present
 5. For 'Subject': Translate naturally while maintaining the email subject line tone
 6. For 'BodyTemplate':
-   - Preserve ALL HTML tags, attributes, and inline CSS styles EXACTLY as they appear
-   - Use ONLY ${{token}} format for variables and placeholders (e.g., ${{name}}, ${{email}}, ${{company}})
-   - Convert any other placeholder formats (<%token%>, {{token}}, {{{{token}}}}, HTML-encoded) to ${{token}} format
-   - Translate ONLY the readable text content between HTML tags
-   - DO NOT modify table structures, CSS properties, or HTML attributes
-   - Maintain email client compatibility by preserving inline styles
+   - Preserve ALL markup tags, attributes, and styles EXACTLY as they appear
+   - The format is {formatLabel} — preserve all {formatLabel}-specific components and attributes
+   - Use ONLY {{{{ token }}}} Liquid syntax for variables and placeholders (e.g., {{{{ name }}}}, {{{{ email }}}}, {{{{ company }}}}, {{{{ unsubscribeUrl }}}})
+   - Preserve ALL Liquid tags exactly: {{{{ variable }}}}, {{% if cond %}}...{{% endif %}}, {{% for item in list %}}...{{% endfor %}}
+   - Convert any legacy placeholder formats (<%token%>, ${{token}}, HTML-encoded) to {{{{ token }}}} Liquid syntax
+   - Translate ONLY the readable text content between tags
+   - DO NOT modify component structures, CSS properties, or attributes
 7. For 'FromName': Translate to natural name in {targetLanguage}
-8. If a field is empty or null, keep it exactly as is
-9. Ensure the output is valid, parseable JSON
+8. For 'Format': Keep the value exactly as is — do not change or translate it
+9. If a field is empty or null, keep it exactly as is
+10. Ensure the output is valid, parseable JSON
 
-EMAIL HTML PRESERVATION RULES - DO NOT MODIFY:
-- All table-based layouts (tables are critical for email client compatibility)
-- Inline CSS styles (style=""..."" attributes)
-- HTML structure, widths, colors, fonts, or spacing
-- All cellpadding, cellspacing, border attributes
-- Responsive design elements and media queries
+MARKUP PRESERVATION RULES - DO NOT MODIFY:
+- All layout structures (tables for HTML, mj-section/mj-column for MJML)
+- Inline CSS styles and MJML attributes
+- Component nesting and structure
+- All spacing, color, font, and sizing values
+- All responsive design elements
 
 DO NOT:
-- Add new HTML elements or attributes
-- Remove existing HTML elements or attributes
-- Change CSS property values
-- Modify the structure or nesting of HTML elements
+- Add new elements or attributes
+- Remove existing elements or attributes
+- Change CSS or MJML attribute values
+- Modify the structure or nesting of elements
+- Change the format field
 
-PLACEHOLDER FORMAT STANDARDIZATION:
-- Convert ALL variable formats to ${{token}} syntax (dollar sign + curly braces)
-- Replace <%token%> with ${{token}}
-- Replace {{token}} with ${{token}}
-- Replace {{{{token}}}} with ${{token}}
-- Replace HTML-encoded versions (&lt;%token%&gt;) with ${{token}}
-- Maintain the semantic meaning of variables when converting formats";
+PLACEHOLDER FORMAT STANDARDISATION:
+- ALL variable placeholders must use Liquid {{{{ token }}}} syntax (double curly braces)
+- Preserve ALL Liquid control tags exactly: {{% if %}}, {{% unless %}}, {{% for %}}, {{% endif %}}, {{% endfor %}}, etc.
+- Replace <%token%> with {{{{ token }}}}
+- Replace ${{token}} with {{{{ token }}}}
+- Replace HTML-encoded versions (&lt;%token%&gt;) with {{{{ token }}}}
+- Translate text content ONLY — do not modify any Liquid syntax or tag attributes";
 
         var request = new TextGenerationRequest
         {

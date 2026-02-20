@@ -18,4 +18,17 @@ public class EmailTemplateEditRequest : EmailTemplateUpdateDto
     [Required(ErrorMessage = "Prompt is required")]
     [MinLength(1, ErrorMessage = "Prompt cannot be empty")]
     public string Prompt { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the ID of an existing email template to use as a visual and structural
+    /// reference when the AI edits the template. Useful for guiding tone, layout, or styling.
+    /// </summary>
+    public int? ReferenceEmailTemplateId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the template variables (variable names with descriptions)
+    /// that the AI should be aware of and can utilise in the generated template.
+    /// Keys are variable names (e.g. "orderNumber"), values are descriptions of the variable.
+    /// </summary>
+    public Dictionary<string, string>? TemplateVariables { get; set; }
 }

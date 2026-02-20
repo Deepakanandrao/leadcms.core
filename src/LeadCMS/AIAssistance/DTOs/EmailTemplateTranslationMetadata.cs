@@ -2,6 +2,8 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using LeadCMS.Enums;
+
 namespace LeadCMS.Core.AIAssistance.DTOs;
 
 public class EmailTemplateTranslationMetadata
@@ -13,4 +15,6 @@ public class EmailTemplateTranslationMetadata
     public string BodyTemplate { get; set; } = string.Empty;
 
     public string FromName { get; set; } = string.Empty;
+
+    public EmailTemplateFormat Format { get; set; } = EmailTemplateFormat.Html;
 }

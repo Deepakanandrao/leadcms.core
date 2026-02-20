@@ -6,6 +6,7 @@ using LeadCMS.Configuration;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
+using LeadCMS.Enums;
 using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
@@ -21,12 +22,16 @@ namespace LeadCMS.Services
         private readonly IEmailWithLogService emailWithLogService;
         private readonly PgDbContext pgDbContext;
         private readonly IConfiguration configuration;
+        private readonly IMjmlRenderingService mjmlRenderingService;
+        private readonly ILiquidTemplateService liquidTemplateService;
 
-        public EmailFromTemplateService(IEmailWithLogService emailWithLogService, PgDbContext pgDbContext, IOptions<ApiSettingsConfig> apiSettingsConfig, IConfiguration configuration)
+        public EmailFromTemplateService(IEmailWithLogService emailWithLogService, PgDbContext pgDbContext, IOptions<ApiSettingsConfig> apiSettingsConfig, IConfiguration configuration, IMjmlRenderingService mjmlRenderingService, ILiquidTemplateService liquidTemplateService)
         {
             this.emailWithLogService = emailWithLogService;
             this.pgDbContext = pgDbContext;
             this.configuration = configuration;
+            this.mjmlRenderingService = mjmlRenderingService;
+            this.liquidTemplateService = liquidTemplateService;
 
             var defaultFromEmail = apiSettingsConfig.Value.DefaultFromEmail;
             var defaultFromName = apiSettingsConfig.Value.DefaultFromName;
@@ -67,8 +72,14 @@ namespace LeadCMS.Services
         {
             var template = await GetEmailTemplateByLanguageOrHardcoded(templateName, language);
 
-            var body = EvaluateTemplate(template.BodyTemplate, templateArguments);
-            var subject = EvaluateTemplate(template.Subject, templateArguments);
+            // Step 1: compile MJML → HTML if needed, keeping Liquid expressions intact
+            var bodySource = template.Format == EmailTemplateFormat.Mjml
+                ? mjmlRenderingService.RenderToHtml(template.BodyTemplate)
+                : template.BodyTemplate;
+
+            // Step 2: render Liquid (normalises legacy placeholders, evaluates expressions)
+            var body = await liquidTemplateService.RenderAsync(bodySource, templateArguments);
+            var subject = await liquidTemplateService.RenderAsync(template.Subject, templateArguments);
 
             await emailWithLogService.SendAsync(subject, template.FromEmail, template.FromName, recipients, body, attachments, template.Id, contactId);
         }
@@ -77,23 +88,16 @@ namespace LeadCMS.Services
         {
             var template = await GetEmailTemplate(templateName, contactId);
 
-            var body = EvaluateTemplate(template.BodyTemplate, templateArguments);
-            var subject = EvaluateTemplate(template.Subject, templateArguments);
+            // Step 1: compile MJML → HTML if needed, keeping Liquid expressions intact
+            var bodySource = template.Format == EmailTemplateFormat.Mjml
+                ? mjmlRenderingService.RenderToHtml(template.BodyTemplate)
+                : template.BodyTemplate;
+
+            // Step 2: render Liquid (normalises legacy placeholders, evaluates expressions)
+            var body = await liquidTemplateService.RenderAsync(bodySource, templateArguments);
+            var subject = await liquidTemplateService.RenderAsync(template.Subject, templateArguments);
 
             await emailWithLogService.SendToContactAsync(contactId, subject, template.FromEmail, template.FromName, body, attachments, scheduleId, template.Id);
-        }
-
-        private static string EvaluateTemplate(string template, Dictionary<string, string>? templateArguments)
-        {
-            if (templateArguments is null)
-            {
-                return template;
-            }
-
-            var result = TokenHelper.ReplaceTokensFromVariables(templateArguments!.ConvertKeys("<%", "%>"), template);
-            result = TokenHelper.ReplaceTokensFromVariables(templateArguments!.ConvertKeys("&lt;%", "%&gt;"), result); // the case when template is html encoded
-            result = TokenHelper.ReplaceTokensFromVariables(templateArguments!.ConvertKeys("${", "}"), result);
-            return result;
         }
 
         private async Task<EmailTemplate> GetEmailTemplate(string name, int contactId)

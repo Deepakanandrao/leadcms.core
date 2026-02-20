@@ -434,7 +434,7 @@ namespace LeadCMS.Infrastructure
                 var matchOperation = typeof(Regex).GetMethod("IsMatch", BindingFlags.Static | BindingFlags.Public, new[] { typeof(string), typeof(string), typeof(RegexOptions) });
                 var trueConstant = Expression.Constant(true);
                 var falseConstant = Expression.Constant(false);
-                var regexOptionExpression = Expression.Constant(RegexOptions.Compiled | RegexOptions.IgnoreCase);
+                var regexOptionExpression = Expression.Constant(RegexOptions.IgnoreCase);
 
                 if (cmd.Operation == WOperand.Like)
                 {
@@ -455,7 +455,7 @@ namespace LeadCMS.Infrastructure
                 var matchOperation = typeof(Regex).GetMethod("IsMatch", BindingFlags.Static | BindingFlags.Public, new[] { typeof(string), typeof(string), typeof(RegexOptions) });
                 var trueConstant = Expression.Constant(true);
                 var falseConstant = Expression.Constant(false);
-                var regexOptionExpression = Expression.Constant(RegexOptions.Compiled | RegexOptions.IgnoreCase);
+                var regexOptionExpression = Expression.Constant(RegexOptions.IgnoreCase);
 
                 var data = cmd.ParseContainValue(cmd.StringValue);
                 var sb = new StringBuilder();

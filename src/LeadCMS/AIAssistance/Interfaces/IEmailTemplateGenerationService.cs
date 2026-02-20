@@ -12,4 +12,12 @@ public interface IEmailTemplateGenerationService
     Task<EmailTemplateDetailsDto> GenerateEmailTemplateAsync(EmailTemplateGenerationRequest request);
 
     Task<EmailTemplateDetailsDto> GenerateEmailTemplateEditAsync(EmailTemplateEditRequest request);
+
+    /// <summary>
+    /// Converts an email template body between HTML and MJML formats.
+    /// MJML to HTML is done programmatically; HTML to MJML requires AI.
+    /// </summary>
+    /// <param name="request">The conversion request containing the body and target format.</param>
+    /// <returns>The converted body template and metadata.</returns>
+    Task<EmailTemplateConvertFormatResponse> ConvertFormatAsync(EmailTemplateConvertFormatRequest request);
 }

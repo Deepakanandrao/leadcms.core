@@ -610,6 +610,8 @@ public class Program
 
     private static void ConfigureEmailServices(WebApplicationBuilder builder)
     {
+        builder.Services.AddSingleton<IMjmlRenderingService, MjmlRenderingService>();
+        builder.Services.AddSingleton<ILiquidTemplateService, LiquidTemplateService>();
         builder.Services.AddScoped<IEmailWithLogService, EmailWithLogService>();
         builder.Services.AddScoped<IEmailFromTemplateService, EmailFromTemplateService>();
     }

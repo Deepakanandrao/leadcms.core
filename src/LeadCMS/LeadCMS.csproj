@@ -42,9 +42,11 @@
     <PackageReference Include="DistributedLock.Postgres" Version="1.2.1" />
     <PackageReference Include="DnsClient" Version="1.7.0" />
     <PackageReference Include="EntityFrameworkCore.JamieEncryptColumn" Version="8.0.69" />
+    <PackageReference Include="Fluid.Core" Version="2.31.0" />
     <PackageReference Include="HtmlAgilityPack" Version="1.11.60" />
     <PackageReference Include="MailKit" Version="4.9.0" />
     <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.10.2" />
+    <PackageReference Include="Mjml.Net" Version="4.2.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.11" />
     <PackageReference Include="Microsoft.Identity.Web" Version="3.8.4" />
@@ -83,6 +85,7 @@
     <Folder Include="Formatters\Csv\" />
     <Folder Include="Elastic\" />
     <Folder Include="Elastic\Migrations\" />
+    <Folder Include="TestOutputs/" />
   </ItemGroup>
 
   <ItemGroup>

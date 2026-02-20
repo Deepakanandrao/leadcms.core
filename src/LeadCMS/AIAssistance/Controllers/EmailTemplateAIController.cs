@@ -88,4 +88,22 @@ public class EmailTemplateAIController : ControllerBase
         var response = await emailTemplateGenerationService.GenerateEmailTemplateEditAsync(request);
         return Ok(response);
     }
+
+    /// <summary>
+    /// Convert an email template between HTML and MJML formats.
+    /// MJML to HTML is done via programmatic compilation. HTML to MJML requires AI capabilities.
+    /// </summary>
+    /// <param name="request">The format conversion request containing the template body, current format, and target format.</param>
+    /// <returns>The converted email template body in the target format.</returns>
+    [HttpPost("convert-format")]
+    [SwaggerOperation(Tags = new[] { "EmailTemplates" })]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<EmailTemplateConvertFormatResponse>> ConvertFormat([FromBody] EmailTemplateConvertFormatRequest request)
+    {
+        var response = await emailTemplateGenerationService.ConvertFormatAsync(request);
+        return Ok(response);
+    }
 }

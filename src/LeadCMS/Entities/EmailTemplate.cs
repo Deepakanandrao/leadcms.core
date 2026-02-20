@@ -6,6 +6,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 using LeadCMS.DataAnnotations;
+using LeadCMS.Enums;
 using LeadCMS.Interfaces;
 
 namespace LeadCMS.Entities
@@ -28,6 +29,12 @@ namespace LeadCMS.Entities
         [Required]
         [Searchable]
         public string BodyTemplate { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Gets or sets the format of the body template (Html or Mjml).
+        /// Defaults to Html for backward compatibility with existing templates.
+        /// </summary>
+        public EmailTemplateFormat Format { get; set; } = EmailTemplateFormat.Html;
 
         [Required]
         [Searchable]

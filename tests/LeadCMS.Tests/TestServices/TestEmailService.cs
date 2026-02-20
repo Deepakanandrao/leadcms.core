@@ -9,7 +9,7 @@ namespace LeadCMS.Tests.TestServices
         public Task<string> SendAsync(string subject, string fromEmail, string fromName, string[] recipients, string body, List<AttachmentDto>? attachments)
         {
             // Test email sender method returns success.
-            return new Task<string>(() => "messageId");
+            return Task.FromResult("test-message-id");
         }
     }
 }
