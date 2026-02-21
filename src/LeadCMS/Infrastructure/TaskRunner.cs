@@ -198,34 +198,46 @@ namespace LeadCMS.Infrastructure
 
         private async Task CleanupOldLogsAsync(ITask task)
         {
-            var cutoffDate = DateTime.UtcNow.AddDays(-task.LogRetentionDays);
+            var maxRecords = task.MaxLogRecords;
 
-            var oldExecutionLogs = await dbContext.TaskExecutionLogs!
-                .Where(l => l.TaskName == task.Name
-                    && l.ActualExecutionTime < cutoffDate
-                    && l.Status != TaskExecutionStatus.Pending)
-                .ToListAsync();
+            // Clean up task_execution_log: keep only the last N completed records
+            var executionLogCount = await dbContext.TaskExecutionLogs!
+                .CountAsync(l => l.TaskName == task.Name && l.Status != TaskExecutionStatus.Pending);
 
-            if (oldExecutionLogs.Count > 0)
+            int removedExecutionLogs = 0;
+            if (executionLogCount > maxRecords)
             {
-                dbContext.TaskExecutionLogs!.RemoveRange(oldExecutionLogs);
+                var excessLogs = await dbContext.TaskExecutionLogs!
+                    .Where(l => l.TaskName == task.Name && l.Status != TaskExecutionStatus.Pending)
+                    .OrderBy(l => l.ActualExecutionTime)
+                    .Take(executionLogCount - maxRecords)
+                    .ToListAsync();
+
+                dbContext.TaskExecutionLogs!.RemoveRange(excessLogs);
+                removedExecutionLogs = excessLogs.Count;
             }
 
-            var oldChangeLogTaskLogs = await dbContext.ChangeLogTaskLogs!
-                .Where(l => l.TaskName == task.Name
-                    && l.Start < cutoffDate
-                    && l.State != TaskExecutionState.InProgress)
-                .ToListAsync();
+            // Clean up change_log_task_log: keep only the last N non-in-progress records
+            var changeLogCount = await dbContext.ChangeLogTaskLogs!
+                .CountAsync(l => l.TaskName == task.Name && l.State != TaskExecutionState.InProgress);
 
-            if (oldChangeLogTaskLogs.Count > 0)
+            int removedChangeLogLogs = 0;
+            if (changeLogCount > maxRecords)
             {
-                dbContext.ChangeLogTaskLogs!.RemoveRange(oldChangeLogTaskLogs);
+                var excessLogs = await dbContext.ChangeLogTaskLogs!
+                    .Where(l => l.TaskName == task.Name && l.State != TaskExecutionState.InProgress)
+                    .OrderBy(l => l.Start)
+                    .Take(changeLogCount - maxRecords)
+                    .ToListAsync();
+
+                dbContext.ChangeLogTaskLogs!.RemoveRange(excessLogs);
+                removedChangeLogLogs = excessLogs.Count;
             }
 
-            if (oldExecutionLogs.Count > 0 || oldChangeLogTaskLogs.Count > 0)
+            if (removedExecutionLogs > 0 || removedChangeLogLogs > 0)
             {
                 await dbContext.SaveChangesAsync();
-                Log.Information($"Log cleanup for {task.Name}: removed {oldExecutionLogs.Count} execution logs and {oldChangeLogTaskLogs.Count} change log task logs older than {task.LogRetentionDays} days.");
+                Log.Information($"Log cleanup for {task.Name}: removed {removedExecutionLogs} execution logs and {removedChangeLogLogs} change log task logs (keeping last {maxRecords}).");
             }
         }
 

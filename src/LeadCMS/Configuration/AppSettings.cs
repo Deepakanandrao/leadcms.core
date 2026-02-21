@@ -106,10 +106,10 @@ public class TaskConfig
     public int RetryInterval { get; set; }
 
     /// <summary>
-    /// Gets or sets the number of days to retain task execution logs.
-    /// Logs older than this value are automatically deleted. Defaults to 7 days.
+    /// Gets or sets the maximum number of execution log records to retain per task.
+    /// Records beyond this limit are automatically deleted, oldest first. Defaults to 1000.
     /// </summary>
-    public int LogRetentionDays { get; set; } = 7;
+    public int MaxLogRecords { get; set; } = 1000;
 }
 
 public class TaskWithBatchConfig : TaskConfig
