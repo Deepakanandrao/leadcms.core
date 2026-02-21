@@ -77,6 +77,11 @@ namespace LeadCMS.Infrastructure
                             var isCompleted = await task.Execute(currentJob);
 
                             await UpdateTaskExecutionLog(currentJob, isCompleted ? TaskExecutionStatus.Completed : TaskExecutionStatus.Pending);
+
+                            if (isCompleted)
+                            {
+                                await CleanupOldLogsAsync(task);
+                            }
                         }
                     }
                 }
@@ -110,6 +115,11 @@ namespace LeadCMS.Infrastructure
                 var isCompleted = await task.Execute(currentJob);
 
                 await UpdateTaskExecutionLog(currentJob, isCompleted ? TaskExecutionStatus.Completed : TaskExecutionStatus.Pending);
+
+                if (isCompleted)
+                {
+                    await CleanupOldLogsAsync(task);
+                }
 
                 return isCompleted;
             }
@@ -184,6 +194,39 @@ namespace LeadCMS.Infrastructure
 
             dbContext!.TaskExecutionLogs!.Update(job);
             await dbContext.SaveChangesAsync();
+        }
+
+        private async Task CleanupOldLogsAsync(ITask task)
+        {
+            var cutoffDate = DateTime.UtcNow.AddDays(-task.LogRetentionDays);
+
+            var oldExecutionLogs = await dbContext.TaskExecutionLogs!
+                .Where(l => l.TaskName == task.Name
+                    && l.ActualExecutionTime < cutoffDate
+                    && l.Status != TaskExecutionStatus.Pending)
+                .ToListAsync();
+
+            if (oldExecutionLogs.Count > 0)
+            {
+                dbContext.TaskExecutionLogs!.RemoveRange(oldExecutionLogs);
+            }
+
+            var oldChangeLogTaskLogs = await dbContext.ChangeLogTaskLogs!
+                .Where(l => l.TaskName == task.Name
+                    && l.Start < cutoffDate
+                    && l.State != TaskExecutionState.InProgress)
+                .ToListAsync();
+
+            if (oldChangeLogTaskLogs.Count > 0)
+            {
+                dbContext.ChangeLogTaskLogs!.RemoveRange(oldChangeLogTaskLogs);
+            }
+
+            if (oldExecutionLogs.Count > 0 || oldChangeLogTaskLogs.Count > 0)
+            {
+                await dbContext.SaveChangesAsync();
+                Log.Information($"Log cleanup for {task.Name}: removed {oldExecutionLogs.Count} execution logs and {oldChangeLogTaskLogs.Count} change log task logs older than {task.LogRetentionDays} days.");
+            }
         }
 
         private bool IsRightTimeToExecute(TaskExecutionLog job, ITask task)

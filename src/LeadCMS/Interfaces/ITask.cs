@@ -22,6 +22,11 @@ namespace LeadCMS.Interfaces
         /// </summary>
         public int RetryInterval { get; }
 
+        /// <summary>
+        /// Gets the number of days to retain task execution logs. Defaults to 7.
+        /// </summary>
+        public int LogRetentionDays { get; }
+
         public bool IsRunning { get; }
 
         public void SetRunning(bool running);

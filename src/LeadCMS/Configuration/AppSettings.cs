@@ -104,6 +104,12 @@ public class TaskConfig
     public int RetryCount { get; set; }
 
     public int RetryInterval { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of days to retain task execution logs.
+    /// Logs older than this value are automatically deleted. Defaults to 7 days.
+    /// </summary>
+    public int LogRetentionDays { get; set; } = 7;
 }
 
 public class TaskWithBatchConfig : TaskConfig

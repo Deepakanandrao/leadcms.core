@@ -27,6 +27,7 @@ public abstract class BaseTask : ITask
             CronSchedule = config.CronSchedule;
             RetryCount = config.RetryCount;
             RetryInterval = config.RetryInterval;
+            LogRetentionDays = config.LogRetentionDays;
 
             taskStatusService.SetInitialState(Name, config.Enable);
         }
@@ -49,6 +50,8 @@ public abstract class BaseTask : ITask
     public int RetryCount { get; private set; }
 
     public int RetryInterval { get; private set; }
+
+    public int LogRetentionDays { get; private set; } = 7;
 
     public bool IsRunning
     {
