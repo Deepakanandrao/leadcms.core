@@ -80,7 +80,7 @@ public class MeController : ControllerBase
 
             if (value.SendPasswordEmail)
             {
-                var args = new Dictionary<string, string>
+                var args = new Dictionary<string, object>
                 {
                     ["UserName"] = user.UserName ?? user.Email ?? string.Empty,
                     ["Password"] = password,

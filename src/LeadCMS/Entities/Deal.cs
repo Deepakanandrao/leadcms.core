@@ -38,7 +38,7 @@ public class Deal : BaseEntity
 
     /// <summary>
     /// Gets or sets the currency ISO code for the payment - ISO 4217. Example: "USD".
-    /// </summary>    
+    /// </summary>
     [Searchable]
     public string? DealCurrency { get; set; }
 
@@ -55,4 +55,13 @@ public class Deal : BaseEntity
     [Searchable]
     [Column(TypeName = "jsonb")]
     public string[]? Tags { get; set; }
+
+    /// <summary>
+    /// Gets or sets reference to the campaign that generated this deal.
+    /// </summary>
+    public int? CampaignId { get; set; }
+
+    [JsonIgnore]
+    [ForeignKey("CampaignId")]
+    public virtual Campaign? Campaign { get; set; }
 }

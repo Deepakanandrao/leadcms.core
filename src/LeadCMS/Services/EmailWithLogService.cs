@@ -21,7 +21,7 @@ namespace LeadCMS.Services
             this.pgDbContext = pgDbContext;
         }
 
-        public async Task SendAsync(string subject, string fromEmail, string fromName, string[] recipients, string body, List<AttachmentDto>? attachments, int templateId = 0, int contactId = 0)
+        public async Task SendAsync(string subject, string fromEmail, string fromName, string[] recipients, string body, List<AttachmentDto>? attachments, int templateId = 0, int contactId = 0, int campaignId = 0)
         {
             var emailStatus = false;
             var emails = string.Join(";", recipients);
@@ -43,11 +43,11 @@ namespace LeadCMS.Services
             }
             finally
             {
-                await AddEmailLogEntry(subject, fromEmail, body, emails, emailStatus, messageId, contactId, templateId: templateId);
+                await AddEmailLogEntry(subject, fromEmail, body, emails, emailStatus, messageId, contactId, templateId: templateId, campaignId: campaignId);
             }
         }
 
-        public async Task SendToContactAsync(int contactId, string subject, string fromEmail, string fromName, string body, List<AttachmentDto>? attachments, int scheduleId = 0, int templateId = 0)
+        public async Task SendToContactAsync(int contactId, string subject, string fromEmail, string fromName, string body, List<AttachmentDto>? attachments, int scheduleId = 0, int templateId = 0, int campaignId = 0)
         {
             var emailStatus = false;
             var recipient = string.Empty;
@@ -72,11 +72,11 @@ namespace LeadCMS.Services
             }
             finally
             {
-                await AddEmailLogEntry(subject, fromEmail, body, recipient, emailStatus, messageId, contactId, scheduleId, templateId);
+                await AddEmailLogEntry(subject, fromEmail, body, recipient, emailStatus, messageId, contactId, scheduleId, templateId, campaignId);
             }
         }
 
-        private async Task AddEmailLogEntry(string subject, string fromEmail, string body, string recipient, bool status, string messageId, int contactId = 0, int scheduleId = 0, int templateId = 0)
+        private async Task AddEmailLogEntry(string subject, string fromEmail, string body, string recipient, bool status, string messageId, int contactId = 0, int scheduleId = 0, int templateId = 0, int campaignId = 0)
         {
             try
             {
@@ -95,6 +95,11 @@ namespace LeadCMS.Services
                 if (templateId > 0)
                 {
                     log.TemplateId = templateId;
+                }
+
+                if (campaignId > 0)
+                {
+                    log.CampaignId = campaignId;
                 }
 
                 log.Subject = subject;

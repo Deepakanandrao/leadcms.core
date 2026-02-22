@@ -46,9 +46,9 @@ public class LeadNotificationService : ILeadNotificationService
     /// </summary>
     /// <param name="leadInfo">The lead notification information.</param>
     /// <returns>Dictionary of template arguments.</returns>
-    public static Dictionary<string, string> BuildEmailTemplateArguments(LeadNotificationInfo leadInfo)
+    public static Dictionary<string, object> BuildEmailTemplateArguments(LeadNotificationInfo leadInfo)
     {
-        var templateArgs = new Dictionary<string, string>
+        var templateArgs = new Dictionary<string, object>
         {
             { "email", leadInfo.Email },
             { "fromEmail", leadInfo.Email },

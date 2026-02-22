@@ -39,6 +39,8 @@ public class OrderCreateDto
     public OrderStatus Status { get; set; } = OrderStatus.Pending;
 
     public string[]? Tags { get; set; }
+
+    public int? CampaignId { get; set; }
 }
 
 public class OrderUpdateDto : IPatchDto
@@ -68,6 +70,8 @@ public class OrderUpdateDto : IPatchDto
     public OrderStatus? Status { get; set; }
 
     public string[]? Tags { get; set; }
+
+    public int? CampaignId { get; set; }
 
     public decimal? Commission { get; set; }
 

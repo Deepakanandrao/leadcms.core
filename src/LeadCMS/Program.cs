@@ -110,6 +110,7 @@ public class Program
         builder.Services.AddScoped<IChangeLogService, ChangeLogService>();
         builder.Services.AddScoped<ISyncService, SyncService>();
         builder.Services.AddScoped<ISegmentService, SegmentService>();
+        builder.Services.AddScoped<ICampaignService, CampaignService>();
 
         // Add enrichment services
         builder.Services.AddSingleton<IEnrichmentProviderResolver, EnrichmentProviderResolver>();
@@ -629,6 +630,7 @@ public class Program
         builder.Services.AddScoped<ITask, SyncIpDetailsTask>();
         builder.Services.AddScoped<ITask, DomainVerificationTask>();
         builder.Services.AddScoped<ITask, ContactScheduledEmailTask>();
+        builder.Services.AddScoped<ITask, CampaignSendTask>();
         builder.Services.AddScoped<ITask, ContactAccountTask>();
         builder.Services.AddScoped<ITask, SyncEmailLogTask>();
         builder.Services.AddScoped<ITask, EnrichmentSchedulerTask>();

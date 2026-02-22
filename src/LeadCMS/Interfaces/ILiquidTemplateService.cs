@@ -15,7 +15,9 @@ public interface ILiquidTemplateService
     /// Renders the template string with the supplied variables.
     /// </summary>
     /// <param name="template">The template source (may contain Liquid syntax or legacy placeholders).</param>
-    /// <param name="variables">Key/value pairs that map variable names to their runtime values.</param>
+    /// <param name="variables">Key/value pairs that map variable names to their runtime values.
+    /// Values may be strings, numbers, collections, or complex objects — Fluid will
+    /// convert them automatically via <c>FluidValue.Create</c>.</param>
     /// <returns>The rendered output string.</returns>
-    Task<string> RenderAsync(string template, Dictionary<string, string>? variables);
+    Task<string> RenderAsync(string template, Dictionary<string, object>? variables);
 }

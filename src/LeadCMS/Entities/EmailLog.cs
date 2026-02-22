@@ -31,6 +31,16 @@ namespace LeadCMS.Entities
         public int? ScheduleId { get; set; }
 
         /// <summary>
+        /// Gets or sets reference to the campaign table.
+        /// </summary>
+        public int? CampaignId { get; set; }
+
+        [JsonIgnore]
+        [ForeignKey("CampaignId")]
+        [DeleteBehavior(DeleteBehavior.SetNull)]
+        public virtual Campaign? Campaign { get; set; }
+
+        /// <summary>
         /// Gets or sets reference to the contact table.
         /// </summary>
         public int? ContactId { get; set; }
@@ -90,7 +100,7 @@ namespace LeadCMS.Entities
 
         /// <summary>
         /// Gets or sets the email body.
-        /// </summary>        
+        /// </summary>
         [Searchable]
         public string? TextBody { get; set; }
 

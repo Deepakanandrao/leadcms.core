@@ -123,7 +123,7 @@ public class IdentityController : ControllerBase
         var adminBaseUrl = AppUrlHelper.GetAdminBaseUrl(configuration, Request);
         var resetUrl = $"{adminBaseUrl}/auth/reset-password?userId={user.Id}&token={Uri.EscapeDataString(token)}";
 
-        var templateArgs = new Dictionary<string, string>
+        var templateArgs = new Dictionary<string, object>
         {
             ["ResetUrl"] = resetUrl,
             ["UserName"] = user.UserName ?? string.Empty,

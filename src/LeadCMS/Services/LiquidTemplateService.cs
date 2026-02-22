@@ -31,7 +31,7 @@ public class LiquidTemplateService : ILiquidTemplateService
         new(@"\$\{([^}]+)\}", RegexOptions.Compiled);
 
     /// <inheritdoc/>
-    public async Task<string> RenderAsync(string template, Dictionary<string, string>? variables)
+    public async Task<string> RenderAsync(string template, Dictionary<string, object>? variables)
     {
         if (string.IsNullOrEmpty(template))
         {
@@ -46,14 +46,24 @@ public class LiquidTemplateService : ILiquidTemplateService
             return normalised;
         }
 
-        var context = new TemplateContext();
+        var options = new TemplateOptions();
+        options.MemberAccessStrategy = new UnsafeMemberAccessStrategy();
+
+        var context = new TemplateContext(options);
 
         if (variables != null)
         {
             foreach (var kv in variables)
             {
-                var htmlSafeValue = kv.Value?.Replace("\n", "<br />") ?? string.Empty;
-                context.SetValue(kv.Key, new StringValue(htmlSafeValue));
+                if (kv.Value is string strValue)
+                {
+                    var htmlSafeValue = strValue.Replace("\n", "<br />");
+                    context.SetValue(kv.Key, new StringValue(htmlSafeValue));
+                }
+                else
+                {
+                    context.SetValue(kv.Key, FluidValue.Create(kv.Value, options));
+                }
             }
         }
 

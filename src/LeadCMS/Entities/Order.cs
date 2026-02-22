@@ -109,6 +109,15 @@ public class Order : BaseEntity, ICommentable
     [Column(TypeName = "jsonb")]
     public string[]? Tags { get; set; }
 
+    /// <summary>
+    /// Gets or sets reference to the campaign that generated this order.
+    /// </summary>
+    public int? CampaignId { get; set; }
+
+    [JsonIgnore]
+    [ForeignKey("CampaignId")]
+    public virtual Campaign? Campaign { get; set; }
+
     public static string GetCommentableType()
     {
         return "Order";

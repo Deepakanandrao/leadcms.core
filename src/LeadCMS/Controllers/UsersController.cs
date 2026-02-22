@@ -111,7 +111,7 @@ public class UsersController : ControllerBase
 
         if (userDto.SendPasswordEmail)
         {
-            var args = new Dictionary<string, string>
+            var args = new Dictionary<string, object>
             {
                 ["UserName"] = newUser.UserName ?? newUser.Email ?? string.Empty,
                 ["Password"] = password,
@@ -158,7 +158,7 @@ public class UsersController : ControllerBase
 
             if (userDto.SendPasswordEmail)
             {
-                var args = new Dictionary<string, string>
+                var args = new Dictionary<string, object>
                 {
                     ["UserName"] = existingEntity.UserName ?? existingEntity.Email ?? string.Empty,
                     ["Password"] = password,

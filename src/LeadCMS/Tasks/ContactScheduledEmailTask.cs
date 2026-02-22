@@ -152,12 +152,12 @@ public class ContactScheduledEmailTask : BaseTask
         return nextEmailToSend;
     }
 
-    private Dictionary<string, string> GetTemplateArguments()
+    private Dictionary<string, object> GetTemplateArguments()
     {
         // TODO: contact based template arguments
         // Get related variable dictionary from variable service.
         // Add any required scope based variables into the dictionary.
-        return new Dictionary<string, string> { { "Key", "Value" } };
+        return new Dictionary<string, object> { { "Key", "Value" } };
     }
 
     private bool IsRightTimeToExecute(DateTime nextExecutionTime)

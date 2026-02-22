@@ -128,6 +128,10 @@ public class PgDbContext : IdentityDbContext<User>
 
     public virtual DbSet<EnrichmentQuotaUsage>? EnrichmentQuotaUsages { get; set; }
 
+    public virtual DbSet<Campaign>? Campaigns { get; set; }
+
+    public virtual DbSet<CampaignRecipient>? CampaignRecipients { get; set; }
+
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         var result = 0;
@@ -310,6 +314,25 @@ public class PgDbContext : IdentityDbContext<User>
             .WithMany(w => w.Attempts)
             .HasForeignKey(a => a.WorkItemId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // Set CampaignId to null when a campaign is deleted
+        builder.Entity<EmailLog>()
+            .HasOne(e => e.Campaign)
+            .WithMany()
+            .HasForeignKey(e => e.CampaignId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.Entity<Deal>()
+            .HasOne(d => d.Campaign)
+            .WithMany()
+            .HasForeignKey(d => d.CampaignId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.Entity<Order>()
+            .HasOne(o => o.Campaign)
+            .WithMany()
+            .HasForeignKey(o => o.CampaignId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 
     private DateTime GetDateWithKind(DateTime date)

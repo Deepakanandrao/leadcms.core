@@ -42,7 +42,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             "<p>Hi {{ firstName }}, your order {{ orderNumber }} is ready.</p>",
             EmailTemplateFormat.Html);
 
-        var variables = new Dictionary<string, string>
+        var variables = new Dictionary<string, object>
         {
             ["firstName"] = "Alice",
             ["orderNumber"] = "ORD-42",
@@ -67,7 +67,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             "<p>Dear <%firstName%>, amount: <%amount%></p>",
             EmailTemplateFormat.Html);
 
-        var variables = new Dictionary<string, string>
+        var variables = new Dictionary<string, object>
         {
             ["firstName"] = "Bob",
             ["orderNumber"] = "X-100",
@@ -93,7 +93,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             "<div>${firstName} — your code is ${code}.</div>",
             EmailTemplateFormat.Html);
 
-        var variables = new Dictionary<string, string>
+        var variables = new Dictionary<string, object>
         {
             ["firstName"] = "Charlie",
             ["code"] = "ABC123",
@@ -118,7 +118,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             "<p>Hello &lt;%userName%&gt;, verify at &lt;%verifyUrl%&gt;</p>",
             EmailTemplateFormat.Html);
 
-        var variables = new Dictionary<string, string>
+        var variables = new Dictionary<string, object>
         {
             ["userName"] = "Dana",
             ["verifyUrl"] = "https://example.com/verify",
@@ -142,7 +142,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             "<p>{{ greeting }} <%firstName%>! Code: ${code}, link: &lt;%link%&gt;</p>",
             EmailTemplateFormat.Html);
 
-        var variables = new Dictionary<string, string>
+        var variables = new Dictionary<string, object>
         {
             ["greeting"] = "Welcome",
             ["firstName"] = "Eve",
@@ -175,7 +175,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             mjml,
             EmailTemplateFormat.Mjml);
 
-        var variables = new Dictionary<string, string>
+        var variables = new Dictionary<string, object>
         {
             ["firstName"] = "Frank",
             ["orderNumber"] = "MJ-001",
@@ -205,7 +205,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             mjml,
             EmailTemplateFormat.Mjml);
 
-        var variables = new Dictionary<string, string>
+        var variables = new Dictionary<string, object>
         {
             ["name"] = "Grace",
             ["code"] = "PROMO50",
@@ -236,7 +236,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             mjml,
             EmailTemplateFormat.Mjml);
 
-        var variables = new Dictionary<string, string>
+        var variables = new Dictionary<string, object>
         {
             ["greeting"] = "Hi there",
             ["firstName"] = "Hank",
@@ -267,7 +267,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             "<p>Hello {{ name }}.{% if isVip %} You are a VIP member!{% endif %}</p>",
             EmailTemplateFormat.Html);
 
-        var variables = new Dictionary<string, string>
+        var variables = new Dictionary<string, object>
         {
             ["name"] = "Ivy",
             ["isVip"] = "true",
@@ -290,7 +290,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             "<p>Hello {{ name }}.{% if isVip %} You are a VIP member!{% endif %}</p>",
             EmailTemplateFormat.Html);
 
-        var variables = new Dictionary<string, string>
+        var variables = new Dictionary<string, object>
         {
             ["name"] = "Jake",
         };
@@ -313,7 +313,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             "<p>{% unless hideBanner %}SPECIAL OFFER!{% endunless %} Hi {{ name }}.</p>",
             EmailTemplateFormat.Html);
 
-        var variables = new Dictionary<string, string>
+        var variables = new Dictionary<string, object>
         {
             ["name"] = "Kate",
         };
@@ -336,7 +336,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             "<p>{% unless hideBanner %}SPECIAL OFFER!{% endunless %} Hi {{ name }}.</p>",
             EmailTemplateFormat.Html);
 
-        var variables = new Dictionary<string, string>
+        var variables = new Dictionary<string, object>
         {
             ["name"] = "Leo",
             ["hideBanner"] = "yes",
@@ -363,7 +363,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             mjml,
             EmailTemplateFormat.Mjml);
 
-        var variables = new Dictionary<string, string>
+        var variables = new Dictionary<string, object>
         {
             ["name"] = "Mia",
             ["showPromo"] = "true",
@@ -428,7 +428,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             "<p>Note: {{ note }}</p>",
             EmailTemplateFormat.Html);
 
-        var variables = new Dictionary<string, string>
+        var variables = new Dictionary<string, object>
         {
             ["name"] = "O'Brien & Partners",
             ["note"] = "Amount: $100 — 50% off!",
@@ -467,7 +467,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             mjml,
             EmailTemplateFormat.Mjml);
 
-        var variables = new Dictionary<string, string>
+        var variables = new Dictionary<string, object>
         {
             ["name"] = "Nora",
             ["actionUrl"] = "https://example.com/action",
@@ -507,7 +507,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
         created.Should().NotBeNull();
         created!.Format.Should().Be(EmailTemplateFormat.Html);
 
-        var variables = new Dictionary<string, string> { ["message"] = "It works!" };
+        var variables = new Dictionary<string, object> { ["message"] = "It works!" };
 
         await SendEmailAsync("default_format", "en", "test@test.net", variables);
 
@@ -528,7 +528,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             htmlBody,
             EmailTemplateFormat.Html);
 
-        var variables = new Dictionary<string, string> { ["val"] = "DATA" };
+        var variables = new Dictionary<string, object> { ["val"] = "DATA" };
 
         await SendEmailAsync("html_passthrough", "en", "test@test.net", variables);
 
@@ -551,7 +551,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             mjml,
             EmailTemplateFormat.Mjml);
 
-        var variables = new Dictionary<string, string>
+        var variables = new Dictionary<string, object>
         {
             ["link"] = "https://example.com/go",
         };
@@ -578,7 +578,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             "<p>{{ address }}</p>",
             EmailTemplateFormat.Html);
 
-        var variables = new Dictionary<string, string>
+        var variables = new Dictionary<string, object>
         {
             ["name"] = "Alice",
             ["address"] = "123 Main St\nApt 4B\nNew York, NY 10001",
@@ -605,7 +605,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             mjml,
             EmailTemplateFormat.Mjml);
 
-        var variables = new Dictionary<string, string>
+        var variables = new Dictionary<string, object>
         {
             ["details"] = "Line one\nLine two\nLine three",
         };
@@ -667,7 +667,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
         string templateName,
         string language,
         string recipient,
-        Dictionary<string, string>? variables)
+        Dictionary<string, object>? variables)
     {
         using var scope = App.Services.CreateScope();
         var emailFromTemplateService = scope.ServiceProvider.GetRequiredService<IEmailFromTemplateService>();

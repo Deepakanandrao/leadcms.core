@@ -241,6 +241,18 @@ public class AutoMapperProfiles : Profile
         CreateMap<SettingImportDto, Setting>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
 
+        // Campaign mappings
+        CreateMap<CampaignCreateDto, Campaign>().ReverseMap();
+        CreateMap<CampaignUpdateDto, Campaign>()
+            .WithPatchDtoSupport()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+        CreateMap<Campaign, CampaignUpdateDto>()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+        CreateMap<Campaign, CampaignDetailsDto>()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+        CreateMap<CampaignRecipient, CampaignRecipientDetailsDto>()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+
         // Segment mappings
         CreateMap<SegmentCreateDto, Segment>()
             .ReverseMap();

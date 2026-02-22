@@ -65,7 +65,7 @@ public class SubscribesController : Controller
             "Subscription_Email_Confirmation",
             subscribeDto.Language,
             new[] { subscribeDto.Email },
-            new Dictionary<string, string>
+            new Dictionary<string, object>
             {
                 { "email", subscribeDto.Email },
                 { "confirmationUrl", confirmationUrl },
@@ -100,7 +100,7 @@ public class SubscribesController : Controller
             "Subscription_Confirmation",
             payload.Language,
             new[] { contact.Email },
-            new Dictionary<string, string> { { "email", contact.Email } },
+            new Dictionary<string, object> { { "email", contact.Email } },
             null);
 
         return Ok();
