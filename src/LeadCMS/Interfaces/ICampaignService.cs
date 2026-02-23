@@ -62,12 +62,12 @@ public interface ICampaignService
     Task<CampaignStatisticsDto> GetStatisticsAsync(int campaignId);
 
     /// <summary>
-    /// Sends a test email using a specific contact's data but delivered to a different email address.
-    /// Does not require a saved campaign — works with just a template and contact.
+    /// Generates a campaign preview including audience statistics (total, sendable, unsubscribed,
+    /// invalid email counts) and a rendered email template preview.
     /// </summary>
-    /// <param name="dto">The test email request containing template ID, contact ID, and target email.</param>
-    /// <returns>A task representing the asynchronous operation.</returns>
-    Task SendTestEmailAsync(CampaignSendTestDto dto);
+    /// <param name="dto">The preview request containing template, segments, optional contact ID, and optional custom variables.</param>
+    /// <returns>The campaign preview result with audience breakdown and rendered template preview.</returns>
+    Task<CampaignPreviewResultDto> PreviewAsync(CampaignPreviewRequestDto dto);
 
     /// <summary>
     /// Converts a campaign's ScheduledAt from the campaign timezone to UTC.
@@ -76,12 +76,4 @@ public interface ICampaignService
     /// <param name="timeZoneOffsetMinutes">The UTC offset in minutes (e.g. 120 for UTC+2).</param>
     /// <returns>The UTC equivalent of the scheduled time.</returns>
     DateTime ConvertScheduledToUtc(DateTime scheduledAt, int timeZoneOffsetMinutes);
-
-    /// <summary>
-    /// Generates a campaign preview including audience metrics and a rendered email sample.
-    /// Does not require a saved campaign — accepts campaign details directly.
-    /// </summary>
-    /// <param name="dto">The preview request containing template, segments, language, and optional contact ID.</param>
-    /// <returns>The preview result with audience breakdown, rendered HTML, subject, sender info, and preview contact details.</returns>
-    Task<CampaignPreviewResultDto> PreviewAsync(CampaignPreviewRequestDto dto);
 }

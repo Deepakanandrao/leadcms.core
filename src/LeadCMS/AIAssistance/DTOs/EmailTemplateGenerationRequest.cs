@@ -14,7 +14,7 @@ public class EmailTemplateGenerationRequest
     public string Language { get; set; } = string.Empty;
 
     [Required]
-    [MinLength(1, ErrorMessage = "EmailGroupId is required")]
+    [Range(1, int.MaxValue, ErrorMessage = "EmailGroupId must be greater than 0")]
     public int EmailGroupId { get; set; }
 
     [Required]
@@ -22,10 +22,17 @@ public class EmailTemplateGenerationRequest
     public string Prompt { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets or sets the desired output format for the generated template.
-    /// When not specified, the format of the sample template in the group is used.
+    /// Gets or sets the required output format for the generated template.
     /// </summary>
+    [Required(ErrorMessage = "Format is required")]
     public EmailTemplateFormat? Format { get; set; }
+
+    /// <summary>
+    /// Gets or sets the category of the email template to generate.
+    /// Used to give the AI additional context about the expected visual style and purpose.
+    /// When not specified, defaults to General (no additional category-specific guidance).
+    /// </summary>
+    public EmailTemplateCategory? Category { get; set; }
 
     /// <summary>
     /// Gets or sets the ID of an existing email template to use as a visual and structural

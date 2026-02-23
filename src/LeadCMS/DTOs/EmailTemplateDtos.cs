@@ -23,6 +23,8 @@ public class EmailTemplateCreateDto
 
     public EmailTemplateFormat Format { get; set; } = EmailTemplateFormat.Html;
 
+    public EmailTemplateCategory Category { get; set; } = EmailTemplateCategory.General;
+
     [Required]
     [EmailAddress]
     public string FromEmail { get; set; } = string.Empty;
@@ -55,6 +57,8 @@ public class EmailTemplateUpdateDto : IPatchDto
     public string? BodyTemplate { get; set; }
 
     public EmailTemplateFormat? Format { get; set; }
+
+    public EmailTemplateCategory? Category { get; set; }
 
     [EmailAddress]
     public string? FromEmail { get; set; }

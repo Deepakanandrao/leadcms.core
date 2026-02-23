@@ -27,14 +27,16 @@ public class EmailTemplatesController : BaseController<EmailTemplate, EmailTempl
     private readonly IChangeLogService changeLogService;
     private readonly IEmailGroupResolutionService emailGroupResolutionService;
     private readonly IOptions<ApiSettingsConfig> apiSettingsConfig;
+    private readonly IEmailTemplateService emailTemplateService;
 
-    public EmailTemplatesController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<EmailTemplate> queryProviderFactory, ITranslationService translationService, ISyncService syncService, IChangeLogService changeLogService, IEmailGroupResolutionService emailGroupResolutionService, IOptions<ApiSettingsConfig> apiSettingsConfig)
+    public EmailTemplatesController(PgDbContext dbContext, IMapper mapper, EsDbContext esDbContext, QueryProviderFactory<EmailTemplate> queryProviderFactory, ITranslationService translationService, ISyncService syncService, IChangeLogService changeLogService, IEmailGroupResolutionService emailGroupResolutionService, IOptions<ApiSettingsConfig> apiSettingsConfig, IEmailTemplateService emailTemplateService)
         : base(dbContext, mapper, esDbContext, queryProviderFactory, syncService)
     {
         this.translationService = translationService;
         this.changeLogService = changeLogService;
         this.emailGroupResolutionService = emailGroupResolutionService;
         this.apiSettingsConfig = apiSettingsConfig;
+        this.emailTemplateService = emailTemplateService;
     }
 
     /// <inheritdoc/>
@@ -59,6 +61,35 @@ public class EmailTemplatesController : BaseController<EmailTemplate, EmailTempl
         }
 
         return await Patch(existingEntity, value);
+    }
+
+    /// <summary>
+    /// Generates a rendered email template preview.
+    /// Renders the template using the specified contact's data, or generates a dummy contact
+    /// with meaningful sample data when no contact ID is provided.
+    /// </summary>
+    [HttpPost("preview")]
+    [ProducesResponseType(typeof(EmailTemplatePreviewResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<EmailTemplatePreviewResultDto>> Preview([FromBody] EmailTemplatePreviewRequestDto dto)
+    {
+        var result = await emailTemplateService.PreviewAsync(dto);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Sends a test email using a contact's data but delivered to a specified email address.
+    /// Does not require a saved campaign — useful for testing a template before creating one.
+    /// </summary>
+    [HttpPost("send-test")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult> SendTest([FromBody] EmailTemplateSendTestDto dto)
+    {
+        await emailTemplateService.SendTestEmailAsync(dto);
+        return Ok();
     }
 
     [HttpGet("{id}/translation-draft/{language}")]

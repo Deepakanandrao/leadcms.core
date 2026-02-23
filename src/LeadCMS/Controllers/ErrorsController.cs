@@ -141,6 +141,18 @@ public class ErrorsController : Controller
                 problemDetails.Extensions["language"] = unsupportedLanguageException.Language;
                 problemDetails.Extensions["supportedLanguages"] = unsupportedLanguageException.SupportedLanguages;
                 break;
+            case KeyNotFoundException keyNotFoundException:
+                problemDetails = ProblemDetailsFactory.CreateProblemDetails(
+                    HttpContext,
+                    StatusCodes.Status404NotFound,
+                    keyNotFoundException.Message);
+                break;
+            case InvalidOperationException invalidOperationException:
+                problemDetails = ProblemDetailsFactory.CreateProblemDetails(
+                    HttpContext,
+                    StatusCodes.Status422UnprocessableEntity,
+                    invalidOperationException.Message);
+                break;
             default:
                 problemDetails = ProblemDetailsFactory.CreateProblemDetails(
                     HttpContext,

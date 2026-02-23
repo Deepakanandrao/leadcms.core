@@ -2,6 +2,8 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Text.Json;
+using LeadCMS.Enums;
 using LeadCMS.Helpers;
 
 namespace LeadCMS.Tests;
@@ -9,6 +11,8 @@ namespace LeadCMS.Tests;
 public class CampaignsTests : BaseTestAutoLogin
 {
     private const string CampaignsUrl = "/api/campaigns";
+    private const string CampaignPreviewUrl = "/api/campaigns/preview";
+    private const string EmailTemplatePreviewUrl = "/api/email-templates/preview";
     private const string ContactsUrl = "/api/contacts";
     private const string SegmentsUrl = "/api/segments";
     private const string EmailGroupsUrl = "/api/email-groups";
@@ -851,90 +855,75 @@ public class CampaignsTests : BaseTestAutoLogin
     // ──────────────────────────────────────────────────
 
     [Fact]
-    public async Task SendTestEmail_WithValidContactAndTemplate_ReturnsOk()
+    public async Task SendTestEmail_WithValidContactAndInlineTemplate_ReturnsOk()
     {
         var contactId = await CreateContactAsync("st1");
-        var templateId = await CreateEmailTemplateAsync("st1");
 
-        var sendTestDto = new CampaignSendTestDto
+        var sendTestDto = new EmailTemplateSendTestDto
         {
-            EmailTemplateId = templateId,
+            Subject = "Hello {{ FirstName }}",
+            BodyTemplate = "<p>Hello {{ FirstName }} {{ LastName }}</p>",
+            FromEmail = "sender@test.net",
+            FromName = "Test Sender",
             ContactId = contactId,
-            Email = "testrecipient@example.com",
+            RecipientEmail = "testrecipient@example.com",
         };
 
-        await PostTest<object>($"{CampaignsUrl}/send-test", sendTestDto, HttpStatusCode.OK);
+        await PostTest<object>($"{EmailTemplatesUrl}/send-test", sendTestDto, HttpStatusCode.OK);
     }
 
     [Fact]
-    public async Task SendTestEmail_WithoutExistingCampaign_Succeeds()
+    public async Task SendTestEmail_WithDummyContact_ReturnsOk()
     {
-        // Prove that send-test does not require a campaign to exist
-        var contactId = await CreateContactAsync("st2");
-        var templateId = await CreateEmailTemplateAsync("st2");
-
-        var sendTestDto = new CampaignSendTestDto
+        var sendTestDto = new EmailTemplateSendTestDto
         {
-            EmailTemplateId = templateId,
-            ContactId = contactId,
-            Email = "nocampaign@example.com",
+            Subject = "Hello {{ FirstName }}",
+            BodyTemplate = "<p>Hello {{ FirstName }}</p>",
+            FromEmail = "sender@test.net",
+            FromName = "Test Sender",
+            RecipientEmail = "dummycontact@example.com",
         };
 
-        await PostTest<object>($"{CampaignsUrl}/send-test", sendTestDto, HttpStatusCode.OK);
-    }
-
-    [Fact]
-    public async Task SendTestEmail_WithInvalidTemplate_ReturnsNotFound()
-    {
-        var contactId = await CreateContactAsync("st3");
-
-        var sendTestDto = new CampaignSendTestDto
-        {
-            EmailTemplateId = 99999,
-            ContactId = contactId,
-            Email = "badtemplate@example.com",
-        };
-
-        await PostTest<object>($"{CampaignsUrl}/send-test", sendTestDto, HttpStatusCode.NotFound);
+        await PostTest<object>($"{EmailTemplatesUrl}/send-test", sendTestDto, HttpStatusCode.OK);
     }
 
     [Fact]
     public async Task SendTestEmail_WithInvalidContact_ReturnsNotFound()
     {
-        var templateId = await CreateEmailTemplateAsync("st4");
-
-        var sendTestDto = new CampaignSendTestDto
+        var sendTestDto = new EmailTemplateSendTestDto
         {
-            EmailTemplateId = templateId,
+            Subject = "Hello {{ FirstName }}",
+            BodyTemplate = "<p>Hello {{ FirstName }}</p>",
+            FromEmail = "sender@test.net",
+            FromName = "Test Sender",
             ContactId = 99999,
-            Email = "badcontact@example.com",
+            RecipientEmail = "badcontact@example.com",
         };
 
-        await PostTest<object>($"{CampaignsUrl}/send-test", sendTestDto, HttpStatusCode.NotFound);
+        await PostTest<object>($"{EmailTemplatesUrl}/send-test", sendTestDto, HttpStatusCode.NotFound);
     }
 
     [Fact]
-    public async Task SendTestEmail_WithInvalidEmail_ReturnsBadRequest()
+    public async Task SendTestEmail_WithInvalidRecipientEmail_ReturnsUnprocessableEntity()
     {
-        var contactId = await CreateContactAsync("st5");
-        var templateId = await CreateEmailTemplateAsync("st5");
-
-        var sendTestDto = new CampaignSendTestDto
+        var sendTestDto = new EmailTemplateSendTestDto
         {
-            EmailTemplateId = templateId,
-            ContactId = contactId,
-            Email = "not-an-email",
+            Subject = "Hello {{ FirstName }}",
+            BodyTemplate = "<p>Hello {{ FirstName }}</p>",
+            FromEmail = "sender@test.net",
+            FromName = "Test Sender",
+            RecipientEmail = "not-an-email",
         };
 
-        await PostTest<object>($"{CampaignsUrl}/send-test", sendTestDto, HttpStatusCode.UnprocessableEntity);
+        await PostTest<object>($"{EmailTemplatesUrl}/send-test", sendTestDto, HttpStatusCode.UnprocessableEntity);
     }
 
     // ──────────────────────────────────────────────────
-    // Preview Tests
+    // Preview Tests — Campaign Preview (audience stats + template rendering via /api/campaigns/preview)
     // ──────────────────────────────────────────────────
 
     [Fact]
-    public async Task Preview_WithValidSegmentsAndTemplate_ReturnsAudienceAndRenderedEmail()
+    public async Task CampaignPreview_WithValidSegmentsAndTemplate_ReturnsAudienceAndRenderedEmail()
     {
         var contact1Id = await CreateContactAsync("pv1_0");
         var contact2Id = await CreateContactAsync("pv1_1");
@@ -949,23 +938,24 @@ public class CampaignsTests : BaseTestAutoLogin
             SegmentIds = new[] { segmentId },
         };
 
-        var result = await PostTest<CampaignPreviewResultDto>($"{CampaignsUrl}/preview", previewDto, HttpStatusCode.OK);
+        var result = await PostTest<CampaignPreviewResultDto>(CampaignPreviewUrl, previewDto, HttpStatusCode.OK);
 
         result.Should().NotBeNull();
         result!.TotalAudienceCount.Should().Be(3);
         result.SendableCount.Should().Be(3);
         result.UnsubscribedCount.Should().Be(0);
         result.InvalidEmailCount.Should().Be(0);
-        result.RenderedBody.Should().NotBeNullOrEmpty();
-        result.RenderedSubject.Should().NotBeNullOrEmpty();
-        result.FromEmail.Should().NotBeNullOrEmpty();
-        result.FromName.Should().NotBeNullOrEmpty();
-        result.PreviewContactId.Should().BeGreaterThan(0);
-        result.PreviewContactEmail.Should().NotBeNullOrEmpty();
+        result.TemplatePreview.Should().NotBeNull();
+        result.TemplatePreview.RenderedBody.Should().NotBeNullOrEmpty();
+        result.TemplatePreview.RenderedSubject.Should().NotBeNullOrEmpty();
+        result.TemplatePreview.FromEmail.Should().NotBeNullOrEmpty();
+        result.TemplatePreview.FromName.Should().NotBeNullOrEmpty();
+        result.TemplatePreview.PreviewContactId.Should().BeGreaterThan(0);
+        result.TemplatePreview.PreviewContactEmail.Should().NotBeNullOrEmpty();
     }
 
     [Fact]
-    public async Task Preview_WithSpecificContactId_UsesSpecifiedContact()
+    public async Task CampaignPreview_WithSpecificContactId_UsesSpecifiedContact()
     {
         var contact1Id = await CreateContactAsync("pv2_0");
         var contact2Id = await CreateContactAsync("pv2_1");
@@ -980,15 +970,15 @@ public class CampaignsTests : BaseTestAutoLogin
             ContactId = contact2Id,
         };
 
-        var result = await PostTest<CampaignPreviewResultDto>($"{CampaignsUrl}/preview", previewDto, HttpStatusCode.OK);
+        var result = await PostTest<CampaignPreviewResultDto>(CampaignPreviewUrl, previewDto, HttpStatusCode.OK);
 
         result.Should().NotBeNull();
-        result!.PreviewContactId.Should().Be(contact2Id);
-        result.PreviewContactEmail.Should().Contain("pv2_1");
+        result!.TemplatePreview.PreviewContactId.Should().Be(contact2Id);
+        result.TemplatePreview.PreviewContactEmail.Should().Contain("pv2_1");
     }
 
     [Fact]
-    public async Task Preview_WithExcludeSegments_ReducesAudienceCount()
+    public async Task CampaignPreview_WithExcludeSegments_ReducesAudienceCount()
     {
         var contactIds = new List<int>();
         for (int i = 0; i < 5; i++)
@@ -1007,7 +997,7 @@ public class CampaignsTests : BaseTestAutoLogin
             ExcludeSegmentIds = new[] { excludeSegmentId },
         };
 
-        var result = await PostTest<CampaignPreviewResultDto>($"{CampaignsUrl}/preview", previewDto, HttpStatusCode.OK);
+        var result = await PostTest<CampaignPreviewResultDto>(CampaignPreviewUrl, previewDto, HttpStatusCode.OK);
 
         result.Should().NotBeNull();
         result!.TotalAudienceCount.Should().Be(3);
@@ -1015,7 +1005,7 @@ public class CampaignsTests : BaseTestAutoLogin
     }
 
     [Fact]
-    public async Task Preview_WithUnsubscribedContacts_ReportsBreakdown()
+    public async Task CampaignPreview_WithUnsubscribedContacts_ReportsBreakdown()
     {
         var contact1Id = await CreateContactAsync("pv4_0");
         var contact2Id = await CreateContactAsync("pv4_1");
@@ -1032,7 +1022,7 @@ public class CampaignsTests : BaseTestAutoLogin
             SegmentIds = new[] { segmentId },
         };
 
-        var result = await PostTest<CampaignPreviewResultDto>($"{CampaignsUrl}/preview", previewDto, HttpStatusCode.OK);
+        var result = await PostTest<CampaignPreviewResultDto>(CampaignPreviewUrl, previewDto, HttpStatusCode.OK);
 
         result.Should().NotBeNull();
         result!.TotalAudienceCount.Should().Be(3);
@@ -1041,7 +1031,7 @@ public class CampaignsTests : BaseTestAutoLogin
     }
 
     [Fact]
-    public async Task Preview_WithInvalidTemplate_Returns404()
+    public async Task CampaignPreview_WithInvalidTemplate_Returns404()
     {
         var contactId = await CreateContactAsync("pv5_0");
         var segmentId = await CreateStaticSegmentAsync("pv5", new[] { contactId });
@@ -1052,44 +1042,13 @@ public class CampaignsTests : BaseTestAutoLogin
             SegmentIds = new[] { segmentId },
         };
 
-        await PostTest<CampaignPreviewResultDto>($"{CampaignsUrl}/preview", previewDto, HttpStatusCode.NotFound);
+        await PostTest<CampaignPreviewResultDto>(CampaignPreviewUrl, previewDto, HttpStatusCode.NotFound);
     }
 
     [Fact]
-    public async Task Preview_WithNoSegments_Returns422()
+    public async Task CampaignPreview_DoesNotRequireSavedCampaign()
     {
-        var templateId = await CreateEmailTemplateAsync("pv6");
-
-        var previewDto = new CampaignPreviewRequestDto
-        {
-            EmailTemplateId = templateId,
-            SegmentIds = Array.Empty<int>(),
-        };
-
-        await PostTest<CampaignPreviewResultDto>($"{CampaignsUrl}/preview", previewDto, HttpStatusCode.UnprocessableEntity);
-    }
-
-    [Fact]
-    public async Task Preview_WithInvalidContactId_Returns404()
-    {
-        var contactId = await CreateContactAsync("pv7_0");
-        var templateId = await CreateEmailTemplateAsync("pv7");
-        var segmentId = await CreateStaticSegmentAsync("pv7", new[] { contactId });
-
-        var previewDto = new CampaignPreviewRequestDto
-        {
-            EmailTemplateId = templateId,
-            SegmentIds = new[] { segmentId },
-            ContactId = 99999,
-        };
-
-        await PostTest<CampaignPreviewResultDto>($"{CampaignsUrl}/preview", previewDto, HttpStatusCode.NotFound);
-    }
-
-    [Fact]
-    public async Task Preview_DoesNotRequireSavedCampaign()
-    {
-        // Preview should work without creating a campaign first
+        // Campaign preview should work without creating a campaign first
         var contactId = await CreateContactAsync("pv8_0");
         var templateId = await CreateEmailTemplateAsync("pv8");
         var segmentId = await CreateStaticSegmentAsync("pv8", new[] { contactId });
@@ -1100,16 +1059,16 @@ public class CampaignsTests : BaseTestAutoLogin
             SegmentIds = new[] { segmentId },
         };
 
-        var result = await PostTest<CampaignPreviewResultDto>($"{CampaignsUrl}/preview", previewDto, HttpStatusCode.OK);
+        var result = await PostTest<CampaignPreviewResultDto>(CampaignPreviewUrl, previewDto, HttpStatusCode.OK);
 
         result.Should().NotBeNull();
         result!.TotalAudienceCount.Should().Be(1);
         result.SendableCount.Should().Be(1);
-        result.RenderedBody.Should().NotBeNullOrEmpty();
+        result.TemplatePreview.RenderedBody.Should().NotBeNullOrEmpty();
     }
 
     [Fact]
-    public async Task Preview_OverlappingSegments_DeduplicatesContacts()
+    public async Task CampaignPreview_OverlappingSegments_DeduplicatesContacts()
     {
         var contactIds = new List<int>();
         for (int i = 0; i < 5; i++)
@@ -1129,11 +1088,283 @@ public class CampaignsTests : BaseTestAutoLogin
             SegmentIds = new[] { segment1Id, segment2Id },
         };
 
-        var result = await PostTest<CampaignPreviewResultDto>($"{CampaignsUrl}/preview", previewDto, HttpStatusCode.OK);
+        var result = await PostTest<CampaignPreviewResultDto>(CampaignPreviewUrl, previewDto, HttpStatusCode.OK);
 
         result.Should().NotBeNull();
         result!.TotalAudienceCount.Should().Be(5); // Deduplicated
         result.SendableCount.Should().Be(5);
+    }
+
+    // ──────────────────────────────────────────────────
+    // Preview Tests — Email Template Preview (pure rendering via /api/email-templates/preview)
+    // ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task TemplatePreview_WithNoContact_UsesDummyData()
+    {
+        var templateId = await CreateEmailTemplateAsync("pv6");
+
+        var previewDto = new EmailTemplatePreviewRequestDto
+        {
+            EmailTemplateId = templateId,
+        };
+
+        var result = await PostTest<EmailTemplatePreviewResultDto>(EmailTemplatePreviewUrl, previewDto, HttpStatusCode.OK);
+
+        result.Should().NotBeNull();
+        result!.RenderedBody.Should().NotBeNullOrEmpty();
+        result.RenderedSubject.Should().NotBeNullOrEmpty();
+        result.FromEmail.Should().NotBeNullOrEmpty();
+        result.FromName.Should().NotBeNullOrEmpty();
+        result.PreviewContactId.Should().Be(0);
+        result.PreviewContactEmail.Should().NotBeNullOrEmpty();
+        result.PreviewContactName.Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public async Task TemplatePreview_WithCustomTemplateParameters_OverridesBuiltInArguments()
+    {
+        var contactId = await CreateContactAsync("pv_custom_0");
+        var groupId = await CreateEmailGroupAsync("pv_custom");
+
+        var template = new EmailTemplateCreateDto
+        {
+            Name = "custom_preview_template",
+            Subject = "Hello {{ FirstName }}",
+            BodyTemplate = "<p>Hello {{ FirstName }}</p>",
+            FromEmail = "custom-preview@test.net",
+            FromName = "Custom Preview",
+            Language = "en",
+            EmailGroupId = groupId,
+        };
+
+        var templateLocation = await PostTest(EmailTemplatesUrl, template);
+        var templateId = ExtractId(templateLocation);
+
+        var previewDto = new EmailTemplatePreviewRequestDto
+        {
+            EmailTemplateId = templateId,
+            ContactId = contactId,
+            CustomTemplateParameters = new Dictionary<string, JsonElement>
+            {
+                ["FirstName"] = JsonSerializer.SerializeToElement("OverrideName"),
+            },
+        };
+
+        var result = await PostTest<EmailTemplatePreviewResultDto>(EmailTemplatePreviewUrl, previewDto, HttpStatusCode.OK);
+
+        result.Should().NotBeNull();
+        result!.RenderedSubject.Should().Be("Hello OverrideName");
+        result.RenderedBody.Should().Contain("Hello OverrideName");
+    }
+
+    [Fact]
+    public async Task TemplatePreview_WithInvalidContactId_Returns404()
+    {
+        var templateId = await CreateEmailTemplateAsync("pv7");
+
+        var previewDto = new EmailTemplatePreviewRequestDto
+        {
+            EmailTemplateId = templateId,
+            ContactId = 99999,
+        };
+
+        await PostTest<EmailTemplatePreviewResultDto>(EmailTemplatePreviewUrl, previewDto, HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task TemplatePreview_WithInvalidTemplate_Returns404()
+    {
+        var previewDto = new EmailTemplatePreviewRequestDto
+        {
+            EmailTemplateId = 99999,
+        };
+
+        await PostTest<EmailTemplatePreviewResultDto>(EmailTemplatePreviewUrl, previewDto, HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task TemplatePreview_WithSpecificContact_UsesContactData()
+    {
+        var contactId = await CreateContactAsync("pvt_contact");
+        var templateId = await CreateEmailTemplateAsync("pvt_contact");
+
+        var previewDto = new EmailTemplatePreviewRequestDto
+        {
+            EmailTemplateId = templateId,
+            ContactId = contactId,
+        };
+
+        var result = await PostTest<EmailTemplatePreviewResultDto>(EmailTemplatePreviewUrl, previewDto, HttpStatusCode.OK);
+
+        result.Should().NotBeNull();
+        result!.PreviewContactId.Should().Be(contactId);
+        result.PreviewContactEmail.Should().Contain("pvt_contact");
+        result.RenderedBody.Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public async Task TemplatePreview_FullContactType_IncludesNestedObjects()
+    {
+        var groupId = await CreateEmailGroupAsync("ct_full");
+        var template = new EmailTemplateCreateDto
+        {
+            Name = "ct_full_template",
+            Subject = "Hello {{ FirstName }}",
+            BodyTemplate = "<p>{{ FirstName }} {{ Account.Name }} {{ Domain.Name }} {{ Orders[0].RefNo }} {{ Deals[0].DealPipeline.Name }}</p>",
+            FromEmail = "ct-full@test.net",
+            FromName = "CT Full",
+            Language = "en",
+            EmailGroupId = groupId,
+        };
+
+        var templateLocation = await PostTest(EmailTemplatesUrl, template);
+        var templateId = ExtractId(templateLocation);
+
+        var previewDto = new EmailTemplatePreviewRequestDto
+        {
+            EmailTemplateId = templateId,
+            ContactType = PreviewContactType.Full,
+        };
+
+        var result = await PostTest<EmailTemplatePreviewResultDto>(EmailTemplatePreviewUrl, previewDto, HttpStatusCode.OK);
+
+        result.Should().NotBeNull();
+        result!.RenderedBody.Should().Contain("Jane");
+        result.RenderedBody.Should().Contain("Acme Corp");
+        result.RenderedBody.Should().Contain("acme-corp.com");
+        result.RenderedBody.Should().Contain("ORD-2025-001");
+        result.RenderedBody.Should().Contain("Enterprise Sales");
+        result.PreviewContactId.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task TemplatePreview_StandardContactType_ExcludesNestedObjects()
+    {
+        var groupId = await CreateEmailGroupAsync("ct_std");
+        var template = new EmailTemplateCreateDto
+        {
+            Name = "ct_std_template",
+            Subject = "Hello {{ FirstName }}",
+            BodyTemplate = "<p>{{ FirstName }} {{ JobTitle }} |{{ Account.Name }}|</p>",
+            FromEmail = "ct-std@test.net",
+            FromName = "CT Standard",
+            Language = "en",
+            EmailGroupId = groupId,
+        };
+
+        var templateLocation = await PostTest(EmailTemplatesUrl, template);
+        var templateId = ExtractId(templateLocation);
+
+        var previewDto = new EmailTemplatePreviewRequestDto
+        {
+            EmailTemplateId = templateId,
+            ContactType = PreviewContactType.Standard,
+        };
+
+        var result = await PostTest<EmailTemplatePreviewResultDto>(EmailTemplatePreviewUrl, previewDto, HttpStatusCode.OK);
+
+        result.Should().NotBeNull();
+        result!.RenderedBody.Should().Contain("Jane");
+        result.RenderedBody.Should().Contain("Marketing Manager");
+        result.RenderedBody.Should().Contain("||", "Standard contact type should not include nested Account object");
+        result.PreviewContactId.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task TemplatePreview_BasicContactType_OnlyEmailAndName()
+    {
+        var groupId = await CreateEmailGroupAsync("ct_basic");
+        var template = new EmailTemplateCreateDto
+        {
+            Name = "ct_basic_template",
+            Subject = "Hello {{ FirstName }}",
+            BodyTemplate = "<p>{{ FirstName }} {{ LastName }} |{{ Phone }}|</p>",
+            FromEmail = "ct-basic@test.net",
+            FromName = "CT Basic",
+            Language = "en",
+            EmailGroupId = groupId,
+        };
+
+        var templateLocation = await PostTest(EmailTemplatesUrl, template);
+        var templateId = ExtractId(templateLocation);
+
+        var previewDto = new EmailTemplatePreviewRequestDto
+        {
+            EmailTemplateId = templateId,
+            ContactType = PreviewContactType.Basic,
+        };
+
+        var result = await PostTest<EmailTemplatePreviewResultDto>(EmailTemplatePreviewUrl, previewDto, HttpStatusCode.OK);
+
+        result.Should().NotBeNull();
+        result!.RenderedSubject.Should().Be("Hello Jane");
+        result.RenderedBody.Should().Contain("Jane");
+        result.RenderedBody.Should().Contain("Doe");
+        result.RenderedBody.Should().Contain("||", "Basic contact type should not include Phone");
+        result.PreviewContactId.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task TemplatePreview_MinimalContactType_OnlyEmail()
+    {
+        var groupId = await CreateEmailGroupAsync("ct_min");
+        var template = new EmailTemplateCreateDto
+        {
+            Name = "ct_min_template",
+            Subject = "Hello |{{ FirstName }}|",
+            BodyTemplate = "<p>{{ Email }} |{{ FirstName }}|</p>",
+            FromEmail = "ct-min@test.net",
+            FromName = "CT Minimal",
+            Language = "en",
+            EmailGroupId = groupId,
+        };
+
+        var templateLocation = await PostTest(EmailTemplatesUrl, template);
+        var templateId = ExtractId(templateLocation);
+
+        var previewDto = new EmailTemplatePreviewRequestDto
+        {
+            EmailTemplateId = templateId,
+            ContactType = PreviewContactType.Minimal,
+        };
+
+        var result = await PostTest<EmailTemplatePreviewResultDto>(EmailTemplatePreviewUrl, previewDto, HttpStatusCode.OK);
+
+        result.Should().NotBeNull();
+        result!.RenderedBody.Should().Contain("jane.doe@example.com");
+        result.RenderedSubject.Should().Contain("||", "Minimal contact type should not include FirstName");
+        result.PreviewContactId.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task TemplatePreview_DefaultContactType_UsesFull()
+    {
+        var groupId = await CreateEmailGroupAsync("ct_def");
+        var template = new EmailTemplateCreateDto
+        {
+            Name = "ct_def_template",
+            Subject = "Hello {{ FirstName }}",
+            BodyTemplate = "<p>{{ Account.Name }} {{ Orders[0].RefNo }}</p>",
+            FromEmail = "ct-def@test.net",
+            FromName = "CT Default",
+            Language = "en",
+            EmailGroupId = groupId,
+        };
+
+        var templateLocation = await PostTest(EmailTemplatesUrl, template);
+        var templateId = ExtractId(templateLocation);
+
+        var previewDto = new EmailTemplatePreviewRequestDto
+        {
+            EmailTemplateId = templateId,
+        };
+
+        var result = await PostTest<EmailTemplatePreviewResultDto>(EmailTemplatePreviewUrl, previewDto, HttpStatusCode.OK);
+
+        result.Should().NotBeNull();
+        result!.RenderedBody.Should().Contain("Acme Corp");
+        result.RenderedBody.Should().Contain("ORD-2025-001");
     }
 
     // ──────────────────────────────────────────────────

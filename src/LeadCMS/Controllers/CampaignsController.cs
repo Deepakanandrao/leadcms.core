@@ -135,20 +135,9 @@ public class CampaignsController : BaseController<Campaign, CampaignCreateDto, C
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<CampaignDetailsDto>> Launch(int id, [FromBody] CampaignLaunchDto launchDto)
     {
-        try
-        {
-            var campaign = await campaignService.LaunchAsync(id, launchDto);
-            var dto = mapper.Map<CampaignDetailsDto>(campaign);
-            return Ok(dto);
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return NotFound(new ProblemDetails { Title = "Not found", Detail = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return UnprocessableEntity(new ProblemDetails { Title = "Invalid operation", Detail = ex.Message });
-        }
+        var campaign = await campaignService.LaunchAsync(id, launchDto);
+        var dto = mapper.Map<CampaignDetailsDto>(campaign);
+        return Ok(dto);
     }
 
     /// <summary>
@@ -160,20 +149,9 @@ public class CampaignsController : BaseController<Campaign, CampaignCreateDto, C
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<CampaignDetailsDto>> Cancel(int id)
     {
-        try
-        {
-            var campaign = await campaignService.CancelAsync(id);
-            var dto = mapper.Map<CampaignDetailsDto>(campaign);
-            return Ok(dto);
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return NotFound(new ProblemDetails { Title = "Not found", Detail = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return UnprocessableEntity(new ProblemDetails { Title = "Invalid operation", Detail = ex.Message });
-        }
+        var campaign = await campaignService.CancelAsync(id);
+        var dto = mapper.Map<CampaignDetailsDto>(campaign);
+        return Ok(dto);
     }
 
     /// <summary>
@@ -185,20 +163,9 @@ public class CampaignsController : BaseController<Campaign, CampaignCreateDto, C
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<CampaignDetailsDto>> Pause(int id)
     {
-        try
-        {
-            var campaign = await campaignService.PauseAsync(id);
-            var dto = mapper.Map<CampaignDetailsDto>(campaign);
-            return Ok(dto);
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return NotFound(new ProblemDetails { Title = "Not found", Detail = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return UnprocessableEntity(new ProblemDetails { Title = "Invalid operation", Detail = ex.Message });
-        }
+        var campaign = await campaignService.PauseAsync(id);
+        var dto = mapper.Map<CampaignDetailsDto>(campaign);
+        return Ok(dto);
     }
 
     /// <summary>
@@ -210,20 +177,9 @@ public class CampaignsController : BaseController<Campaign, CampaignCreateDto, C
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<CampaignDetailsDto>> Resume(int id)
     {
-        try
-        {
-            var campaign = await campaignService.ResumeAsync(id);
-            var dto = mapper.Map<CampaignDetailsDto>(campaign);
-            return Ok(dto);
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return NotFound(new ProblemDetails { Title = "Not found", Detail = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return UnprocessableEntity(new ProblemDetails { Title = "Invalid operation", Detail = ex.Message });
-        }
+        var campaign = await campaignService.ResumeAsync(id);
+        var dto = mapper.Map<CampaignDetailsDto>(campaign);
+        return Ok(dto);
     }
 
     /// <summary>
@@ -234,45 +190,13 @@ public class CampaignsController : BaseController<Campaign, CampaignCreateDto, C
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<CampaignStatisticsDto>> GetStatistics(int id)
     {
-        try
-        {
-            var stats = await campaignService.GetStatisticsAsync(id);
-            return Ok(stats);
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return NotFound(new ProblemDetails { Title = "Not found", Detail = ex.Message });
-        }
+        var stats = await campaignService.GetStatisticsAsync(id);
+        return Ok(stats);
     }
 
     /// <summary>
-    /// Sends a test email using a contact's data but delivered to a specified email address.
+    /// Generates a campaign preview including audience statistics and a rendered email template preview.
     /// Does not require a saved campaign — useful for previewing before creating one.
-    /// </summary>
-    [HttpPost("send-test")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
-    public async Task<ActionResult> SendTest([FromBody] CampaignSendTestDto dto)
-    {
-        try
-        {
-            await campaignService.SendTestEmailAsync(dto);
-            return Ok();
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return NotFound(new ProblemDetails { Title = "Not found", Detail = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return UnprocessableEntity(new ProblemDetails { Title = "Invalid operation", Detail = ex.Message });
-        }
-    }
-
-    /// <summary>
-    /// Generates a campaign preview including audience metrics and a rendered email sample.
-    /// Does not require a saved campaign — accepts campaign details directly.
     /// </summary>
     [HttpPost("preview")]
     [ProducesResponseType(typeof(CampaignPreviewResultDto), StatusCodes.Status200OK)]
@@ -280,19 +204,8 @@ public class CampaignsController : BaseController<Campaign, CampaignCreateDto, C
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<CampaignPreviewResultDto>> Preview([FromBody] CampaignPreviewRequestDto dto)
     {
-        try
-        {
-            var result = await campaignService.PreviewAsync(dto);
-            return Ok(result);
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return NotFound(new ProblemDetails { Title = "Not found", Detail = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return UnprocessableEntity(new ProblemDetails { Title = "Invalid operation", Detail = ex.Message });
-        }
+        var result = await campaignService.PreviewAsync(dto);
+        return Ok(result);
     }
 
     /// <summary>

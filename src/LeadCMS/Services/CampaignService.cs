@@ -19,27 +19,74 @@ public class CampaignService : ICampaignService
     private readonly PgDbContext dbContext;
     private readonly ISegmentService segmentService;
     private readonly IEmailFromTemplateService emailFromTemplateService;
-    private readonly ILiquidTemplateService liquidTemplateService;
-    private readonly IMjmlRenderingService mjmlRenderingService;
+    private readonly IEmailTemplateService emailTemplateService;
 
     public CampaignService(
         PgDbContext dbContext,
         ISegmentService segmentService,
         IEmailFromTemplateService emailFromTemplateService,
-        ILiquidTemplateService liquidTemplateService,
-        IMjmlRenderingService mjmlRenderingService)
+        IEmailTemplateService emailTemplateService)
     {
         this.dbContext = dbContext;
         this.segmentService = segmentService;
         this.emailFromTemplateService = emailFromTemplateService;
-        this.liquidTemplateService = liquidTemplateService;
-        this.mjmlRenderingService = mjmlRenderingService;
+        this.emailTemplateService = emailTemplateService;
     }
 
     /// <inheritdoc/>
     public DateTime ConvertScheduledToUtc(DateTime scheduledAt, int timeZoneOffsetMinutes)
     {
         return CampaignScheduleHelper.ConvertScheduledLocalToUtc(scheduledAt, timeZoneOffsetMinutes);
+    }
+
+    /// <inheritdoc/>
+    public async Task<CampaignPreviewResultDto> PreviewAsync(CampaignPreviewRequestDto dto)
+    {
+        var templatePreviewRequest = new EmailTemplatePreviewRequestDto
+        {
+            EmailTemplateId = dto.EmailTemplateId,
+            ContactId = dto.ContactId,
+            ContactType = dto.ContactType,
+            Language = dto.Language,
+            CustomTemplateParameters = dto.CustomTemplateParameters,
+        };
+
+        var segmentIds = dto.SegmentIds ?? Array.Empty<int>();
+        var hasAudienceSegments = segmentIds.Length > 0;
+
+        // Resolve audience and unsubscribed contacts sequentially (DbContext is not thread-safe).
+        var allContacts = hasAudienceSegments
+            ? await ResolveAudienceContactsAsync(segmentIds, dto.ExcludeSegmentIds)
+            : new Dictionary<int, Contact>();
+
+        var unsubscribedSet = await GetUnsubscribedContactIdsAsync();
+
+        // If no specific contact was requested, pick one from the audience
+        if (!dto.ContactId.HasValue && hasAudienceSegments)
+        {
+            var audienceContact = allContacts.Values
+                .FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Email)
+                    && !unsubscribedSet.Contains(c.Id)
+                    && c.UnsubscribeId == null);
+
+            if (audienceContact != null)
+            {
+                templatePreviewRequest.ContactId = audienceContact.Id;
+            }
+        }
+
+        var templatePreview = await emailTemplateService.PreviewAsync(templatePreviewRequest);
+
+        var (sendableCount, unsubscribedCount, invalidEmailCount) = CalculateAudienceBreakdown(allContacts, unsubscribedSet);
+
+        return new CampaignPreviewResultDto
+        {
+            TotalAudienceCount = allContacts.Count,
+            SendableCount = sendableCount,
+            UnsubscribedCount = unsubscribedCount,
+            InvalidEmailCount = invalidEmailCount,
+            TemplatePreview = templatePreview,
+        };
     }
 
     public async Task<Campaign> LaunchAsync(int campaignId, CampaignLaunchDto launchDto)
@@ -316,111 +363,6 @@ public class CampaignService : ICampaignService
         };
     }
 
-    /// <inheritdoc/>
-    public async Task SendTestEmailAsync(CampaignSendTestDto dto)
-    {
-        // Load the template
-        var template = await dbContext.EmailTemplates!.FindAsync(dto.EmailTemplateId)
-            ?? throw new KeyNotFoundException($"Email template with id {dto.EmailTemplateId} not found.");
-
-        // Validate the contact exists and load related data
-        var contact = await dbContext.Contacts!
-            .Include(c => c.Account)
-            .Include(c => c.Domain)
-            .FirstOrDefaultAsync(c => c.Id == dto.ContactId)
-            ?? throw new KeyNotFoundException($"Contact with id {dto.ContactId} not found.");
-
-        var templateArgs = FromContact(contact);
-
-        // Send using the contact's data but to the specified test email
-        await emailFromTemplateService.SendAsync(
-            template.Name,
-            template.Language,
-            new[] { dto.Email },
-            templateArgs,
-            attachments: null,
-            contactId: dto.ContactId);
-    }
-
-    /// <inheritdoc/>
-    public async Task<CampaignPreviewResultDto> PreviewAsync(CampaignPreviewRequestDto dto)
-    {
-        // Validate template exists
-        var template = await dbContext.EmailTemplates!.FindAsync(dto.EmailTemplateId)
-            ?? throw new KeyNotFoundException($"Email template with id {dto.EmailTemplateId} not found.");
-
-        // Validate at least one segment
-        if (dto.SegmentIds == null || dto.SegmentIds.Length == 0)
-        {
-            throw new InvalidOperationException("At least one segment is required for preview.");
-        }
-
-        var allContacts = await ResolveAudienceContactsAsync(dto.SegmentIds, dto.ExcludeSegmentIds);
-        var unsubscribedSet = await GetUnsubscribedContactIdsAsync();
-        var (sendableCount, unsubscribedCount, invalidEmailCount) = CalculateAudienceBreakdown(allContacts, unsubscribedSet);
-
-        // Determine the contact to use for rendering
-        Contact? previewContact;
-
-        if (dto.ContactId.HasValue)
-        {
-            previewContact = await dbContext.Contacts!
-                .Include(c => c.Account)
-                .Include(c => c.Domain)
-                .FirstOrDefaultAsync(c => c.Id == dto.ContactId.Value)
-                ?? throw new KeyNotFoundException($"Contact with id {dto.ContactId.Value} not found.");
-        }
-        else
-        {
-            // Pick a random contact from the audience that has a valid email
-            var audienceContact = allContacts.Values
-                .FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Email)
-                    && !unsubscribedSet.Contains(c.Id)
-                    && c.UnsubscribeId == null);
-
-            if (audienceContact != null)
-            {
-                // Re-load with Account and Domain includes
-                previewContact = await dbContext.Contacts!
-                    .Include(c => c.Account)
-                    .Include(c => c.Domain)
-                    .FirstOrDefaultAsync(c => c.Id == audienceContact.Id);
-            }
-            else
-            {
-                previewContact = null;
-            }
-        }
-
-        // Render using the exact template specified by EmailTemplateId
-        var templateArgs = FromContact(previewContact);
-
-        var bodySource = template.Format == EmailTemplateFormat.Mjml
-            ? mjmlRenderingService.RenderToHtml(template.BodyTemplate)
-            : template.BodyTemplate;
-
-        var renderedBody = await liquidTemplateService.RenderAsync(bodySource, templateArgs);
-        var renderedSubject = await liquidTemplateService.RenderAsync(template.Subject, templateArgs);
-
-        return new CampaignPreviewResultDto
-        {
-            TotalAudienceCount = allContacts.Count,
-            SendableCount = sendableCount,
-            UnsubscribedCount = unsubscribedCount,
-            InvalidEmailCount = invalidEmailCount,
-            RenderedSubject = renderedSubject,
-            RenderedBody = renderedBody,
-            FromEmail = template.FromEmail,
-            FromName = template.FromName,
-            PreviewContactId = previewContact?.Id ?? 0,
-            PreviewContactName = previewContact?.FullName ?? string.Empty,
-            PreviewContactEmail = previewContact?.Email ?? string.Empty,
-        };
-    }
-
-    /// <summary>
-    /// Calculates the audience breakdown: sendable, unsubscribed, and invalid email counts.
-    /// </summary>
     private static (int sendable, int unsubscribed, int invalidEmail) CalculateAudienceBreakdown(
         Dictionary<int, Contact> contacts,
         HashSet<int> unsubscribedSet)

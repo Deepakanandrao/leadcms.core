@@ -61,6 +61,12 @@ namespace LeadCMS.Entities
         public string? TranslationKey { get; set; }
 
         /// <summary>
+        /// Gets or sets the template category that describes its visual style and purpose.
+        /// Defaults to General for backward compatibility with existing templates.
+        /// </summary>
+        public EmailTemplateCategory Category { get; set; } = EmailTemplateCategory.General;
+
+        /// <summary>
         /// Gets or sets how many times an email should resend once sending failed.
         /// </summary>
         public int RetryCount { get; set; }

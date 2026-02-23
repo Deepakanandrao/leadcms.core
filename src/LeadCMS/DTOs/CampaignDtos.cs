@@ -3,9 +3,11 @@
 // </copyright>
 
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using CsvHelper.Configuration.Attributes;
 using LeadCMS.Entities;
+using LeadCMS.Enums;
 using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
@@ -151,28 +153,6 @@ public class CampaignLaunchDto
     public bool UseContactTimeZone { get; set; }
 }
 
-public class CampaignSendTestDto
-{
-    /// <summary>
-    /// Gets or sets the email template ID to use for the test email.
-    /// </summary>
-    [Required]
-    public int EmailTemplateId { get; set; }
-
-    /// <summary>
-    /// Gets or sets the contact ID whose data will be used to render the template.
-    /// </summary>
-    [Required]
-    public int ContactId { get; set; }
-
-    /// <summary>
-    /// Gets or sets the email address to deliver the test email to.
-    /// </summary>
-    [Required]
-    [EmailAddress]
-    public string Email { get; set; } = string.Empty;
-}
-
 public class CampaignRecipientDetailsDto
 {
     public int Id { get; set; }
@@ -229,9 +209,21 @@ public class CampaignPreviewRequestDto
 
     /// <summary>
     /// Gets or sets the specific contact ID to use for rendering the template preview.
-    /// When not provided, a random contact from the target audience is used.
+    /// When not provided, a contact from the target audience is used.
     /// </summary>
     public int? ContactId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the type of dummy contact to generate for the preview.
+    /// Ignored when <see cref="ContactId"/> is provided. Defaults to <see cref="PreviewContactType.Full"/>.
+    /// </summary>
+    public PreviewContactType? ContactType { get; set; }
+
+    /// <summary>
+    /// Gets or sets custom template parameters provided by client code.
+    /// These values are merged on top of built-in contact template arguments.
+    /// </summary>
+    public Dictionary<string, JsonElement>? CustomTemplateParameters { get; set; }
 }
 
 public class CampaignPreviewResultDto
@@ -257,37 +249,7 @@ public class CampaignPreviewResultDto
     public int InvalidEmailCount { get; set; }
 
     /// <summary>
-    /// Gets or sets the rendered subject line with template variables replaced.
+    /// Gets or sets the template preview result with rendered email content.
     /// </summary>
-    public string RenderedSubject { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Gets or sets the rendered HTML body with template variables replaced.
-    /// </summary>
-    public string RenderedBody { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Gets or sets the sender email address from the matched template.
-    /// </summary>
-    public string FromEmail { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Gets or sets the sender name from the matched template.
-    /// </summary>
-    public string FromName { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Gets or sets the ID of the contact used for rendering the preview.
-    /// </summary>
-    public int PreviewContactId { get; set; }
-
-    /// <summary>
-    /// Gets or sets the name of the contact used for rendering the preview.
-    /// </summary>
-    public string PreviewContactName { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Gets or sets the email of the contact used for rendering the preview.
-    /// </summary>
-    public string PreviewContactEmail { get; set; } = string.Empty;
+    public EmailTemplatePreviewResultDto TemplatePreview { get; set; } = new();
 }
