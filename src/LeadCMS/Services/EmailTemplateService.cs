@@ -72,7 +72,7 @@ public class EmailTemplateService : IEmailTemplateService
         Contact? contact = null;
         if (dto.ContactId.HasValue)
         {
-            contact = await LoadContactWithBasicRelationsAsync(dto.ContactId.Value)
+            contact = await LoadPreviewContactAsync(dto.ContactId.Value)
                 ?? throw new KeyNotFoundException($"Contact with id {dto.ContactId.Value} not found.");
         }
 
@@ -292,14 +292,6 @@ public class EmailTemplateService : IEmailTemplateService
                 .ThenInclude(d => d.DealPipeline)
             .Include(c => c.Deals)!
                 .ThenInclude(d => d.DealPipelineStage)
-            .FirstOrDefaultAsync(c => c.Id == contactId);
-    }
-
-    private async Task<Contact?> LoadContactWithBasicRelationsAsync(int contactId)
-    {
-        return await dbContext.Contacts!
-            .Include(c => c.Account)
-            .Include(c => c.Domain)
             .FirstOrDefaultAsync(c => c.Id == contactId);
     }
 }

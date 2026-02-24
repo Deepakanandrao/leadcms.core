@@ -363,14 +363,105 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
 
     /// <summary>
     /// Appends HTML format rules to the prompt for email template generation.
+    /// These rules encode cross-client email compatibility best practices so that
+    /// generated HTML renders correctly in Gmail, Outlook (Word engine), Apple Mail,
+    /// Yahoo Mail, and other major clients.
     /// </summary>
     private static void AppendFormatRules(StringBuilder sb)
     {
-        sb.AppendLine("FORMAT RULES (HTML):");
-        sb.AppendLine("1. The bodyTemplate MUST be standard, well-formed HTML suitable for email clients");
-        sb.AppendLine("2. Use table-based layouts for maximum cross-client compatibility");
-        sb.AppendLine("3. Use inline CSS styles for reliable rendering");
-        sb.AppendLine("4. Set colors, fonts, spacing via inline style attributes");
+        sb.AppendLine("FORMAT RULES (HTML — maximum cross-client compatibility):");
+        sb.AppendLine();
+
+        // ── Document structure ───────────────────────────────────────
+        sb.AppendLine("Document structure:");
+        sb.AppendLine("1. Start with <!DOCTYPE html>");
+        sb.AppendLine("2. Open <html lang=\"en\" xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\">");
+        sb.AppendLine("3. Include <head> with:");
+        sb.AppendLine("   <meta charset=\"UTF-8\">");
+        sb.AppendLine("   <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">");
+        sb.AppendLine("   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
+        sb.AppendLine("   <title>Email</title>");
+        sb.AppendLine("4. <body style=\"margin:0; padding:0;\">");
+        sb.AppendLine();
+
+        // ── Layout ──────────────────────────────────────────────────
+        sb.AppendLine("Layout:");
+        sb.AppendLine("5. Use table-based layout for structure — tables provide the most consistent rendering across email clients");
+        sb.AppendLine("6. Main content wrapper table: width 600px, centered with margin:0 auto or align=\"center\"");
+        sb.AppendLine("7. Add role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" on every layout table (critical for accessibility)");
+        sb.AppendLine("8. Do NOT rely on <div>-based layout, CSS Grid, or Flexbox for core structure");
+        sb.AppendLine("9. Prefer single-column layouts — they render reliably on mobile and desktop");
+        sb.AppendLine();
+
+        // ── CSS ─────────────────────────────────────────────────────
+        sb.AppendLine("CSS:");
+        sb.AppendLine("10. Use inline CSS styles on every element (style=\"...\" attribute) — many clients strip <style> blocks");
+        sb.AppendLine("11. Avoid CSS shorthand where possible (use font-size, font-family, font-weight separately)");
+        sb.AppendLine("12. No JavaScript — it is stripped by all email clients");
+        sb.AppendLine("13. No position:fixed or position:absolute for content elements");
+        sb.AppendLine("14. No external CSS files or <link> stylesheet references");
+        sb.AppendLine();
+
+        // ── Typography ──────────────────────────────────────────────
+        sb.AppendLine("Typography:");
+        sb.AppendLine("15. Use font stacks with web-safe fallbacks: e.g. font-family: 'Roboto', Arial, Helvetica, sans-serif");
+        sb.AppendLine("16. Always set explicit font-size, line-height, and color on text elements");
+        sb.AppendLine("17. Web fonts are optional enhancement — the email MUST be readable with fallback fonts only");
+        sb.AppendLine();
+
+        // ── Images ──────────────────────────────────────────────────
+        sb.AppendLine("Images:");
+        sb.AppendLine("18. Always include alt text on images");
+        sb.AppendLine("19. Set explicit width and height attributes on <img> tags");
+        sb.AppendLine("20. Add style=\"display:block;\" on content images to prevent gaps");
+        sb.AppendLine("21. Use absolute HTTPS URLs for image sources in production templates");
+        sb.AppendLine("22. Never create image-only emails — always include live text");
+        sb.AppendLine();
+
+        // ── Buttons / CTA ───────────────────────────────────────────
+        sb.AppendLine("Buttons / CTA:");
+        sb.AppendLine("23. Use bulletproof button pattern: a table cell with background-color and a nested <a> link");
+        sb.AppendLine("24. Do NOT rely solely on border-radius for button styling (Outlook ignores it)");
+        sb.AppendLine();
+
+        // ── Backgrounds & colours ───────────────────────────────────
+        sb.AppendLine("Backgrounds and colours:");
+        sb.AppendLine("25. Prefer solid background colours");
+        sb.AppendLine("26. If using background images, always provide a solid-colour fallback");
+        sb.AppendLine("27. Duplicate key background colour as bgcolor HTML attribute on <table>/<td> where appropriate");
+        sb.AppendLine();
+
+        // ── Preheader ───────────────────────────────────────────────
+        sb.AppendLine("Preheader:");
+        sb.AppendLine("28. Include hidden preheader text as the FIRST element inside <body>, before the layout table:");
+        sb.AppendLine("    <div style=\"display:none;font-size:1px;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;mso-hide:all;font-family:sans-serif;\">Preheader text here</div>");
+        sb.AppendLine();
+
+        // ── Accessibility ───────────────────────────────────────────
+        sb.AppendLine("Accessibility:");
+        sb.AppendLine("29. Use semantic HTML: <p> for paragraphs, <h1>-<h6> for headings");
+        sb.AppendLine("30. Set lang attribute on <html> tag");
+        sb.AppendLine("31. Ensure sufficient colour contrast between text and background");
+        sb.AppendLine("32. Email must remain understandable with images disabled");
+        sb.AppendLine();
+
+        // ── Spacing ─────────────────────────────────────────────────
+        sb.AppendLine("Spacing:");
+        sb.AppendLine("33. Use inline padding on <td> elements or cellpadding on tables for spacing");
+        sb.AppendLine("34. Avoid margin on block elements (inconsistent in email clients) — prefer padding on table cells");
+        sb.AppendLine();
+
+        // ── Dark mode ───────────────────────────────────────────────
+        sb.AppendLine("Dark mode (progressive enhancement only):");
+        sb.AppendLine("35. Dark mode tweaks are allowed ONLY in a <style> block using @media (prefers-color-scheme: dark)");
+        sb.AppendLine("36. The baseline email MUST look correct WITHOUT dark-mode styles");
+        sb.AppendLine();
+
+        // ── Output hygiene ──────────────────────────────────────────
+        sb.AppendLine("Output hygiene:");
+        sb.AppendLine("37. Keep markup compact but readable");
+        sb.AppendLine("38. Do not remove fallback code or VML conditionals");
+        sb.AppendLine("39. Prefer stable, boring HTML over clever HTML");
     }
 
     private static void AppendCategoryGuidance(StringBuilder sb, EmailTemplateCategory category)
@@ -381,13 +472,52 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
                 """
 
                 CATEGORY — PLAIN-TEXT / PERSONAL-STYLE:
-                - Minimal formatting — the email should look like it was typed by a real person
-                - No hero images, banners, or heavy styling; plain white background
+                Goal: The email MUST look like it was typed by a real person in their email client.
+
+                Tone and content:
                 - Conversational, 1:1 human tone (first person, direct address)
                 - Short paragraphs (2-3 sentences) with natural line breaks
                 - Simple text-based signature (name, title) — no graphical footers
-                - A single inline link is sufficient — avoid styled buttons
                 - Ideal for sales outreach, personal follow-ups, relationship-building
+
+                Layout — STRICT rules:
+                - Left-aligned text only — NO center alignment anywhere (no align="center", no margin:0 auto, no text-align:center)
+                - Plain white background (#ffffff) — NO coloured backgrounds, gradients, or background images
+                - NO hero images, banners, logos, or decorative graphics
+                - NO styled CTA buttons — use a plain inline <a> link instead
+                - NO large padded containers, cards, or boxed sections
+                - NO horizontal rules or decorative separators
+                - NO padding on the outer table cell or body — zero padding everywhere (the email must start flush like a real typed email)
+                - NO wrapper table with a fixed width — use width="100%" only
+                - Minimal inline styles: only font-family, font-size, line-height, and color
+                - The email MUST look indistinguishable from a manually typed message in Gmail/Outlook
+
+                Structural sample — follow this exact pattern:
+                ```html
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                  <meta charset="UTF-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                  <title>Email</title>
+                </head>
+                <body style="margin:0; padding:0; background-color:#ffffff;">
+                  <div style="display:none;font-size:1px;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;mso-hide:all;font-family:sans-serif;">Preheader text</div>
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                    <tr>
+                      <td style="font-family:Arial, Helvetica, sans-serif; font-size:14px; line-height:1.5; color:#222222;">
+                        <p style="margin:0 0 14px 0;">Hi {{ FirstName }},</p>
+                        <p style="margin:0 0 14px 0;">Your message body here. Keep it short and personal.</p>
+                        <p style="margin:0 0 14px 0;">Here is a link if needed: <a href="https://example.com" style="color:#1a73e8;">Click here</a></p>
+                        <p style="margin:0 0 0 0;">Best regards,<br>Sender Name<br>Sender Title</p>
+                      </td>
+                    </tr>
+                  </table>
+                </body>
+                </html>
+                ```
+
+                DO NOT deviate from this minimal style for PlainText templates.
                 """,
 
             EmailTemplateCategory.SimpleProfessional =>
