@@ -725,7 +725,8 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
         // Orders collection
         var sampleOrder = contact.Orders?.FirstOrDefault();
         sb.AppendLine();
-        sb.AppendLine("Orders collection — {% for order in Orders %}...{% endfor %}:");
+        sb.AppendLine("Orders collection (sorted newest-first by UpdatedAt/CreatedAt) — {% for order in Orders %}...{% endfor %}:");
+        sb.AppendLine("  The first item is always the most recent. Use {% for order in Orders limit:1 %} to access only the latest order.");
         sb.AppendLine("  Each Order has:");
         AppendEntityProperties(sb, typeof(Order), sampleOrder, "order", indent: 4);
 
@@ -743,7 +744,8 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
         // Deals collection
         var sampleDeal = contact.Deals?.FirstOrDefault();
         sb.AppendLine();
-        sb.AppendLine("Deals collection — {% for deal in Deals %}...{% endfor %}:");
+        sb.AppendLine("Deals collection (sorted newest-first by UpdatedAt/CreatedAt) — {% for deal in Deals %}...{% endfor %}:");
+        sb.AppendLine("  The first item is always the most recent. Use {% for deal in Deals limit:1 %} to access only the latest deal.");
         sb.AppendLine("  Each Deal has:");
         AppendEntityProperties(sb, typeof(Deal), sampleDeal, "deal", indent: 4);
 
@@ -769,6 +771,10 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
         sb.AppendLine("    {% for item in order.OrderItems %}");
         sb.AppendLine("      {{ item.ProductName }} × {{ item.Quantity }}");
         sb.AppendLine("    {% endfor %}");
+        sb.AppendLine("  {% endfor %}");
+        sb.AppendLine("  Most recent order only:");
+        sb.AppendLine("  {% for order in Orders limit:1 %}");
+        sb.AppendLine("    Your latest order #{{ order.RefNo }}");
         sb.AppendLine("  {% endfor %}");
 
         sb.AppendLine();

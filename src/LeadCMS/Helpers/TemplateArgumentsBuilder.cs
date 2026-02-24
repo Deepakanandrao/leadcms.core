@@ -73,15 +73,20 @@ public static class TemplateArgumentsBuilder
                 args["Domain"] = contact.Domain;
             }
 
-            // Collections — passed as objects so Liquid can iterate with {% for order in Orders %}
+            // Collections — sorted newest-first (by UpdatedAt ?? CreatedAt) so that
+            // Liquid templates can access the most recent item first, e.g. {% for order in Orders limit:1 %}
             if (contact.Orders != null)
             {
-                args["Orders"] = contact.Orders;
+                args["Orders"] = contact.Orders
+                    .OrderByDescending(o => o.UpdatedAt ?? o.CreatedAt)
+                    .ToList();
             }
 
             if (contact.Deals != null)
             {
-                args["Deals"] = contact.Deals;
+                args["Deals"] = contact.Deals
+                    .OrderByDescending(d => d.UpdatedAt ?? d.CreatedAt)
+                    .ToList();
             }
         }
 
