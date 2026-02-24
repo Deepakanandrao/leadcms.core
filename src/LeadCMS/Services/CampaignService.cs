@@ -42,9 +42,15 @@ public class CampaignService : ICampaignService
     /// <inheritdoc/>
     public async Task<CampaignPreviewResultDto> PreviewAsync(CampaignPreviewRequestDto dto)
     {
+        var template = await dbContext.EmailTemplates!.FindAsync(dto.EmailTemplateId)
+            ?? throw new KeyNotFoundException($"Email template with id {dto.EmailTemplateId} not found.");
+
         var templatePreviewRequest = new EmailTemplatePreviewRequestDto
         {
-            EmailTemplateId = dto.EmailTemplateId,
+            Subject = template.Subject,
+            BodyTemplate = template.BodyTemplate,
+            FromEmail = template.FromEmail,
+            FromName = template.FromName,
             ContactId = dto.ContactId,
             ContactType = dto.ContactType,
             Language = dto.Language,

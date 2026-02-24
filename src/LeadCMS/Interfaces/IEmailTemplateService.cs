@@ -9,10 +9,11 @@ namespace LeadCMS.Interfaces;
 public interface IEmailTemplateService
 {
     /// <summary>
-    /// Generates an email template preview by rendering the template with a real contact's data
+    /// Generates an email template preview by rendering the supplied template with a real contact's data
     /// or with a dummy contact containing meaningful sample data when no contact ID is provided.
+    /// The template does not need to be persisted — the caller supplies subject, body, format, and sender info inline.
     /// </summary>
-    /// <param name="dto">The preview request containing template ID, optional contact ID, and optional custom variables.</param>
+    /// <param name="dto">The preview request containing inline template data, optional contact ID, and optional custom variables.</param>
     /// <returns>The preview result with rendered HTML, subject, sender info, and preview contact details.</returns>
     Task<EmailTemplatePreviewResultDto> PreviewAsync(EmailTemplatePreviewRequestDto dto);
 

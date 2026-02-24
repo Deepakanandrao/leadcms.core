@@ -111,12 +111,11 @@ public class EmailTemplateAITranslationService : IEmailTemplateAITranslationServ
             Subject = emailTemplate.Subject,
             BodyTemplate = emailTemplate.BodyTemplate,
             FromName = emailTemplate.FromName,
-            Format = emailTemplate.Format,
         };
 
         var metadataJson = JsonHelper.Serialize(metadata);
 
-        var formatLabel = emailTemplate.Format == EmailTemplateFormat.Mjml ? "MJML" : "HTML";
+        var formatLabel = "HTML";
 
         var systemPrompt =
 $@"You are a professional translator for an AI-powered CMS, specializing in email template translation. Translate the prompted JSON object containing email template data to {targetLanguage}.
@@ -143,8 +142,8 @@ CRITICAL RULES - STRICT STRUCTURE PRESERVATION:
 10. Ensure the output is valid, parseable JSON
 
 MARKUP PRESERVATION RULES - DO NOT MODIFY:
-- All layout structures (tables for HTML, mj-section/mj-column for MJML)
-- Inline CSS styles and MJML attributes
+- All layout structures (tables for HTML)
+- Inline CSS styles
 - Component nesting and structure
 - All spacing, color, font, and sizing values
 - All responsive design elements
@@ -152,7 +151,7 @@ MARKUP PRESERVATION RULES - DO NOT MODIFY:
 DO NOT:
 - Add new elements or attributes
 - Remove existing elements or attributes
-- Change CSS or MJML attribute values
+- Change CSS attribute values
 - Modify the structure or nesting of elements
 - Change the format field
 

@@ -15,6 +15,4 @@ public class EmailTemplateTranslationMetadata
     public string BodyTemplate { get; set; } = string.Empty;
 
     public string FromName { get; set; } = string.Empty;
-
-    public EmailTemplateFormat Format { get; set; } = EmailTemplateFormat.Html;
 }

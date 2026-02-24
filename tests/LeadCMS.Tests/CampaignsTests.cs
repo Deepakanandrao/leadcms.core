@@ -1102,11 +1102,12 @@ public class CampaignsTests : BaseTestAutoLogin
     [Fact]
     public async Task TemplatePreview_WithNoContact_UsesDummyData()
     {
-        var templateId = await CreateEmailTemplateAsync("pv6");
-
         var previewDto = new EmailTemplatePreviewRequestDto
         {
-            EmailTemplateId = templateId,
+            Subject = "Hello {{ FirstName }}",
+            BodyTemplate = "<p>Hello {{ FirstName }} {{ LastName }}</p>",
+            FromEmail = "pv6@test.net",
+            FromName = "Preview Sender",
         };
 
         var result = await PostTest<EmailTemplatePreviewResultDto>(EmailTemplatePreviewUrl, previewDto, HttpStatusCode.OK);
@@ -1125,25 +1126,13 @@ public class CampaignsTests : BaseTestAutoLogin
     public async Task TemplatePreview_WithCustomTemplateParameters_OverridesBuiltInArguments()
     {
         var contactId = await CreateContactAsync("pv_custom_0");
-        var groupId = await CreateEmailGroupAsync("pv_custom");
 
-        var template = new EmailTemplateCreateDto
+        var previewDto = new EmailTemplatePreviewRequestDto
         {
-            Name = "custom_preview_template",
             Subject = "Hello {{ FirstName }}",
             BodyTemplate = "<p>Hello {{ FirstName }}</p>",
             FromEmail = "custom-preview@test.net",
             FromName = "Custom Preview",
-            Language = "en",
-            EmailGroupId = groupId,
-        };
-
-        var templateLocation = await PostTest(EmailTemplatesUrl, template);
-        var templateId = ExtractId(templateLocation);
-
-        var previewDto = new EmailTemplatePreviewRequestDto
-        {
-            EmailTemplateId = templateId,
             ContactId = contactId,
             CustomTemplateParameters = new Dictionary<string, JsonElement>
             {
@@ -1161,11 +1150,12 @@ public class CampaignsTests : BaseTestAutoLogin
     [Fact]
     public async Task TemplatePreview_WithInvalidContactId_Returns404()
     {
-        var templateId = await CreateEmailTemplateAsync("pv7");
-
         var previewDto = new EmailTemplatePreviewRequestDto
         {
-            EmailTemplateId = templateId,
+            Subject = "Hello",
+            BodyTemplate = "<p>Hello</p>",
+            FromEmail = "pv7@test.net",
+            FromName = "Preview",
             ContactId = 99999,
         };
 
@@ -1173,25 +1163,36 @@ public class CampaignsTests : BaseTestAutoLogin
     }
 
     [Fact]
-    public async Task TemplatePreview_WithInvalidTemplate_Returns404()
+    public async Task TemplatePreview_WithUnsavedTemplate_RendersSuccessfully()
     {
         var previewDto = new EmailTemplatePreviewRequestDto
         {
-            EmailTemplateId = 99999,
+            Subject = "Hello {{ FirstName }}",
+            BodyTemplate = "<p>Welcome {{ FirstName }}!</p>",
+            FromEmail = "unsaved@test.net",
+            FromName = "Unsaved Template",
         };
 
-        await PostTest<EmailTemplatePreviewResultDto>(EmailTemplatePreviewUrl, previewDto, HttpStatusCode.NotFound);
+        var result = await PostTest<EmailTemplatePreviewResultDto>(EmailTemplatePreviewUrl, previewDto, HttpStatusCode.OK);
+
+        result.Should().NotBeNull();
+        result!.RenderedSubject.Should().Contain("Jane");
+        result.RenderedBody.Should().Contain("Welcome Jane!");
+        result.FromEmail.Should().Be("unsaved@test.net");
+        result.FromName.Should().Be("Unsaved Template");
     }
 
     [Fact]
     public async Task TemplatePreview_WithSpecificContact_UsesContactData()
     {
         var contactId = await CreateContactAsync("pvt_contact");
-        var templateId = await CreateEmailTemplateAsync("pvt_contact");
 
         var previewDto = new EmailTemplatePreviewRequestDto
         {
-            EmailTemplateId = templateId,
+            Subject = "Hello {{ FirstName }}",
+            BodyTemplate = "<p>Hello {{ FirstName }}</p>",
+            FromEmail = "pvt@test.net",
+            FromName = "PVT Sender",
             ContactId = contactId,
         };
 
@@ -1206,24 +1207,12 @@ public class CampaignsTests : BaseTestAutoLogin
     [Fact]
     public async Task TemplatePreview_FullContactType_IncludesNestedObjects()
     {
-        var groupId = await CreateEmailGroupAsync("ct_full");
-        var template = new EmailTemplateCreateDto
+        var previewDto = new EmailTemplatePreviewRequestDto
         {
-            Name = "ct_full_template",
             Subject = "Hello {{ FirstName }}",
             BodyTemplate = "<p>{{ FirstName }} {{ Account.Name }} {{ Domain.Name }} {{ Orders[0].RefNo }} {{ Deals[0].DealPipeline.Name }}</p>",
             FromEmail = "ct-full@test.net",
             FromName = "CT Full",
-            Language = "en",
-            EmailGroupId = groupId,
-        };
-
-        var templateLocation = await PostTest(EmailTemplatesUrl, template);
-        var templateId = ExtractId(templateLocation);
-
-        var previewDto = new EmailTemplatePreviewRequestDto
-        {
-            EmailTemplateId = templateId,
             ContactType = PreviewContactType.Full,
         };
 
@@ -1241,24 +1230,12 @@ public class CampaignsTests : BaseTestAutoLogin
     [Fact]
     public async Task TemplatePreview_StandardContactType_ExcludesNestedObjects()
     {
-        var groupId = await CreateEmailGroupAsync("ct_std");
-        var template = new EmailTemplateCreateDto
+        var previewDto = new EmailTemplatePreviewRequestDto
         {
-            Name = "ct_std_template",
             Subject = "Hello {{ FirstName }}",
             BodyTemplate = "<p>{{ FirstName }} {{ JobTitle }} |{{ Account.Name }}|</p>",
             FromEmail = "ct-std@test.net",
             FromName = "CT Standard",
-            Language = "en",
-            EmailGroupId = groupId,
-        };
-
-        var templateLocation = await PostTest(EmailTemplatesUrl, template);
-        var templateId = ExtractId(templateLocation);
-
-        var previewDto = new EmailTemplatePreviewRequestDto
-        {
-            EmailTemplateId = templateId,
             ContactType = PreviewContactType.Standard,
         };
 
@@ -1274,24 +1251,12 @@ public class CampaignsTests : BaseTestAutoLogin
     [Fact]
     public async Task TemplatePreview_BasicContactType_OnlyEmailAndName()
     {
-        var groupId = await CreateEmailGroupAsync("ct_basic");
-        var template = new EmailTemplateCreateDto
+        var previewDto = new EmailTemplatePreviewRequestDto
         {
-            Name = "ct_basic_template",
             Subject = "Hello {{ FirstName }}",
             BodyTemplate = "<p>{{ FirstName }} {{ LastName }} |{{ Phone }}|</p>",
             FromEmail = "ct-basic@test.net",
             FromName = "CT Basic",
-            Language = "en",
-            EmailGroupId = groupId,
-        };
-
-        var templateLocation = await PostTest(EmailTemplatesUrl, template);
-        var templateId = ExtractId(templateLocation);
-
-        var previewDto = new EmailTemplatePreviewRequestDto
-        {
-            EmailTemplateId = templateId,
             ContactType = PreviewContactType.Basic,
         };
 
@@ -1308,24 +1273,12 @@ public class CampaignsTests : BaseTestAutoLogin
     [Fact]
     public async Task TemplatePreview_MinimalContactType_OnlyEmail()
     {
-        var groupId = await CreateEmailGroupAsync("ct_min");
-        var template = new EmailTemplateCreateDto
+        var previewDto = new EmailTemplatePreviewRequestDto
         {
-            Name = "ct_min_template",
             Subject = "Hello |{{ FirstName }}|",
             BodyTemplate = "<p>{{ Email }} |{{ FirstName }}|</p>",
             FromEmail = "ct-min@test.net",
             FromName = "CT Minimal",
-            Language = "en",
-            EmailGroupId = groupId,
-        };
-
-        var templateLocation = await PostTest(EmailTemplatesUrl, template);
-        var templateId = ExtractId(templateLocation);
-
-        var previewDto = new EmailTemplatePreviewRequestDto
-        {
-            EmailTemplateId = templateId,
             ContactType = PreviewContactType.Minimal,
         };
 
@@ -1340,24 +1293,12 @@ public class CampaignsTests : BaseTestAutoLogin
     [Fact]
     public async Task TemplatePreview_DefaultContactType_UsesFull()
     {
-        var groupId = await CreateEmailGroupAsync("ct_def");
-        var template = new EmailTemplateCreateDto
+        var previewDto = new EmailTemplatePreviewRequestDto
         {
-            Name = "ct_def_template",
             Subject = "Hello {{ FirstName }}",
             BodyTemplate = "<p>{{ Account.Name }} {{ Orders[0].RefNo }}</p>",
             FromEmail = "ct-def@test.net",
             FromName = "CT Default",
-            Language = "en",
-            EmailGroupId = groupId,
-        };
-
-        var templateLocation = await PostTest(EmailTemplatesUrl, template);
-        var templateId = ExtractId(templateLocation);
-
-        var previewDto = new EmailTemplatePreviewRequestDto
-        {
-            EmailTemplateId = templateId,
         };
 
         var result = await PostTest<EmailTemplatePreviewResultDto>(EmailTemplatePreviewUrl, previewDto, HttpStatusCode.OK);

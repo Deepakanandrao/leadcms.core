@@ -7,6 +7,7 @@ using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Enums;
+using LeadCMS.Geography;
 using LeadCMS.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,27 +19,21 @@ public class EmailTemplateService : IEmailTemplateService
 {
     private readonly PgDbContext dbContext;
     private readonly ILiquidTemplateService liquidTemplateService;
-    private readonly IMjmlRenderingService mjmlRenderingService;
     private readonly IEmailService emailService;
 
     public EmailTemplateService(
         PgDbContext dbContext,
         ILiquidTemplateService liquidTemplateService,
-        IMjmlRenderingService mjmlRenderingService,
         IEmailService emailService)
     {
         this.dbContext = dbContext;
         this.liquidTemplateService = liquidTemplateService;
-        this.mjmlRenderingService = mjmlRenderingService;
         this.emailService = emailService;
     }
 
     /// <inheritdoc/>
     public async Task<EmailTemplatePreviewResultDto> PreviewAsync(EmailTemplatePreviewRequestDto dto)
     {
-        var template = await dbContext.EmailTemplates!.FindAsync(dto.EmailTemplateId)
-            ?? throw new KeyNotFoundException($"Email template with id {dto.EmailTemplateId} not found.");
-
         Contact? previewContact = null;
         if (dto.ContactId.HasValue)
         {
@@ -46,26 +41,25 @@ public class EmailTemplateService : IEmailTemplateService
                 ?? throw new KeyNotFoundException($"Contact with id {dto.ContactId.Value} not found.");
         }
 
+        var contactType = dto.ContactType ?? PreviewContactType.Full;
         var templateArgs = previewContact != null
             ? FromContact(previewContact)
-            : BuildDummyContactArgs(dto.ContactType ?? PreviewContactType.Full);
+            : FromContact(BuildDummyContact(contactType), includeNestedObjects: contactType == PreviewContactType.Full);
 
         var customTemplateArgs = ConvertCustomTemplateParameters(dto.CustomTemplateParameters);
         templateArgs = Merge(templateArgs, customTemplateArgs);
 
-        var bodySource = template.Format == EmailTemplateFormat.Mjml
-            ? mjmlRenderingService.RenderToHtml(template.BodyTemplate)
-            : template.BodyTemplate;
+        var bodySource = dto.BodyTemplate;
 
         var renderedBody = await liquidTemplateService.RenderAsync(bodySource, templateArgs);
-        var renderedSubject = await liquidTemplateService.RenderAsync(template.Subject, templateArgs);
+        var renderedSubject = await liquidTemplateService.RenderAsync(dto.Subject, templateArgs);
 
         return new EmailTemplatePreviewResultDto
         {
             RenderedSubject = renderedSubject,
             RenderedBody = renderedBody,
-            FromEmail = template.FromEmail,
-            FromName = template.FromName,
+            FromEmail = dto.FromEmail,
+            FromName = dto.FromName,
             PreviewContactId = previewContact?.Id ?? 0,
             PreviewContactName = previewContact?.FullName ?? (string)templateArgs["FullName"],
             PreviewContactEmail = previewContact?.Email ?? (string)templateArgs["Email"],
@@ -82,16 +76,15 @@ public class EmailTemplateService : IEmailTemplateService
                 ?? throw new KeyNotFoundException($"Contact with id {dto.ContactId.Value} not found.");
         }
 
+        var sendContactType = dto.ContactType ?? PreviewContactType.Full;
         var templateArgs = contact != null
             ? FromContact(contact)
-            : BuildDummyContactArgs(dto.ContactType ?? PreviewContactType.Full);
+            : FromContact(BuildDummyContact(sendContactType), includeNestedObjects: sendContactType == PreviewContactType.Full);
 
         var customTemplateArgs = ConvertCustomTemplateParameters(dto.CustomTemplateParameters);
         templateArgs = Merge(templateArgs, customTemplateArgs);
 
-        var bodySource = dto.Format == EmailTemplateFormat.Mjml
-            ? mjmlRenderingService.RenderToHtml(dto.BodyTemplate)
-            : dto.BodyTemplate;
+        var bodySource = dto.BodyTemplate;
 
         var renderedBody = await liquidTemplateService.RenderAsync(bodySource, templateArgs);
         var renderedSubject = await liquidTemplateService.RenderAsync(dto.Subject, templateArgs);
@@ -171,153 +164,121 @@ public class EmailTemplateService : IEmailTemplateService
         }
     }
 
-    private static Dictionary<string, object> BuildDummyContactArgs(PreviewContactType contactType)
+    /// <summary>
+    /// Builds a dummy <see cref="Contact"/> entity populated to the specified detail level.
+    /// The entity is never persisted — it is used only with
+    /// <c>TemplateArgumentsBuilder.FromContact</c>
+    /// to ensure both real and dummy contacts produce template arguments through the same code path.
+    /// </summary>
+    /// <param name="contactType">The level of detail to populate on the dummy contact.</param>
+    /// <returns>A <see cref="Contact"/> entity with sample data matching the requested detail level.</returns>
+    internal static Contact BuildDummyContact(PreviewContactType contactType)
     {
-        return contactType switch
-        {
-            PreviewContactType.Full => BuildFullDummyContactArgs(),
-            PreviewContactType.Standard => BuildStandardDummyContactArgs(),
-            PreviewContactType.Basic => BuildBasicDummyContactArgs(),
-            PreviewContactType.Minimal => BuildMinimalDummyContactArgs(),
-            _ => BuildFullDummyContactArgs(),
-        };
-    }
+        var contact = new Contact { Email = "jane.doe@example.com" };
 
-    private static Dictionary<string, object> BuildMinimalDummyContactArgs()
-    {
-        return new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+        if (contactType == PreviewContactType.Minimal)
         {
-            ["Email"] = "jane.doe@example.com",
-            ["FirstName"] = string.Empty,
-            ["LastName"] = string.Empty,
-            ["FullName"] = string.Empty,
-        };
-    }
+            return contact;
+        }
 
-    private static Dictionary<string, object> BuildBasicDummyContactArgs()
-    {
-        return new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["Email"] = "jane.doe@example.com",
-            ["FirstName"] = "Jane",
-            ["LastName"] = "Doe",
-            ["FullName"] = "Jane Doe",
-        };
-    }
+        // Basic and above — add name fields
+        contact.FirstName = "Jane";
+        contact.LastName = "Doe";
 
-    private static Dictionary<string, object> BuildStandardDummyContactArgs()
-    {
-        return new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+        if (contactType == PreviewContactType.Basic)
         {
-            ["Email"] = "jane.doe@example.com",
-            ["FirstName"] = "Jane",
-            ["LastName"] = "Doe",
-            ["FullName"] = "Jane Doe",
-            ["MiddleName"] = string.Empty,
-            ["Prefix"] = "Ms.",
-            ["Phone"] = "+1-555-0123",
-            ["JobTitle"] = "Marketing Manager",
-            ["CompanyName"] = "Acme Corp",
-            ["Department"] = "Marketing",
-            ["CityName"] = "San Francisco",
-            ["State"] = "CA",
-            ["Zip"] = "94105",
-            ["Address1"] = "123 Market Street",
-            ["Address2"] = "Suite 400",
-            ["Language"] = "en",
-            ["CountryCode"] = "US",
-            ["ContinentCode"] = "NA",
-            ["AccountName"] = "Acme Corp",
-            ["AccountSiteUrl"] = "https://www.acme-corp.com",
-            ["DomainName"] = "acme-corp.com",
-        };
-    }
+            return contact;
+        }
 
-    private static Dictionary<string, object> BuildFullDummyContactArgs()
-    {
-        var args = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+        // Standard and above — add all scalar contact fields
+        contact.Prefix = "Ms.";
+        contact.Phone = "+1-555-0123";
+        contact.JobTitle = "Marketing Manager";
+        contact.CompanyName = "Acme Corp";
+        contact.Department = "Marketing";
+        contact.CityName = "San Francisco";
+        contact.State = "CA";
+        contact.Zip = "94105";
+        contact.Address1 = "123 Market Street";
+        contact.Address2 = "Suite 400";
+        contact.Language = "en";
+        contact.CountryCode = Country.US;
+        contact.ContinentCode = Continent.NA;
+
+        if (contactType == PreviewContactType.Standard)
         {
-            ["Email"] = "jane.doe@example.com",
-            ["FirstName"] = "Jane",
-            ["LastName"] = "Doe",
-            ["FullName"] = "Jane Doe",
-            ["MiddleName"] = string.Empty,
-            ["Prefix"] = "Ms.",
-            ["Phone"] = "+1-555-0123",
-            ["JobTitle"] = "Marketing Manager",
-            ["CompanyName"] = "Acme Corp",
-            ["Department"] = "Marketing",
-            ["CityName"] = "San Francisco",
-            ["State"] = "CA",
-            ["Zip"] = "94105",
-            ["Address1"] = "123 Market Street",
-            ["Address2"] = "Suite 400",
-            ["Language"] = "en",
-            ["CountryCode"] = "US",
-            ["ContinentCode"] = "NA",
-            ["AccountName"] = "Acme Corp",
-            ["AccountSiteUrl"] = "https://www.acme-corp.com",
-            ["Account"] = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+            // Standard includes Account and Domain as top-level flattened fields
+            // by setting the related objects with minimal data.
+            contact.Account = new Account
             {
-                ["Name"] = "Acme Corp",
-                ["SiteUrl"] = "https://www.acme-corp.com",
-                ["CityName"] = "San Francisco",
-                ["State"] = "CA",
-                ["EmployeesRange"] = "50-200",
-            },
-            ["DomainName"] = "acme-corp.com",
-            ["Domain"] = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+                Name = "Acme Corp",
+                SiteUrl = "https://www.acme-corp.com",
+            };
+            contact.Domain = new Domain
             {
-                ["Name"] = "acme-corp.com",
-                ["Title"] = "Acme Corp",
-                ["Url"] = "https://www.acme-corp.com",
-            },
-            ["Orders"] = new List<Dictionary<string, object>>
+                Name = "acme-corp.com",
+            };
+
+            return contact;
+        }
+
+        // Full — add nested objects
+        contact.Account = new Account
+        {
+            Name = "Acme Corp",
+            SiteUrl = "https://www.acme-corp.com",
+            CityName = "San Francisco",
+            State = "CA",
+            EmployeesRange = "50-200",
+        };
+
+        contact.Domain = new Domain
+        {
+            Name = "acme-corp.com",
+            Title = "Acme Corp",
+            Url = "https://www.acme-corp.com",
+        };
+
+        contact.Orders = new List<Order>
+        {
+            new Order
             {
-                new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+                RefNo = "ORD-2025-001",
+                OrderNumber = "1001",
+                Total = 249.99m,
+                Currency = "USD",
+                Status = OrderStatus.Paid,
+                Quantity = 2,
+                OrderItems = new List<OrderItem>
                 {
-                    ["RefNo"] = "ORD-2025-001",
-                    ["OrderNumber"] = "1001",
-                    ["Total"] = 249.99m,
-                    ["Currency"] = "USD",
-                    ["Status"] = "Completed",
-                    ["Quantity"] = 2,
-                    ["OrderItems"] = new List<Dictionary<string, object>>
+                    new OrderItem
                     {
-                        new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
-                        {
-                            ["ProductName"] = "Professional Plan (Annual)",
-                            ["Total"] = 199.99m,
-                            ["Quantity"] = 1,
-                        },
-                        new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
-                        {
-                            ["ProductName"] = "Premium Support Add-on",
-                            ["Total"] = 50.00m,
-                            ["Quantity"] = 1,
-                        },
+                        ProductName = "Professional Plan (Annual)",
+                        Total = 199.99m,
+                        Quantity = 1,
                     },
-                },
-            },
-            ["Deals"] = new List<Dictionary<string, object>>
-            {
-                new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["DealValue"] = 15000.00m,
-                    ["DealCurrency"] = "USD",
-                    ["DealPipeline"] = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+                    new OrderItem
                     {
-                        ["Name"] = "Enterprise Sales",
-                    },
-                    ["DealPipelineStage"] = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
-                    {
-                        ["Name"] = "Proposal Sent",
+                        ProductName = "Premium Support Add-on",
+                        Total = 50.00m,
+                        Quantity = 1,
                     },
                 },
             },
         };
 
-        return args;
+        contact.Deals = new List<Deal>
+        {
+            new Deal
+            {
+                DealValue = 15000.00m,
+                DealCurrency = "USD",
+                DealPipeline = new DealPipeline { Name = "Enterprise Sales" },
+                DealPipelineStage = new DealPipelineStage { Name = "Proposal Sent" },
+            },
+        };
+
+        return contact;
     }
 
     private async Task<Contact?> LoadPreviewContactAsync(int contactId)

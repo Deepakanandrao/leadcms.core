@@ -2,6 +2,8 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Collections.Frozen;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using AutoMapper;
@@ -14,6 +16,7 @@ using LeadCMS.Entities;
 using LeadCMS.Enums;
 using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
+using LeadCMS.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Core.AIAssistance.Services;
@@ -23,205 +26,38 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
     private const string DefaultFromEmailSettingKey = "ApiSettings.DefaultFromEmail";
     private const string DefaultFromEmailConfigurationPath = "ApiSettings:DefaultFromEmail";
 
-    private const string HtmlToMjmlConversionPrompt = @"You are an expert at converting HTML email templates to MJML (MailJet Markup Language). Convert the provided HTML email template to valid, well-structured MJML that preserves the original visual appearance as closely as possible.
+    // ── Template parameter knowledge ────────────────────────────────────
 
-MJML STRUCTURE REQUIREMENTS:
-- The output MUST be a complete MJML document starting with <mjml> and ending with </mjml>
-- Use <mj-head> for metadata, shared styles, and font declarations
-- Use <mj-body> as the container for all visible content
-- Use <mj-section> for horizontal rows (replaces table rows)
-- Use <mj-column> inside sections for column-based layouts
-- Sections can contain 1-4 columns; column widths are percentages (e.g. width=""50%"")
-
-COMPONENT MAPPING GUIDE:
-- HTML <table>/<tr>/<td> layouts → <mj-section>/<mj-column>
-- HTML <p>, <span>, <h1>-<h6>, text blocks → <mj-text>
-- HTML <img> → <mj-image src=""..."" width=""..."" alt=""..."" />
-- HTML <a> styled as button → <mj-button href=""..."">
-- HTML <hr> / dividers → <mj-divider border-color=""..."" border-width=""..."" />
-- Empty spacing / padding rows → <mj-spacer height=""..."" />
-- HTML <table> for data → <mj-table> (preserves raw table markup)
-- Social media links → <mj-social> / <mj-social-element>
-- Navbar / menu → <mj-navbar> / <mj-navbar-link>
-
-STYLING RULES:
-- Move shared styles to <mj-attributes> in <mj-head> for DRY approach:
-  <mj-attributes>
-    <mj-all font-family=""Arial, sans-serif"" />
-    <mj-text font-size=""14px"" line-height=""22px"" color=""#333333"" />
-    <mj-button background-color=""#007bff"" color=""#ffffff"" border-radius=""4px"" font-weight=""600"" />
-  </mj-attributes>
-- Use <mj-style> for CSS overrides and responsive media queries:
-  <mj-style>
-    .custom-class { color: #333; }
-  </mj-style>
-- Use <mj-font name=""FontName"" href=""https://fonts.googleapis.com/..."" /> for custom fonts
-- Set colors, fonts, padding via MJML attributes (font-size, color, background-color, padding, etc.)
-- Use web-safe fonts: Arial, Helvetica, Times New Roman, Georgia, Verdana
-- Padding format: padding=""top right bottom left"" or padding-top, padding-bottom, etc.
-
-MJML COMPONENT REFERENCE WITH EXAMPLES:
-
-1. Sections and Columns (layout building blocks):
-   <mj-section background-color=""#ffffff"" padding=""20px 0"">
-     <mj-column width=""50%"">
-       <mj-text>Left column</mj-text>
-     </mj-column>
-     <mj-column width=""50%"">
-       <mj-text>Right column</mj-text>
-     </mj-column>
-   </mj-section>
-
-2. Text content:
-   <mj-text font-size=""20px"" font-weight=""600"" color=""#2d3748"" align=""center"" padding=""10px 25px"">
-     Heading text
-   </mj-text>
-
-3. Images:
-   <mj-image src=""https://example.com/image.jpg"" width=""600px"" alt=""Alt text"" border-radius=""8px"" />
-
-4. Buttons:
-   <mj-button href=""https://example.com"" background-color=""#007bff"" color=""#ffffff"" border-radius=""4px"" font-size=""16px"" padding=""15px 25px"">
-     Click Here
-   </mj-button>
-
-5. Dividers:
-   <mj-divider border-color=""#cbd5e0"" border-width=""1px"" padding=""10px 25px"" />
-
-6. Spacers:
-   <mj-spacer height=""20px"" />
-
-7. Full-width sections:
-   <mj-section full-width=""full-width"" background-color=""#f4f4f4"">
-     <mj-column>
-       <mj-text>Full width content</mj-text>
-     </mj-column>
-   </mj-section>
-
-8. Preview text:
-   <mj-preview>This text appears in email client previews</mj-preview>
-
-9. Title:
-   <mj-title>Email Subject in Code</mj-title>
-
-LIQUID TEMPLATE VARIABLES:
-- Preserve all {{ variableName }} Liquid placeholders exactly as they appear
-- Preserve all {% if condition %}...{% endif %} and {% for %}...{% endfor %} blocks
-- Preserve all {% unless condition %}...{% endunless %} blocks
-- Convert any legacy placeholders (<%token%>, ${token}) to {{ token }} Liquid syntax
-
-CRITICAL RULES:
-1. Output ONLY the MJML markup — no explanations, no JSON wrapping, no markdown
-2. Preserve all visual styles: colors, fonts, spacing, borders, background colors
-3. Preserve all links, images, and interactive elements
-4. Preserve all Liquid template variables and conditional blocks exactly
-5. Ensure the MJML is valid and will compile without errors
-6. Do NOT add content that doesn't exist in the original HTML
-7. MJML handles responsive design natively — do not add manual media queries unless the original has specific responsive breakpoints";
+    /// <summary>
+    /// Property names that are internal implementation details and should not be
+    /// exposed as template variables.
+    /// </summary>
+    private static readonly HashSet<string> InternalPropertyNames = new(StringComparer.Ordinal)
+    {
+        "Data",
+        "TestOrder",
+        "ContactIp",
+        "AccountStatus",
+        "HttpCheck",
+        "DnsCheck",
+        "MxCheck",
+        "Free",
+        "Disposable",
+        "CatchAll",
+    };
 
     /// <summary>
     /// Knowledge block describing all built-in Liquid template parameters available
-    /// to email templates, including scalar contact fields, nested objects, and iterable collections.
-    /// Appended to every AI system prompt so the model knows which variables exist.
+    /// to email templates. Generated dynamically from <see cref="EmailTemplateService.BuildDummyContact"/>
+    /// so it stays in sync with entity changes automatically.
+    /// Must be declared after <see cref="InternalPropertyNames"/> to ensure correct static initialisation order.
     /// </summary>
-    private const string TemplateParametersKnowledge = @"
-AVAILABLE TEMPLATE PARAMETERS (Liquid variables automatically injected at send time):
+    private static readonly string TemplateParametersKnowledge = BuildTemplateParametersKnowledge();
 
-Scalar contact fields (use as {{ FieldName }}):
-  {{ Email }}         — contact email address
-  {{ FirstName }}     — contact first name
-  {{ LastName }}      — contact last name
-  {{ FullName }}      — contact full name (computed)
-  {{ MiddleName }}    — contact middle name
-  {{ Prefix }}        — name prefix (Mr., Mrs., Dr., etc.)
-  {{ Phone }}         — contact phone number
-  {{ JobTitle }}      — contact job title
-  {{ CompanyName }}   — contact company name
-  {{ Department }}    — contact department
-  {{ CityName }}      — contact city
-  {{ State }}         — contact state / region
-  {{ Zip }}           — contact postal / ZIP code
-  {{ Address1 }}      — contact address line 1
-  {{ Address2 }}      — contact address line 2
-  {{ Language }}       — contact language code (e.g. ""en"", ""de"")
-  {{ CountryCode }}   — ISO country code
-  {{ ContinentCode }} — continent code
-
-Flattened account fields:
-  {{ AccountName }}    — name of the account the contact belongs to
-  {{ AccountSiteUrl }} — account website URL
-
-Flattened domain fields:
-  {{ DomainName }}     — domain name associated with the contact
-
-Nested Account object ({{ Account.PropertyName }}):
-  Account has: Name, TIN, CityName, State, Address, CountryCode, ContinentCode,
-               SiteUrl, LogoUrl, EmployeesRange, Revenue, Profit, Tags, SocialMedia,
-               ContactCount, DealsCount, DomainsCount, OrdersCount, LastOrderDate, TotalRevenue.
-  Example: {{ Account.Name }}, {{ Account.SiteUrl }}, {{ Account.TotalRevenue }}
-
-Nested Domain object ({{ Domain.PropertyName }}):
-  Domain has: Name, Title, Description, Url, FaviconUrl, ContactCount, Tags.
-  Example: {{ Domain.Name }}, {{ Domain.Url }}
-
-Orders collection — iterate with {% for order in Orders %}...{% endfor %}:
-  Each Order has:
-    RefNo           — unique reference number
-    OrderNumber     — internal order number
-    Total           — total in system/payout currency (decimal)
-    Currency        — ISO 4217 currency code (e.g. ""USD"")
-    Status          — Pending, Paid, Cancelled, Refunded, or Failed
-    CurrencyTotal   — total in payment currency
-    Quantity        — total quantity of items
-    ExchangeRate    — exchange rate to payout currency
-    AffiliateName   — affiliate name (if any)
-    Commission      — affiliate commission
-    Refund          — refund amount
-    Tags            — array of tags
-    OrderItems      — nested collection of line items (see below)
-    Discounts       — nested collection of applied discounts
-
-  Order → OrderItems ({% for item in order.OrderItems %}...{% endfor %}):
-    Each OrderItem has:
-      LineNumber     — sequence number within the order
-      ProductName    — product name
-      Total          — line total in system currency
-      Currency       — ISO 4217 currency code
-      CurrencyTotal  — line total in payment currency
-      Quantity       — item quantity
-      UnitPrice      — unit price in payment currency
-
-  Example — order summary table:
-    {% for order in Orders %}
-      Order #{{ order.RefNo }} — {{ order.Total }} {{ order.Currency }} ({{ order.Status }})
-      {% for item in order.OrderItems %}
-        {{ item.ProductName }} × {{ item.Quantity }} — {{ item.UnitPrice }} {{ item.Currency }}
-      {% endfor %}
-    {% endfor %}
-
-Deals collection — iterate with {% for deal in Deals %}...{% endfor %}:
-  Each Deal has:
-    DealValue         — monetary value of the deal (decimal, nullable)
-    DealCurrency      — ISO 4217 currency code
-    ExpectedCloseDate — expected close date (DateTime, nullable)
-    ActualCloseDate   — actual close date (DateTime, nullable)
-    Tags              — array of tags
-    DealPipeline      — nested pipeline object with Name
-    DealPipelineStage — nested stage object with Name and Order (sort position)
-
-  Example — deals listing:
-    {% for deal in Deals %}
-      {{ deal.DealPipeline.Name }} — {{ deal.DealPipelineStage.Name }}
-      Value: {{ deal.DealValue }} {{ deal.DealCurrency }}
-      Expected close: {{ deal.ExpectedCloseDate }}
-    {% endfor %}
-
-Custom variables — callers may pass additional key-value pairs through TemplateVariables.
-These are merged on top of the above and take precedence when keys overlap.";
+    // ── Instance fields ─────────────────────────────────────────────────
 
     private readonly PgDbContext dbContext;
     private readonly ITextGenerationService textGenerationService;
-    private readonly IMjmlRenderingService mjmlRenderingService;
     private readonly IMapper mapper;
     private readonly IHttpContextHelper httpContextHelper;
     private readonly ISettingService settingService;
@@ -229,24 +65,25 @@ These are merged on top of the above and take precedence when keys overlap.";
     public EmailTemplateGenerationService(
         PgDbContext dbContext,
         ITextGenerationService textGenerationService,
-        IMjmlRenderingService mjmlRenderingService,
         IMapper mapper,
         IHttpContextHelper httpContextHelper,
         ISettingService settingService)
     {
         this.dbContext = dbContext;
         this.textGenerationService = textGenerationService;
-        this.mjmlRenderingService = mjmlRenderingService;
         this.mapper = mapper;
         this.httpContextHelper = httpContextHelper;
         this.settingService = settingService;
     }
 
+    // ════════════════════════════════════════════════════════════════════
+    //  PUBLIC API
+    // ════════════════════════════════════════════════════════════════════
+
     public async Task<EmailTemplateDetailsDto> GenerateEmailTemplateAsync(EmailTemplateGenerationRequest request)
     {
         Log.Information("Starting email template generation for group {EmailGroupId} in language {Language}", request.EmailGroupId, request.Language);
 
-        // Step 1: Validate email group exists
         var emailGroup = await dbContext.EmailGroups!
             .FirstOrDefaultAsync(eg => eg.Id == request.EmailGroupId);
 
@@ -255,63 +92,50 @@ These are merged on top of the above and take precedence when keys overlap.";
             throw new AIProviderException("EmailTemplateGeneration", $"Email group with ID {request.EmailGroupId} not found");
         }
 
-        // Step 2: Determine requested format and find a sample in the same format only
-        var targetFormat = request.Format
-          ?? throw new BadRequestException("Format is required for email template generation.");
-        var sampleTemplate = await FindSampleEmailTemplateAsync(request.EmailGroupId, request.Language, targetFormat, request.ReferenceEmailTemplateId);
-
-        if (sampleTemplate == null)
-        {
-            Log.Warning(
-              "No sample template found for group {EmailGroupId}, language {Language}, format {Format}. Generating from system prompt guidance only.",
-              request.EmailGroupId,
-              request.Language,
-              targetFormat);
-        }
-
-        // Step 3: Category
         var targetCategory = request.Category ?? EmailTemplateCategory.General;
 
-        // Step 4: Build prompts and generate email template
-        var systemPrompt = BuildSystemPrompt(sampleTemplate, targetFormat, targetCategory);
-        var userPrompt = BuildUserPrompt(request.Prompt, request.Language, request.TemplateVariables, targetCategory, sampleTemplate != null);
+        // Find a sample: explicit reference > database match
+        var sampleBody = await ResolveSampleBodyAsync(
+            request.ReferenceEmailTemplateId,
+            request.EmailGroupId,
+            request.Language);
 
         var (fallbackFromName, fallbackFromEmail) = await ResolveFallbackSenderAsync();
 
-        var textRequest = new TextGenerationRequest
-        {
-            SystemPrompt = systemPrompt,
-            UserPrompt = userPrompt,
-        };
+        var systemPrompt = BuildGenerateSystemPrompt(targetCategory, sampleBody, fallbackFromName, fallbackFromEmail);
+        var userPrompt = BuildGenerateUserPrompt(request.Prompt, request.Language, request.TemplateVariables, targetCategory, sampleBody != null);
 
         try
         {
-            var response = await textGenerationService.GenerateTextAsync(textRequest);
-
-            // Parse the generated JSON content
-            var generatedTemplate = ParseGeneratedEmailTemplate(response.GeneratedText);
-
-            // Create an EmailTemplate entity with the generated data
-            var emailTemplateEntity = new EmailTemplate
+            var response = await textGenerationService.GenerateTextAsync(new TextGenerationRequest
             {
-                Name = generatedTemplate.Name,
-                Subject = generatedTemplate.Subject,
-                BodyTemplate = generatedTemplate.BodyTemplate,
-                Format = targetFormat,
+                SystemPrompt = systemPrompt,
+                UserPrompt = userPrompt,
+            });
+
+            var generated = ParseGeneratedTemplate(response.GeneratedText);
+
+            var entity = new EmailTemplate
+            {
+                Name = generated.Name,
+                Subject = generated.Subject,
+                BodyTemplate = generated.BodyTemplate,
                 Category = targetCategory,
-                FromName = sampleTemplate != null ? generatedTemplate.FromName : fallbackFromName,
-                FromEmail = sampleTemplate?.FromEmail ?? fallbackFromEmail,
+                FromName = !string.IsNullOrWhiteSpace(generated.FromName) ? generated.FromName : fallbackFromName,
+                FromEmail = fallbackFromEmail,
                 Language = request.Language,
                 EmailGroupId = request.EmailGroupId,
-                TranslationKey = null, // New generated content gets a new translation key via translation service
+                TranslationKey = null,
                 Source = $"AI Generated - Model: {response.Model}, Tokens: {response.TokensUsed}",
             };
 
-            // Map to EmailTemplateDetailsDto
-            var result = mapper.Map<EmailTemplateDetailsDto>(emailTemplateEntity);
-
+            var result = mapper.Map<EmailTemplateDetailsDto>(entity);
             Log.Information("Successfully generated email template for group {EmailGroupId} in language {Language}", request.EmailGroupId, request.Language);
             return result;
+        }
+        catch (AIProviderException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -324,72 +148,51 @@ These are merged on top of the above and take precedence when keys overlap.";
     {
         Log.Information("Starting email template editing with prompt: {Prompt}", request.Prompt);
 
-        var currentBodyTemplate = request.BodyTemplate ?? string.Empty;
-        var currentFormat = request.Format ?? EmailTemplateFormat.Html;
-
         var currentCategory = request.Category ?? EmailTemplateCategory.General;
 
         var currentTemplate = new EmailTemplateTranslationMetadata
         {
             Name = request.Name ?? string.Empty,
             Subject = request.Subject ?? string.Empty,
-            BodyTemplate = currentBodyTemplate,
+            BodyTemplate = request.BodyTemplate ?? string.Empty,
             FromName = request.FromName ?? string.Empty,
-            Format = currentFormat,
         };
 
         var currentTemplateJson = JsonHelper.Serialize(currentTemplate);
 
-        var additionalParamsSection = BuildTemplateVariablesSection(request.TemplateVariables);
-
-        var referenceSection = string.Empty;
+        // Optional: load reference template as visual guide
+        string? referenceBody = null;
         if (request.ReferenceEmailTemplateId.HasValue)
         {
-            var referenceTemplate = await dbContext.EmailTemplates!
-                .FirstOrDefaultAsync(et => et.Id == request.ReferenceEmailTemplateId.Value);
+            var refTemplate = await dbContext.EmailTemplates!
+                .FirstOrDefaultAsync(et => et.Id == request.ReferenceEmailTemplateId.Value)
+                ?? throw new AIProviderException("EmailTemplateEditing", $"Reference email template with ID {request.ReferenceEmailTemplateId.Value} was not found.");
 
-            if (referenceTemplate == null)
-            {
-                throw new AIProviderException(
-                    "EmailTemplateEditing",
-                    $"Reference email template with ID {request.ReferenceEmailTemplateId.Value} was not found.");
-            }
-
-            if (referenceTemplate.Format != currentFormat)
-            {
-                throw new AIProviderException(
-                  "EmailTemplateEditing",
-                  $"Reference email template with ID {request.ReferenceEmailTemplateId.Value} has format {GetFormatLabel(referenceTemplate.Format)} but requested format is {GetFormatLabel(currentFormat)}.");
-            }
-
-            referenceSection = $"\n\nREFERENCE SAMPLE (use as visual / structural guide):\n{referenceTemplate.BodyTemplate}";
+            referenceBody = refTemplate.BodyTemplate;
         }
 
-        var categorySection = BuildCategorySection(currentCategory);
-        var userPrompt = $"Current email template:\n{currentTemplateJson}\n\nUser's editing request: {request.Prompt}{additionalParamsSection}{categorySection}{referenceSection}";
+        var (senderFromName, senderFromEmail) = await ResolveFallbackSenderAsync();
 
-        var textRequest = new TextGenerationRequest
-        {
-            SystemPrompt = BuildEditSystemPrompt(currentFormat, currentCategory),
-            UserPrompt = userPrompt,
-        };
+        var systemPrompt = BuildEditSystemPrompt(currentCategory, senderFromName, senderFromEmail);
+        var userPrompt = BuildEditUserPrompt(currentTemplateJson, request.Prompt, request.TemplateVariables, currentCategory, referenceBody);
 
         try
         {
-            var response = await textGenerationService.GenerateTextAsync(textRequest);
-
-            // Parse the generated JSON content
-            var editedTemplate = ParseGeneratedEmailTemplate(response.GeneratedText);
-
-            // Create an EmailTemplate entity with the edited data — preserve original format
-            var emailTemplateEntity = new EmailTemplate
+            var response = await textGenerationService.GenerateTextAsync(new TextGenerationRequest
             {
-                Name = editedTemplate.Name,
-                Subject = editedTemplate.Subject,
-                BodyTemplate = editedTemplate.BodyTemplate,
-                Format = currentFormat, // Always preserve the original format
+                SystemPrompt = systemPrompt,
+                UserPrompt = userPrompt,
+            });
+
+            var edited = ParseGeneratedTemplate(response.GeneratedText);
+
+            var entity = new EmailTemplate
+            {
+                Name = edited.Name,
+                Subject = edited.Subject,
+                BodyTemplate = edited.BodyTemplate,
                 Category = currentCategory,
-                FromName = editedTemplate.FromName,
+                FromName = edited.FromName,
                 FromEmail = request.FromEmail ?? string.Empty,
                 Language = request.Language ?? string.Empty,
                 TranslationKey = request.TranslationKey,
@@ -397,11 +200,13 @@ These are merged on top of the above and take precedence when keys overlap.";
                 Source = $"AI Edited - Model: {response.Model}, Tokens: {response.TokensUsed}",
             };
 
-            // Map to EmailTemplateDetailsDto
-            var result = mapper.Map<EmailTemplateDetailsDto>(emailTemplateEntity);
-
+            var result = mapper.Map<EmailTemplateDetailsDto>(entity);
             Log.Information("Successfully edited email template");
             return result;
+        }
+        catch (AIProviderException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -410,250 +215,69 @@ These are merged on top of the above and take precedence when keys overlap.";
         }
     }
 
-    /// <inheritdoc/>
-    public async Task<EmailTemplateConvertFormatResponse> ConvertFormatAsync(EmailTemplateConvertFormatRequest request)
+    // ════════════════════════════════════════════════════════════════════
+    //  PROMPT BUILDING — GENERATE
+    // ════════════════════════════════════════════════════════════════════
+
+    private static string BuildGenerateSystemPrompt(
+        EmailTemplateCategory category,
+        string? sampleBody,
+        string senderName,
+        string senderEmail)
     {
-        if (request.CurrentFormat == request.TargetFormat)
+        var sb = new StringBuilder(8192);
+
+        sb.AppendLine($"You are an AI assistant specialised in creating email templates for a CMS platform.");
+        sb.AppendLine($"Generate a new HTML email template.");
+        sb.AppendLine();
+
+        // ── Format rules ────────────────────────────────────────────────
+        AppendFormatRules(sb);
+
+        // ── Category guidance ───────────────────────────────────────────
+        AppendCategoryGuidance(sb, category);
+
+        // ── Sample reference ────────────────────────────────────────────
+        if (sampleBody != null)
         {
-            throw new BadRequestException("Source and target formats are the same. No conversion needed.");
+            sb.AppendLine();
+            sb.AppendLine("SAMPLE TEMPLATE — match its visual style, layout, and structural patterns:");
+            sb.AppendLine(sampleBody);
+            sb.AppendLine("--- END SAMPLE ---");
         }
 
-        if (request.TargetFormat == EmailTemplateFormat.Html)
-        {
-            // MJML → HTML: straightforward programmatic compilation
-            Log.Information("Converting email template from MJML to HTML via MJML compiler");
-            var html = mjmlRenderingService.RenderToHtml(request.BodyTemplate);
+        // ── Liquid syntax & template parameters ─────────────────────────
+        AppendLiquidSyntax(sb);
+        sb.Append(TemplateParametersKnowledge);
 
-            return new EmailTemplateConvertFormatResponse
-            {
-                BodyTemplate = html,
-                Format = EmailTemplateFormat.Html,
-                AiPowered = false,
-            };
-        }
+        // ── Sender signature ────────────────────────────────────────────
+        AppendSenderSignatureRules(sb, senderName, senderEmail);
 
-        // HTML → MJML: requires AI
-        Log.Information("Converting email template from HTML to MJML via AI");
+        // ── Output format ───────────────────────────────────────────────
+        AppendOutputFormat(sb, "HTML");
 
-        var textRequest = new TextGenerationRequest
-        {
-            SystemPrompt = HtmlToMjmlConversionPrompt,
-            UserPrompt = request.BodyTemplate,
-        };
-
-        try
-        {
-            var response = await textGenerationService.GenerateTextAsync(textRequest);
-            var mjml = StripMarkdownCodeFences(response.GeneratedText);
-
-            Log.Information("Successfully converted HTML to MJML via AI");
-
-            return new EmailTemplateConvertFormatResponse
-            {
-                BodyTemplate = mjml,
-                Format = EmailTemplateFormat.Mjml,
-                AiPowered = true,
-            };
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Failed to convert HTML to MJML via AI");
-            throw new AIProviderException("EmailTemplateConversion", "Failed to convert HTML email template to MJML. Ensure AI capabilities are enabled.", ex);
-        }
+        return sb.ToString();
     }
 
-    private static string GetFormatSpecificRules(EmailTemplateFormat format)
-    {
-        return format == EmailTemplateFormat.Mjml
-            ? @"FORMAT RULES (MJML):
-1. The bodyTemplate MUST be a complete MJML document starting with <mjml> and ending with </mjml>
-2. Use standard MJML components for layout and content (see component reference below)
-3. Use <mj-attributes> in <mj-head> for shared styles (DRY approach)
-4. Use <mj-style> for custom CSS overrides and responsive media queries
-5. Set colors, fonts, spacing via MJML attributes (font-size, color, background-color, padding, etc.)
-6. MJML handles responsive design natively — leverage this, avoid manual media queries
-7. Use web-safe fonts: Arial, Helvetica, Times New Roman, Georgia, Verdana
-
-MJML DOCUMENT STRUCTURE:
-<mjml>
-  <mj-head>
-    <mj-title>Email Title</mj-title>
-    <mj-preview>Preview text shown in email clients</mj-preview>
-    <mj-font name=""CustomFont"" href=""https://fonts.googleapis.com/css?family=CustomFont"" />
-    <mj-attributes>
-      <mj-all font-family=""Arial, sans-serif"" />
-      <mj-text font-size=""14px"" line-height=""22px"" color=""#333333"" />
-      <mj-button background-color=""#007bff"" color=""#ffffff"" border-radius=""4px"" font-weight=""600"" />
-    </mj-attributes>
-    <mj-style>
-      .custom-class { color: #333; }
-    </mj-style>
-  </mj-head>
-  <mj-body background-color=""#f4f5f7"">
-    <!-- sections go here -->
-  </mj-body>
-</mjml>
-
-MJML COMPONENT REFERENCE:
-- <mj-section>: Horizontal row container. Attributes: background-color, padding, full-width=""full-width"", border-radius.
-- <mj-column>: Column inside section (1-4 per section). Attributes: width (percentage, e.g. ""50%""), padding, background-color, border-radius.
-- <mj-text>: Text content (supports inline HTML: <p>, <h1>-<h6>, <span>, <a>). Attributes: font-size, font-weight, color, align, padding, line-height.
-- <mj-image>: Image element. Attributes: src, width, alt, border-radius, padding, href (makes clickable). Self-closing tag.
-- <mj-button>: Call-to-action button. Attributes: href, background-color, color, border-radius, font-size, font-weight, padding, inner-padding.
-- <mj-divider>: Horizontal line separator. Attributes: border-color, border-width, padding. Self-closing tag.
-- <mj-spacer>: Vertical spacing. Attributes: height. Self-closing tag.
-- <mj-table>: Raw HTML table for data grids. Supports standard <tr>/<td> content inside.
-- <mj-social>/<mj-social-element>: Social media links with icons. Attributes: name (facebook-noshare, twitter, linkedin, etc.), href.
-- <mj-navbar>/<mj-navbar-link>: Navigation menu bar. Attributes: href, color, font-size.
-- <mj-wrapper>: Groups multiple sections with shared background.
-- <mj-hero>: Hero section with background image. Attributes: background-color, background-url, mode=""fluid-height"".
-- <mj-raw>: Inject raw HTML directly (use sparingly for advanced cases).
-
-MJML LAYOUT EXAMPLES:
-Single column:
-  <mj-section><mj-column><mj-text>Content</mj-text></mj-column></mj-section>
-Two columns:
-  <mj-section><mj-column width=""50%""><mj-text>Left</mj-text></mj-column><mj-column width=""50%""><mj-text>Right</mj-text></mj-column></mj-section>
-Three columns:
-  <mj-section><mj-column width=""33.33%"">...</mj-column><mj-column width=""33.33%"">...</mj-column><mj-column width=""33.33%"">...</mj-column></mj-section>
-Full-width background:
-  <mj-section full-width=""full-width"" background-color=""#f4f4f4""><mj-column>...</mj-column></mj-section>
-
-STYLING BEST PRACTICES:
-- Padding format: padding=""top right bottom left"" or use padding-top, padding-bottom, etc.
-- Use <mj-attributes> to define shared styles once instead of repeating on each component
-- Use <mj-font> for Google Fonts or custom web fonts, with web-safe fallbacks
-- Use <mj-preview> for inbox preview text that appears before the email is opened"
-            : @"FORMAT RULES (HTML):
-1. The bodyTemplate MUST be standard, well-formed HTML suitable for email clients
-2. Use table-based layouts for maximum cross-client compatibility
-3. Use inline CSS styles for reliable rendering across email clients
-4. Structure: Use <table>, <tr>, <td> for layout; avoid <div>-based layouts
-5. Set colors, fonts, spacing via inline style attributes
-6. Include proper email DOCTYPE and meta tags if producing a full document";
-    }
-
-    private static string GetFormatLabel(EmailTemplateFormat format)
-    {
-        return format == EmailTemplateFormat.Mjml ? "MJML" : "HTML";
-    }
-
-    private static string BuildEditSystemPrompt(EmailTemplateFormat format, EmailTemplateCategory category)
-    {
-        var formatLabel = GetFormatLabel(format);
-        var formatRules = GetFormatSpecificRules(format);
-        var categoryGuidance = GetCategoryGuidance(category, format);
-
-        return $@"You are an email template editor assistant for an AI-powered CMS. Your task is to edit existing {formatLabel} email templates based on user prompts.
-
-CRITICAL RULES - READ CAREFULLY:
-1. PRESERVE STRUCTURE: Keep the same logical structure and layout as the original template
-2. NO HALLUCINATION: Do not add components or structures not needed by the user's request
-3. CONSERVATIVE EDITS: When the request is ambiguous, make the minimum changes necessary
-4. OUTPUT MUST BE {formatLabel}: The bodyTemplate must remain valid {formatLabel}
-
-{formatRules}
-
-GENERAL:
-- Use web-safe fonts: Arial, Helvetica, Times New Roman, Georgia, Verdana
-{categoryGuidance}
-
-LIQUID TEMPLATING SYNTAX (use inside text/attribute nodes as needed):
-- Variables:     {{{{ variableName }}}}                          e.g. {{{{ firstName }}}}, {{{{ unsubscribeUrl }}}}
-- Conditionals: {{% if condition %}}...{{% endif %}}             e.g. {{% if isVip %}}VIP content{{% endif %}}
-                {{% unless condition %}}...{{% endunless %}}     e.g. {{% unless unsubscribed %}}show footer{{% endunless %}}
-- Loops:        {{% for item in items %}}...{{% endfor %}}       e.g. {{% for product in products %}}{{{{ product.name }}}}{{% endfor %}}
-- Convert any legacy placeholder formats (<%token%>, ${{token}}, HTML-encoded) to {{{{ token }}}} Liquid syntax
-{TemplateParametersKnowledge}
-
-EMAIL TEMPLATE GUIDELINES:
-- Ensure the template is mobile-friendly
-- Keep appropriate tone for email communication
-- Preserve sender information format
-- Clear content hierarchy with proper spacing
-
-OUTPUT FORMAT - Return ONLY valid JSON with this exact structure:
-{{
-  ""name"": ""Template_Name"",
-  ""subject"": ""Email Subject Line"",
-  ""bodyTemplate"": ""<the template body in {formatLabel} format>"",
-  ""fromName"": ""Sender Name"",
-  ""format"": ""{formatLabel}""
-}}
-
-IMPORTANT: The 'name' field is used as a localisation key and must NEVER be translated. Keep the original template name exactly as-is.";
-    }
-
-    private static string BuildSystemPrompt(EmailTemplate? sampleTemplate, EmailTemplateFormat targetFormat, EmailTemplateCategory category)
-    {
-        var formatLabel = GetFormatLabel(targetFormat);
-        var formatRules = GetFormatSpecificRules(targetFormat);
-        var categoryGuidance = GetCategoryGuidance(category, targetFormat);
-        var hasSample = sampleTemplate != null;
-
-        var sampleSection = hasSample
-            ? $@"SAMPLE EMAIL TEMPLATE (format: {GetFormatLabel(sampleTemplate!.Format)}):
-Name: {sampleTemplate.Name}
-Subject: {sampleTemplate.Subject}
-From Name: {sampleTemplate.FromName}
-Body Template:
-{sampleTemplate.BodyTemplate}"
-            : "NO SAMPLE EMAIL TEMPLATE AVAILABLE: Build the template from the user request, category guidance, and format rules only.";
-
-        var visualStyleRule = hasSample
-            ? "1. MATCH VISUAL STYLE: Generate an email template that matches the visual style, colors, fonts, and spacing of the sample"
-            : "1. CREATE A CONSISTENT STYLE: Generate a coherent, professional visual style appropriate to the category and request";
-
-        var reusePatternsRule = hasSample
-            ? "4. REUSE PATTERNS: Adapt the layout patterns from the sample"
-            : "4. STRUCTURE FOR CLARITY: Use clear layout patterns and strong content hierarchy suitable for email clients";
-
-        return $@"You are an AI assistant for an AI-powered CMS, specialized in creating email templates. Generate a new {formatLabel} email template that matches the style of the provided sample.
-
-{sampleSection}
-
-CRITICAL RULES - READ CAREFULLY:
-{visualStyleRule}
-2. OUTPUT MUST BE {formatLabel}: The bodyTemplate must be valid {formatLabel}
-3. NO HALLUCINATION: Do not add components or structures that are not needed
-{reusePatternsRule}
-
-{formatRules}
-
-GENERAL:
-- Use web-safe fonts: Arial, Helvetica, Times New Roman, Georgia, Verdana, sans-serif
-{categoryGuidance}
-
-LIQUID TEMPLATING SYNTAX (use inside text/attribute nodes as needed):
-- Variables:     {{{{ variableName }}}}                  e.g. {{{{ firstName }}}}, {{{{ unsubscribeUrl }}}}
-- Conditionals: {{% if condition %}}...{{% endif %}}     e.g. {{% if isVip %}}VIP content{{% endif %}}
-                {{% unless condition %}}...{{% endunless %}}   e.g. {{% unless unsubscribed %}}footer{{% endunless %}}
-- Loops:        {{% for item in items %}}...{{% endfor %}}     e.g. {{% for product in products %}}{{{{ product.name }}}}{{% endfor %}}
-- Convert any legacy placeholders (<%token%>, ${{token}}, HTML-encoded) to {{{{ token }}}} Liquid syntax
-{TemplateParametersKnowledge}
-
-OUTPUT FORMAT - Return ONLY valid JSON with this exact structure:
-{{
-  ""name"": ""Template_Name"",
-  ""subject"": ""Email Subject Line"",
-  ""bodyTemplate"": ""<the template body in {formatLabel} format>"",
-  ""fromName"": ""Sender Name"",
-  ""format"": ""{formatLabel}""
-}}
-
-IMPORTANT: The 'name' field is used as a localisation key and must NEVER be translated. Keep the original template name exactly as-is.
-The bodyTemplate must be valid {formatLabel}.";
-    }
-
-    private static string BuildUserPrompt(string prompt, string language, Dictionary<string, string>? templateVariables, EmailTemplateCategory category, bool hasSample)
+    private static string BuildGenerateUserPrompt(
+        string prompt,
+        string language,
+        Dictionary<string, string>? templateVariables,
+        EmailTemplateCategory category,
+        bool hasSample)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"Create an email template in {language} language based on this request:");
         sb.AppendLine();
         sb.AppendLine(prompt);
 
-        sb.Append(BuildTemplateVariablesSection(templateVariables));
-        sb.Append(BuildCategorySection(category));
+        AppendTemplateVariablesSection(sb, templateVariables);
+
+        if (category != EmailTemplateCategory.General)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"EMAIL CATEGORY: This template belongs to the \"{category}\" category. Ensure tone, layout, and content patterns are appropriate for this category.");
+        }
 
         sb.AppendLine();
         sb.AppendLine("IMPORTANT REMINDERS:");
@@ -669,176 +293,453 @@ The bodyTemplate must be valid {formatLabel}.";
         return sb.ToString();
     }
 
-    private static string BuildTemplateVariablesSection(Dictionary<string, string>? templateVariables)
+    // ════════════════════════════════════════════════════════════════════
+    //  PROMPT BUILDING — EDIT
+    // ════════════════════════════════════════════════════════════════════
+
+    private static string BuildEditSystemPrompt(
+        EmailTemplateCategory category,
+        string senderName,
+        string senderEmail)
     {
-        if (templateVariables == null || templateVariables.Count == 0)
+        var sb = new StringBuilder(8192);
+
+        sb.AppendLine($"You are an email template editor assistant for an AI-powered CMS.");
+        sb.AppendLine($"Edit the provided HTML email template based on the user's request.");
+        sb.AppendLine();
+        sb.AppendLine("EDITING RULES:");
+        sb.AppendLine("1. PRESERVE STRUCTURE: keep the same logical structure and layout as the original");
+        sb.AppendLine("2. CONSERVATIVE EDITS: when ambiguous, make the minimum changes necessary");
+        sb.AppendLine("3. NO HALLUCINATION: only use variables listed in AVAILABLE TEMPLATE PARAMETERS or provided via REQUIRED TEMPLATE VARIABLES");
+        sb.AppendLine();
+
+        AppendFormatRules(sb);
+        AppendCategoryGuidance(sb, category);
+        AppendLiquidSyntax(sb);
+        sb.Append(TemplateParametersKnowledge);
+        AppendSenderSignatureRules(sb, senderName, senderEmail);
+        AppendOutputFormat(sb, "HTML");
+
+        sb.AppendLine();
+        sb.AppendLine("IMPORTANT: The 'name' field is a localisation key — NEVER translate it. Keep it exactly as-is.");
+
+        return sb.ToString();
+    }
+
+    private static string BuildEditUserPrompt(
+        string currentTemplateJson,
+        string prompt,
+        Dictionary<string, string>? templateVariables,
+        EmailTemplateCategory category,
+        string? referenceBody)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Current email template:");
+        sb.AppendLine(currentTemplateJson);
+        sb.AppendLine();
+        sb.AppendLine($"User's editing request: {prompt}");
+
+        AppendTemplateVariablesSection(sb, templateVariables);
+
+        if (category != EmailTemplateCategory.General)
         {
-            return string.Empty;
+            sb.AppendLine();
+            sb.AppendLine($"EMAIL CATEGORY: \"{category}\" — ensure edits respect this category's conventions.");
         }
 
-        var sb = new StringBuilder();
-        sb.AppendLine();
-        sb.AppendLine("REQUIRED TEMPLATE VARIABLES \u2014 you MUST include ALL of the following as {{ variableName }} Liquid placeholders in the generated template:");
-        foreach (var variable in templateVariables)
+        if (referenceBody != null)
         {
-            sb.AppendLine($"- {{{{ {variable.Key} }}}}: {variable.Value}");
+            sb.AppendLine();
+            sb.AppendLine("REFERENCE SAMPLE (use as visual / structural guide):");
+            sb.AppendLine(referenceBody);
         }
 
         return sb.ToString();
     }
 
+    // ════════════════════════════════════════════════════════════════════
+    //  PROMPT BUILDING — SHARED SECTIONS
+    // ════════════════════════════════════════════════════════════════════
+
     /// <summary>
-    /// Builds a short user-prompt section reminding the AI about the selected category.
-    /// Returns empty for <see cref="EmailTemplateCategory.General"/>.
+    /// Appends HTML format rules to the prompt for email template generation.
     /// </summary>
-    private static string BuildCategorySection(EmailTemplateCategory category)
+    private static void AppendFormatRules(StringBuilder sb)
     {
-        if (category == EmailTemplateCategory.General)
+        sb.AppendLine("FORMAT RULES (HTML):");
+        sb.AppendLine("1. The bodyTemplate MUST be standard, well-formed HTML suitable for email clients");
+        sb.AppendLine("2. Use table-based layouts for maximum cross-client compatibility");
+        sb.AppendLine("3. Use inline CSS styles for reliable rendering");
+        sb.AppendLine("4. Set colors, fonts, spacing via inline style attributes");
+    }
+
+    private static void AppendCategoryGuidance(StringBuilder sb, EmailTemplateCategory category)
+    {
+        var guidance = category switch
         {
-            return string.Empty;
+            EmailTemplateCategory.PlainText =>
+                """
+
+                CATEGORY — PLAIN-TEXT / PERSONAL-STYLE:
+                - Minimal formatting — the email should look like it was typed by a real person
+                - No hero images, banners, or heavy styling; plain white background
+                - Conversational, 1:1 human tone (first person, direct address)
+                - Short paragraphs (2-3 sentences) with natural line breaks
+                - Simple text-based signature (name, title) — no graphical footers
+                - A single inline link is sufficient — avoid styled buttons
+                - Ideal for sales outreach, personal follow-ups, relationship-building
+                """,
+
+            EmailTemplateCategory.SimpleProfessional =>
+                """
+
+                CATEGORY — SIMPLE PROFESSIONAL:
+                - Clean, minimal layout: logo/header at top, concise body, subtle footer
+                - 1-2 short sections with clear hierarchy (heading → body → CTA)
+                - Single, understated CTA button
+                - Neutral, professional tones and colour palettes
+                - Suitable for SaaS updates, feature announcements, account notifications
+                """,
+
+            EmailTemplateCategory.Newsletter =>
+                """
+
+                CATEGORY — NEWSLETTER / EDITORIAL:
+                - Multi-section layout with clear visual separators
+                - Each block: heading, short excerpt, optional image, 'Read more' link
+                - Balance text and imagery for a magazine-like feel
+                - Include social sharing links and consistent section styling
+                """,
+
+            EmailTemplateCategory.Promotional =>
+                """
+
+                CATEGORY — PROMOTIONAL / MARKETING:
+                - Lead with a strong hero image or banner
+                - Discount/offer front and centre
+                - Bold, prominent CTA buttons ('Shop Now', 'Claim Offer')
+                - Urgency elements (limited time, scarcity)
+                - Concise copy — let visuals and CTAs drive action
+                """,
+
+            EmailTemplateCategory.Transactional =>
+                """
+
+                CATEGORY — TRANSACTIONAL:
+                - Clarity and information density over visual flair
+                - Structured, scannable tables for order/transaction details
+                - Reference numbers, dates, amounts, status prominently displayed
+                - Minimal branding — logo and footer are sufficient
+                - Include next-step instructions or support contact info
+                """,
+
+            EmailTemplateCategory.Lifecycle =>
+                """
+
+                CATEGORY — LIFECYCLE / DRIP:
+                - Multi-step educational sequence with progressive CTAs
+                - Warm, personal greeting using contact's first name
+                - Single clear goal and one primary CTA per email
+                - Numbered steps, checklists, or progress indicators
+                - Clean and inviting design — avoid information overload
+                """,
+
+            EmailTemplateCategory.Digest =>
+                """
+
+                CATEGORY — DIGEST / REPORT:
+                - Data-centric layout: tables, KPI cards, summary metrics
+                - Clear sections with descriptive headings
+                - Minimal narrative text — let the numbers speak
+                - CTA to view full report or dashboard
+                """,
+
+            EmailTemplateCategory.Event =>
+                """
+
+                CATEGORY — EVENT / INVITATION:
+                - Event name, date, time, and location prominent at top
+                - Hero image or banner related to the event
+                - Clear RSVP or registration CTA button
+                - Agenda highlights or speaker cards if applicable
+                - Venue/logistics details or virtual meeting link
+                """,
+
+            EmailTemplateCategory.Alert =>
+                """
+
+                CATEGORY — ALERT / NOTIFICATION:
+                - Compact, scannable layout — get to the point immediately
+                - Clear summary of what happened and when
+                - Colour cues or icons for priority/severity
+                - Direct action link or CTA for required response
+                - Minimal design — no heavy imagery or promotional elements
+                """,
+
+            _ => string.Empty,
+        };
+
+        if (!string.IsNullOrEmpty(guidance))
+        {
+            sb.Append(guidance);
+        }
+    }
+
+    private static void AppendLiquidSyntax(StringBuilder sb)
+    {
+        sb.AppendLine();
+        sb.AppendLine("LIQUID TEMPLATING SYNTAX:");
+        sb.AppendLine("- Variables:     {{ variableName }}");
+        sb.AppendLine("- Conditionals:  {% if condition %}...{% endif %}");
+        sb.AppendLine("                 {% unless condition %}...{% endunless %}");
+        sb.AppendLine("- Loops:         {% for item in items %}...{% endfor %}");
+        sb.AppendLine("- Convert any legacy placeholders (<%token%>, ${token}) to {{ token }} Liquid syntax");
+    }
+
+    private static void AppendSenderSignatureRules(StringBuilder sb, string senderName, string senderEmail)
+    {
+        sb.AppendLine();
+        sb.AppendLine("SENDER SIGNATURE RULES — CRITICAL:");
+        sb.AppendLine("All template variables ({{ Email }}, {{ Phone }}, {{ FirstName }}, etc.) are the RECIPIENT's data.");
+        sb.AppendLine("NEVER use template variables in the sender signature / sign-off section.");
+        sb.AppendLine("Instead, hardcode the sender's actual details.");
+
+        if (!string.IsNullOrWhiteSpace(senderName) || !string.IsNullOrWhiteSpace(senderEmail))
+        {
+            sb.AppendLine();
+            sb.AppendLine("Sender details for the signature:");
+            if (!string.IsNullOrWhiteSpace(senderName))
+            {
+                sb.AppendLine($"  Sender Name: {senderName}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(senderEmail))
+            {
+                sb.AppendLine($"  Sender Email: {senderEmail}");
+            }
+        }
+    }
+
+    private static void AppendOutputFormat(StringBuilder sb, string formatLabel)
+    {
+        sb.AppendLine();
+        sb.AppendLine("OUTPUT FORMAT — return ONLY valid JSON with this exact structure:");
+        sb.AppendLine("{");
+        sb.AppendLine("  \"name\": \"Template_Name\",");
+        sb.AppendLine("  \"subject\": \"Email Subject Line\",");
+        sb.AppendLine($"  \"bodyTemplate\": \"<the template body in {formatLabel} format>\",");
+        sb.AppendLine("  \"fromName\": \"Sender Name\"");
+        sb.AppendLine("}");
+    }
+
+    private static void AppendTemplateVariablesSection(StringBuilder sb, Dictionary<string, string>? templateVariables)
+    {
+        if (templateVariables == null || templateVariables.Count == 0)
+        {
+            return;
         }
 
-        return $"\n\nEMAIL CATEGORY: This template belongs to the \"{category}\" category. Ensure the tone, layout, and content patterns are appropriate for this category.\n";
+        sb.AppendLine();
+        sb.AppendLine("REQUIRED TEMPLATE VARIABLES — you MUST include ALL of the following as {{ variableName }} Liquid placeholders:");
+        foreach (var variable in templateVariables)
+        {
+            sb.AppendLine($"- {{{{ {variable.Key} }}}}: {variable.Value}");
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  TEMPLATE PARAMETERS KNOWLEDGE
+    // ════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Builds the template parameters knowledge section dynamically from a full dummy contact
+    /// so the AI prompt stays in sync with entity changes automatically.
+    /// </summary>
+    private static string BuildTemplateParametersKnowledge()
+    {
+        var contact = EmailTemplateService.BuildDummyContact(PreviewContactType.Full);
+        var args = TemplateArgumentsBuilder.FromContact(contact);
+
+        var sb = new StringBuilder();
+        sb.AppendLine();
+        sb.AppendLine("AVAILABLE TEMPLATE PARAMETERS (Liquid variables injected at send time):");
+        sb.AppendLine();
+
+        // Scalar fields
+        sb.AppendLine("Scalar fields (use as {{ FieldName }}):");
+        foreach (var kvp in args)
+        {
+            if (kvp.Value is not string strVal)
+            {
+                continue;
+            }
+
+            sb.Append("  {{ ").Append(kvp.Key).Append(" }}");
+            if (!string.IsNullOrEmpty(strVal))
+            {
+                sb.Append(" — e.g. \"").Append(strVal).Append('"');
+            }
+
+            sb.AppendLine();
+        }
+
+        // Nested objects
+        sb.AppendLine();
+        sb.AppendLine("Nested Account object — {{ Account.PropertyName }}:");
+        AppendEntityProperties(sb, typeof(Account), contact.Account, "Account", indent: 2);
+
+        sb.AppendLine();
+        sb.AppendLine("Nested Domain object — {{ Domain.PropertyName }}:");
+        AppendEntityProperties(sb, typeof(Domain), contact.Domain, "Domain", indent: 2);
+
+        // Orders collection
+        var sampleOrder = contact.Orders?.FirstOrDefault();
+        sb.AppendLine();
+        sb.AppendLine("Orders collection — {% for order in Orders %}...{% endfor %}:");
+        sb.AppendLine("  Each Order has:");
+        AppendEntityProperties(sb, typeof(Order), sampleOrder, "order", indent: 4);
+
+        var sampleItem = sampleOrder?.OrderItems?.FirstOrDefault();
+        sb.AppendLine();
+        sb.AppendLine("  Order → OrderItems — {% for item in order.OrderItems %}...{% endfor %}:");
+        sb.AppendLine("    Each OrderItem has:");
+        AppendEntityProperties(sb, typeof(OrderItem), sampleItem, "item", indent: 6);
+
+        sb.AppendLine();
+        sb.AppendLine("  Order → Discounts — {% for discount in order.Discounts %}...{% endfor %}:");
+        sb.AppendLine("    Each Discount has:");
+        AppendEntityProperties(sb, typeof(Discount), instance: null, "discount", indent: 6);
+
+        // Deals collection
+        var sampleDeal = contact.Deals?.FirstOrDefault();
+        sb.AppendLine();
+        sb.AppendLine("Deals collection — {% for deal in Deals %}...{% endfor %}:");
+        sb.AppendLine("  Each Deal has:");
+        AppendEntityProperties(sb, typeof(Deal), sampleDeal, "deal", indent: 4);
+
+        if (sampleDeal?.DealPipeline != null)
+        {
+            sb.AppendLine("    deal.DealPipeline — nested object:");
+            AppendEntityProperties(sb, typeof(DealPipeline), sampleDeal.DealPipeline, "deal.DealPipeline", indent: 6);
+        }
+
+        if (sampleDeal?.DealPipelineStage != null)
+        {
+            sb.AppendLine("    deal.DealPipelineStage — nested object:");
+            AppendEntityProperties(sb, typeof(DealPipelineStage), sampleDeal.DealPipelineStage, "deal.DealPipelineStage", indent: 6);
+        }
+
+        // Usage examples
+        sb.AppendLine();
+        sb.AppendLine("Usage examples:");
+        sb.AppendLine("  {{ FirstName }}");
+        sb.AppendLine("  {{ Account.Name }}");
+        sb.AppendLine("  {% for order in Orders %}");
+        sb.AppendLine("    #{{ order.RefNo }} — {{ order.Total }} {{ order.Currency }}");
+        sb.AppendLine("    {% for item in order.OrderItems %}");
+        sb.AppendLine("      {{ item.ProductName }} × {{ item.Quantity }}");
+        sb.AppendLine("    {% endfor %}");
+        sb.AppendLine("  {% endfor %}");
+
+        sb.AppendLine();
+        sb.AppendLine("Custom variables — callers may pass additional key-value pairs through TemplateVariables.");
+        sb.AppendLine();
+        sb.AppendLine("STRICT VARIABLE RULE — DO NOT HALLUCINATE VARIABLES:");
+        sb.AppendLine("Only use template variables listed above or explicitly provided through TemplateVariables.");
+        sb.AppendLine("Using a non-existent variable causes a rendering failure.");
+        sb.AppendLine();
+        sb.AppendLine("IMPORTANT — ALL VARIABLES ABOVE ARE RECIPIENT DATA:");
+        sb.AppendLine("Every variable listed above belongs to the EMAIL RECIPIENT.");
+        sb.AppendLine("NEVER use these variables in the sender signature or sign-off section.");
+        sb.AppendLine("The sender's identity is provided separately — see SENDER SIGNATURE RULES.");
+
+        return sb.ToString();
     }
 
     /// <summary>
-    /// Returns category-specific design and content guidance for the AI system prompt.
-    /// Returns empty for <see cref="EmailTemplateCategory.General"/> so existing behaviour is unchanged.
+    /// Appends the template-relevant properties of an entity type to the prompt builder.
     /// </summary>
-    private static string GetCategoryGuidance(EmailTemplateCategory category, EmailTemplateFormat? format = null)
+    private static void AppendEntityProperties(
+        StringBuilder sb,
+        Type entityType,
+        object? instance,
+        string prefix,
+        int indent)
     {
-        return category switch
+        var padding = new string(' ', indent);
+        var properties = entityType
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(p => p.CanRead
+                && IsTemplateRelevantType(p.PropertyType)
+                && !IsIdOrForeignKey(p)
+                && !InternalPropertyNames.Contains(p.Name))
+            .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var prop in properties)
         {
-            EmailTemplateCategory.PlainText => BuildPlainTextCategoryGuidance(format),
+            object? value = null;
+            if (instance != null)
+            {
+                try
+                {
+                    value = prop.GetValue(instance);
+                }
+                catch
+                {
+                    // Ignore reflection errors on sample instance.
+                }
+            }
 
-            EmailTemplateCategory.SimpleProfessional => @"
-CATEGORY GUIDANCE — SIMPLE PROFESSIONAL:
-- Use a clean, minimal layout: logo/header at top, concise body, subtle footer
-- Keep to 1-2 short sections with clear hierarchy (heading → body → CTA)
-- Use a single, understated CTA button (not overly bold or large)
-- Stick to neutral, professional tones and colour palettes
-- Suitable for SaaS product updates, feature announcements, and account notifications
-- Avoid heavy imagery — let the copy carry the message",
+            var valueStr = value?.ToString();
+            sb.Append(padding).Append("{{ ").Append(prefix).Append('.').Append(prop.Name).Append(" }}");
+            if (!string.IsNullOrEmpty(valueStr))
+            {
+                sb.Append(" — e.g. \"").Append(valueStr).Append('"');
+            }
 
-            EmailTemplateCategory.Newsletter => @"
-CATEGORY GUIDANCE — NEWSLETTER / EDITORIAL:
-- Use a multi-section layout with clear visual separators between content blocks
-- Each block should have a heading, short excerpt, optional image, and 'Read more' link
-- Consider a table of contents or summary section at the top for longer newsletters
-- Balance text and imagery throughout for a magazine-like feel
-- Include social sharing links and consistent section styling
-- Suitable for media, content-heavy brands, and periodic round-ups",
-
-            EmailTemplateCategory.Promotional => @"
-CATEGORY GUIDANCE — PROMOTIONAL / MARKETING:
-- Lead with a strong hero image or banner highlighting the offer
-- Place the discount, deal, or value proposition front and centre
-- Use bold, prominent CTA buttons with action-oriented text ('Shop Now', 'Claim Offer')
-- Incorporate urgency elements (limited time, countdown-style wording, stock scarcity)
-- Keep copy concise — let visuals and CTAs drive action
-- Consider a product grid or feature comparison layout for multi-product promotions",
-
-            EmailTemplateCategory.Transactional => @"
-CATEGORY GUIDANCE — TRANSACTIONAL:
-- Prioritise clarity and information density over visual flair
-- Display order/transaction details in a structured, scannable table
-- Include reference numbers, dates, amounts, and status prominently
-- Keep branding minimal — logo and footer are sufficient
-- Avoid promotional content; focus entirely on the transaction facts
-- Include next-step instructions or support contact information
-- Suitable for receipts, confirmations, password resets, and shipping updates",
-
-            EmailTemplateCategory.Lifecycle => @"
-CATEGORY GUIDANCE — LIFECYCLE / DRIP:
-- Design for a multi-step educational sequence with progressive CTAs
-- Lead with a warm, personal greeting using the contact's first name
-- Each email in the sequence should have a single clear goal and one primary CTA
-- Use numbered steps, checklists, or progress indicators when appropriate
-- Keep the design clean and inviting — avoid information overload
-- Cover onboarding, activation, re-engagement, and win-back scenarios
-- Tone should be helpful and encouraging, guiding the reader to the next milestone",
-
-            EmailTemplateCategory.Digest => @"
-CATEGORY GUIDANCE — DIGEST / REPORT:
-- Use a data-centric layout: tables, KPI cards, summary metrics at the top
-- Include charts or visual indicators (arrows, colour-coded values) where applicable
-- Group data into clear sections with descriptive headings
-- Keep the narrative text minimal — let the numbers speak
-- Include a CTA to view the full report or dashboard
-- Suitable for periodic performance summaries, analytics updates, and B2B tools",
-
-            EmailTemplateCategory.Event => @"
-CATEGORY GUIDANCE — EVENT / INVITATION:
-- Display the event name, date, time, and location/venue prominently at the top
-- Include a hero image or banner related to the event
-- Provide a clear RSVP or registration CTA button
-- Include agenda highlights or speaker cards if available
-- Add an 'Add to Calendar' link or button
-- Include venue/logistics details or virtual meeting link in a dedicated section",
-
-            EmailTemplateCategory.Alert => @"
-CATEGORY GUIDANCE — ALERT / NOTIFICATION:
-- Use a compact, scannable layout — get to the point immediately
-- Lead with a clear summary of what happened and when
-- Use colour cues or icons to indicate priority/severity (info, warning, critical)
-- Include a direct action link or CTA for the required response
-- Keep design minimal — no heavy imagery or promotional elements
-- Ensure the template degrades well to plain-text for maximum deliverability",
-
-            _ => string.Empty, // General or unknown — no extra guidance
-        };
+            sb.AppendLine();
+        }
     }
 
-    private static string BuildPlainTextCategoryGuidance(EmailTemplateFormat? format)
+    private static bool IsTemplateRelevantType(Type type)
     {
-        var formatSpecificAlignmentRule = format switch
-        {
-            EmailTemplateFormat.Mjml => "- For MJML, enforce left alignment on text containers (e.g., <mj-text align=\"\"left\"\">) and avoid centered layouts",
-            EmailTemplateFormat.Html => "- For HTML, keep copy in simple left-aligned paragraphs with no centered wrappers or promotional blocks",
-            _ => "- Keep content visually left-aligned like a manually typed email (never centered)",
-        };
-
-        return $@"
-      CATEGORY GUIDANCE — PLAIN-TEXT / PERSONAL-STYLE:
-      - Use minimal or zero HTML formatting — the email should look like it was typed by a real person
-      {formatSpecificAlignmentRule}
-      - No hero images, banners, or heavy styling; plain white background
-      - Write in a conversational, 1:1 human tone (first person, direct address)
-      - Keep paragraphs short (2-3 sentences) with natural line breaks
-      - Use a simple text-based signature (name, title, company) rather than graphical footers
-      - A single inline link or understated CTA is sufficient — avoid styled buttons
-      - Ideal for sales outreach, personal follow-ups, and relationship-building emails";
+        var underlying = Nullable.GetUnderlyingType(type) ?? type;
+        return underlying == typeof(string)
+            || underlying == typeof(int)
+            || underlying == typeof(long)
+            || underlying == typeof(decimal)
+            || underlying == typeof(double)
+            || underlying == typeof(float)
+            || underlying == typeof(bool)
+            || underlying == typeof(DateTime)
+            || underlying == typeof(DateTimeOffset)
+            || underlying.IsEnum;
     }
 
-    private static EmailTemplateTranslationMetadata ParseGeneratedEmailTemplate(string jsonText)
+    private static bool IsIdOrForeignKey(PropertyInfo prop)
+    {
+        if (string.Equals(prop.Name, "Id", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return prop.Name.Length > 2 && prop.Name.EndsWith("Id", StringComparison.Ordinal);
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  PARSING & UTILITIES
+    // ════════════════════════════════════════════════════════════════════
+
+    private static EmailTemplateTranslationMetadata ParseGeneratedTemplate(string jsonText)
     {
         try
         {
-            // Strip markdown code fences if present
-            var cleaned = jsonText.Trim();
-            if (cleaned.StartsWith("```", StringComparison.Ordinal))
-            {
-                var firstNewline = cleaned.IndexOf('\n');
-                if (firstNewline >= 0)
-                {
-                    cleaned = cleaned[(firstNewline + 1)..];
-                }
-
-                if (cleaned.EndsWith("```", StringComparison.Ordinal))
-                {
-                    cleaned = cleaned[..^3].TrimEnd();
-                }
-            }
+            var cleaned = StripMarkdownCodeFences(jsonText);
 
             using var document = JsonDocument.Parse(cleaned);
-            var template = JsonHelper.Deserialize<EmailTemplateTranslationMetadata>(cleaned);
+            var template = JsonHelper.Deserialize<EmailTemplateTranslationMetadata>(cleaned)
+                ?? throw new InvalidOperationException("Failed to deserialize generated email template JSON");
 
-            if (template == null)
-            {
-                throw new InvalidOperationException("Failed to deserialize generated email template JSON");
-            }
-
-            // Validate required fields
             if (string.IsNullOrWhiteSpace(template.Name))
             {
                 throw new InvalidOperationException("Generated email template is missing required 'name' field");
@@ -882,15 +783,47 @@ CATEGORY GUIDANCE — ALERT / NOTIFICATION:
         return cleaned;
     }
 
+    // ════════════════════════════════════════════════════════════════════
+    //  PRIVATE INSTANCE HELPERS
+    // ════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Resolves the best available sample body to use as a reference in the AI prompt.
+    /// Priority: explicit reference template ID → database template in same group.
+    /// </summary>
+    private async Task<string?> ResolveSampleBodyAsync(
+        int? referenceTemplateId,
+        int emailGroupId,
+        string language)
+    {
+        // 1. Explicit reference
+        if (referenceTemplateId.HasValue)
+        {
+            var refTemplate = await dbContext.EmailTemplates!
+                .FirstOrDefaultAsync(et => et.Id == referenceTemplateId.Value)
+                ?? throw new AIProviderException("EmailTemplateGeneration", $"Reference email template with ID {referenceTemplateId.Value} was not found.");
+
+            return refTemplate.BodyTemplate;
+        }
+
+        // 2. Database template in same group
+        var dbSample = await dbContext.EmailTemplates!
+            .Where(et => et.EmailGroupId == emailGroupId)
+            .OrderByDescending(et => et.Language == language)
+            .FirstOrDefaultAsync();
+
+        return dbSample?.BodyTemplate;
+    }
+
     private async Task<(string fromName, string fromEmail)> ResolveFallbackSenderAsync()
     {
         var currentUser = await httpContextHelper.GetCurrentUserAsync();
         var currentUserId = currentUser?.Id;
 
         var fallbackFromEmail = await settingService.GetSettingWithFallbackAsync(
-          DefaultFromEmailSettingKey,
-          DefaultFromEmailConfigurationPath,
-          currentUserId) ?? string.Empty;
+            DefaultFromEmailSettingKey,
+            DefaultFromEmailConfigurationPath,
+            currentUserId) ?? string.Empty;
 
         var fallbackFromName = currentUser?.DisplayName;
         if (string.IsNullOrWhiteSpace(fallbackFromName))
@@ -904,47 +837,5 @@ CATEGORY GUIDANCE — ALERT / NOTIFICATION:
         }
 
         return (fallbackFromName ?? string.Empty, fallbackFromEmail);
-    }
-
-    private async Task<EmailTemplate?> FindSampleEmailTemplateAsync(int emailGroupId, string language, EmailTemplateFormat requiredFormat, int? referenceEmailTemplateId = null)
-    {
-        if (referenceEmailTemplateId.HasValue)
-        {
-            var referencedTemplate = await dbContext.EmailTemplates!
-                .FirstOrDefaultAsync(et => et.Id == referenceEmailTemplateId.Value);
-
-            if (referencedTemplate == null)
-            {
-                throw new AIProviderException(
-                    "EmailTemplateGeneration",
-                    $"Reference email template with ID {referenceEmailTemplateId.Value} was not found.");
-            }
-
-            if (referencedTemplate.Format != requiredFormat)
-            {
-                throw new AIProviderException(
-                  "EmailTemplateGeneration",
-                  $"Reference email template with ID {referenceEmailTemplateId.Value} has format {GetFormatLabel(referencedTemplate.Format)} but requested format is {GetFormatLabel(requiredFormat)}.");
-            }
-
-            return referencedTemplate;
-        }
-
-        // Try to find a template in the same group, language, and required format
-        var sampleInLanguage = await dbContext.EmailTemplates!
-            .Where(et => et.EmailGroupId == emailGroupId && et.Language == language && et.Format == requiredFormat)
-            .FirstOrDefaultAsync();
-
-        if (sampleInLanguage != null)
-        {
-            return sampleInLanguage;
-        }
-
-        // Fallback to any template in the same group and required format
-        var sampleInGroup = await dbContext.EmailTemplates!
-          .Where(et => et.EmailGroupId == emailGroupId && et.Format == requiredFormat)
-            .FirstOrDefaultAsync();
-
-        return sampleInGroup;
     }
 }

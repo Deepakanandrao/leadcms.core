@@ -6,7 +6,6 @@ using LeadCMS.Configuration;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
-using LeadCMS.Enums;
 using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
@@ -22,15 +21,13 @@ namespace LeadCMS.Services
         private readonly IEmailWithLogService emailWithLogService;
         private readonly PgDbContext pgDbContext;
         private readonly IConfiguration configuration;
-        private readonly IMjmlRenderingService mjmlRenderingService;
         private readonly ILiquidTemplateService liquidTemplateService;
 
-        public EmailFromTemplateService(IEmailWithLogService emailWithLogService, PgDbContext pgDbContext, IOptions<ApiSettingsConfig> apiSettingsConfig, IConfiguration configuration, IMjmlRenderingService mjmlRenderingService, ILiquidTemplateService liquidTemplateService)
+        public EmailFromTemplateService(IEmailWithLogService emailWithLogService, PgDbContext pgDbContext, IOptions<ApiSettingsConfig> apiSettingsConfig, IConfiguration configuration, ILiquidTemplateService liquidTemplateService)
         {
             this.emailWithLogService = emailWithLogService;
             this.pgDbContext = pgDbContext;
             this.configuration = configuration;
-            this.mjmlRenderingService = mjmlRenderingService;
             this.liquidTemplateService = liquidTemplateService;
 
             var defaultFromEmail = apiSettingsConfig.Value.DefaultFromEmail;
@@ -72,10 +69,7 @@ namespace LeadCMS.Services
         {
             var template = await GetEmailTemplateByLanguageOrHardcoded(templateName, language);
 
-            // Step 1: compile MJML → HTML if needed, keeping Liquid expressions intact
-            var bodySource = template.Format == EmailTemplateFormat.Mjml
-                ? mjmlRenderingService.RenderToHtml(template.BodyTemplate)
-                : template.BodyTemplate;
+            var bodySource = template.BodyTemplate;
 
             // Step 2: render Liquid (normalises legacy placeholders, evaluates expressions)
             var body = await liquidTemplateService.RenderAsync(bodySource, templateArguments);
@@ -88,10 +82,7 @@ namespace LeadCMS.Services
         {
             var template = await GetEmailTemplate(templateName, contactId);
 
-            // Step 1: compile MJML → HTML if needed, keeping Liquid expressions intact
-            var bodySource = template.Format == EmailTemplateFormat.Mjml
-                ? mjmlRenderingService.RenderToHtml(template.BodyTemplate)
-                : template.BodyTemplate;
+            var bodySource = template.BodyTemplate;
 
             // Step 2: render Liquid (normalises legacy placeholders, evaluates expressions)
             var body = await liquidTemplateService.RenderAsync(bodySource, templateArguments);

@@ -18,10 +18,13 @@ public static class TemplateArgumentsBuilder
     /// related Account, Domain, Orders, and Deals when loaded.
     /// </summary>
     /// <param name="contact">The contact to extract template values from, or <c>null</c>.</param>
+    /// <param name="includeNestedObjects">When <c>true</c> (the default), nested objects
+    /// (Account, Domain, Orders, Deals) are included as template variables.
+    /// When <c>false</c>, only flattened scalar fields (e.g. AccountName, DomainName) are emitted.</param>
     /// <returns>A dictionary of template arguments with string keys and object values.
     /// String values are provided for simple fields; collections and complex objects
     /// are passed as-is so the Liquid engine can iterate and access their properties.</returns>
-    public static Dictionary<string, object> FromContact(Contact? contact)
+    public static Dictionary<string, object> FromContact(Contact? contact, bool includeNestedObjects = true)
     {
         var args = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
@@ -34,7 +37,8 @@ public static class TemplateArgumentsBuilder
         args["Email"] = contact.Email ?? string.Empty;
         args["FirstName"] = contact.FirstName ?? string.Empty;
         args["LastName"] = contact.LastName ?? string.Empty;
-        args["FullName"] = contact.FullName ?? string.Empty;
+        args["FullName"] = contact.FullName
+            ?? BuildFullName(contact.FirstName, contact.MiddleName, contact.LastName);
         args["MiddleName"] = contact.MiddleName ?? string.Empty;
         args["Prefix"] = contact.Prefix ?? string.Empty;
         args["Phone"] = contact.Phone ?? string.Empty;
@@ -53,27 +57,32 @@ public static class TemplateArgumentsBuilder
         // Account fields (flattened for backwards compatibility + nested object)
         args["AccountName"] = contact.Account?.Name ?? string.Empty;
         args["AccountSiteUrl"] = contact.Account?.SiteUrl ?? string.Empty;
-        if (contact.Account != null)
-        {
-            args["Account"] = contact.Account;
-        }
 
         // Domain fields (flattened for backwards compatibility + nested object)
         args["DomainName"] = contact.Domain?.Name ?? string.Empty;
-        if (contact.Domain != null)
-        {
-            args["Domain"] = contact.Domain;
-        }
 
-        // Collections — passed as objects so Liquid can iterate with {% for order in Orders %}
-        if (contact.Orders != null)
+        if (includeNestedObjects)
         {
-            args["Orders"] = contact.Orders;
-        }
+            if (contact.Account != null)
+            {
+                args["Account"] = contact.Account;
+            }
 
-        if (contact.Deals != null)
-        {
-            args["Deals"] = contact.Deals;
+            if (contact.Domain != null)
+            {
+                args["Domain"] = contact.Domain;
+            }
+
+            // Collections — passed as objects so Liquid can iterate with {% for order in Orders %}
+            if (contact.Orders != null)
+            {
+                args["Orders"] = contact.Orders;
+            }
+
+            if (contact.Deals != null)
+            {
+                args["Deals"] = contact.Deals;
+            }
         }
 
         return args;
@@ -101,5 +110,30 @@ public static class TemplateArgumentsBuilder
         }
 
         return baseArgs;
+    }
+
+    /// <summary>
+    /// Computes a full name from constituent parts, mirroring the database computed column logic.
+    /// Used when <see cref="Contact.FullName"/> is <c>null</c> (e.g. for in-memory dummy contacts).
+    /// </summary>
+    private static string BuildFullName(string? firstName, string? middleName, string? lastName)
+    {
+        var parts = new List<string>(3);
+        if (!string.IsNullOrEmpty(firstName))
+        {
+            parts.Add(firstName);
+        }
+
+        if (!string.IsNullOrEmpty(middleName))
+        {
+            parts.Add(middleName);
+        }
+
+        if (!string.IsNullOrEmpty(lastName))
+        {
+            parts.Add(lastName);
+        }
+
+        return string.Join(" ", parts);
     }
 }

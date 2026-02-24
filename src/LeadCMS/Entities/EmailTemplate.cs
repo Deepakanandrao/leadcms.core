@@ -32,12 +32,6 @@ namespace LeadCMS.Entities
         [Searchable]
         public string BodyTemplate { get; set; } = string.Empty;
 
-        /// <summary>
-        /// Gets or sets the format of the body template (Html or Mjml).
-        /// Defaults to Html for backward compatibility with existing templates.
-        /// </summary>
-        public EmailTemplateFormat Format { get; set; } = EmailTemplateFormat.Html;
-
         [Required]
         [Searchable]
         public string FromEmail { get; set; } = string.Empty;

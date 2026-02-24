@@ -21,8 +21,6 @@ public class EmailTemplateCreateDto
     [Required]
     public string BodyTemplate { get; set; } = string.Empty;
 
-    public EmailTemplateFormat Format { get; set; } = EmailTemplateFormat.Html;
-
     public EmailTemplateCategory Category { get; set; } = EmailTemplateCategory.General;
 
     [Required]
@@ -55,8 +53,6 @@ public class EmailTemplateUpdateDto : IPatchDto
 
     [MinLength(1)]
     public string? BodyTemplate { get; set; }
-
-    public EmailTemplateFormat? Format { get; set; }
 
     public EmailTemplateCategory? Category { get; set; }
 

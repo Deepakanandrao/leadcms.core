@@ -3,7 +3,6 @@
 // </copyright>
 
 using LeadCMS.Data;
-using LeadCMS.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -39,8 +38,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             groupId,
             "liquid_html",
             "Hello {{ firstName }}",
-            "<p>Hi {{ firstName }}, your order {{ orderNumber }} is ready.</p>",
-            EmailTemplateFormat.Html);
+            "<p>Hi {{ firstName }}, your order {{ orderNumber }} is ready.</p>");
 
         var variables = new Dictionary<string, object>
         {
@@ -64,8 +62,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             groupId,
             "legacy_angle",
             "Order <%orderNumber%>",
-            "<p>Dear <%firstName%>, amount: <%amount%></p>",
-            EmailTemplateFormat.Html);
+            "<p>Dear <%firstName%>, amount: <%amount%></p>");
 
         var variables = new Dictionary<string, object>
         {
@@ -90,8 +87,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             groupId,
             "legacy_dollar",
             "Hi ${firstName}",
-            "<div>${firstName} — your code is ${code}.</div>",
-            EmailTemplateFormat.Html);
+            "<div>${firstName} — your code is ${code}.</div>");
 
         var variables = new Dictionary<string, object>
         {
@@ -115,8 +111,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             groupId,
             "legacy_encoded",
             "Welcome",
-            "<p>Hello &lt;%userName%&gt;, verify at &lt;%verifyUrl%&gt;</p>",
-            EmailTemplateFormat.Html);
+            "<p>Hello &lt;%userName%&gt;, verify at &lt;%verifyUrl%&gt;</p>");
 
         var variables = new Dictionary<string, object>
         {
@@ -139,8 +134,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             groupId,
             "mixed_html",
             "{{ greeting }}",
-            "<p>{{ greeting }} <%firstName%>! Code: ${code}, link: &lt;%link%&gt;</p>",
-            EmailTemplateFormat.Html);
+            "<p>{{ greeting }} <%firstName%>! Code: ${code}, link: &lt;%link%&gt;</p>");
 
         var variables = new Dictionary<string, object>
         {
@@ -158,101 +152,6 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
     }
 
     // ────────────────────────────────────────────────────────
-    //  MJML FORMAT — compilation + variable rendering
-    // ────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task MjmlTemplate_WithLiquidVariables_ShouldCompileAndRenderVariables()
-    {
-        var groupId = await CreateEmailGroupAsync();
-        var mjml = BuildMjmlBody(
-            "<mj-text>Hello {{ firstName }}, your order {{ orderNumber }} is confirmed.</mj-text>");
-
-        await CreateTemplateViaApiAsync(
-            groupId,
-            "liquid_mjml",
-            "Order {{ orderNumber }}",
-            mjml,
-            EmailTemplateFormat.Mjml);
-
-        var variables = new Dictionary<string, object>
-        {
-            ["firstName"] = "Frank",
-            ["orderNumber"] = "MJ-001",
-        };
-
-        await SendEmailAsync("liquid_mjml", "en", "frank@test.net", variables);
-
-        var log = await GetLastEmailLogAsync();
-        log.Subject.Should().Be("Order MJ-001");
-        log.HtmlBody.Should().Contain("Hello Frank, your order MJ-001 is confirmed.");
-        log.HtmlBody.Should().NotContain("<mjml>");
-        log.HtmlBody.Should().NotContain("<mj-text>");
-        log.HtmlBody.Should().Contain("<html");
-    }
-
-    [Fact]
-    public async Task MjmlTemplate_WithLegacyPlaceholders_ShouldCompileAndRenderVariables()
-    {
-        var groupId = await CreateEmailGroupAsync();
-        var mjml = BuildMjmlBody(
-            "<mj-text>Hi <%name%>, your code is ${code}.</mj-text>");
-
-        await CreateTemplateViaApiAsync(
-            groupId,
-            "legacy_mjml",
-            "Code ${code}",
-            mjml,
-            EmailTemplateFormat.Mjml);
-
-        var variables = new Dictionary<string, object>
-        {
-            ["name"] = "Grace",
-            ["code"] = "PROMO50",
-        };
-
-        await SendEmailAsync("legacy_mjml", "en", "grace@test.net", variables);
-
-        var log = await GetLastEmailLogAsync();
-        log.Subject.Should().Be("Code PROMO50");
-        log.HtmlBody.Should().Contain("Hi Grace, your code is PROMO50.");
-        log.HtmlBody.Should().NotContain("<mjml>");
-        log.HtmlBody.Should().NotContain("<%");
-        log.HtmlBody.Should().NotContain("${");
-    }
-
-    [Fact]
-    public async Task MjmlTemplate_WithMixedPlaceholders_ShouldCompileAndRenderAll()
-    {
-        var groupId = await CreateEmailGroupAsync();
-        var mjml = BuildMjmlBody(
-            "<mj-text>{{ greeting }} <%firstName%>!</mj-text>" +
-            "<mj-text>Link: ${link}</mj-text>");
-
-        await CreateTemplateViaApiAsync(
-            groupId,
-            "mixed_mjml",
-            "{{ greeting }}",
-            mjml,
-            EmailTemplateFormat.Mjml);
-
-        var variables = new Dictionary<string, object>
-        {
-            ["greeting"] = "Hi there",
-            ["firstName"] = "Hank",
-            ["link"] = "https://example.com/dashboard",
-        };
-
-        await SendEmailAsync("mixed_mjml", "en", "hank@test.net", variables);
-
-        var log = await GetLastEmailLogAsync();
-        log.Subject.Should().Be("Hi there");
-        log.HtmlBody.Should().Contain("Hi there Hank!");
-        log.HtmlBody.Should().Contain("Link: https://example.com/dashboard");
-        log.HtmlBody.Should().NotContain("<mjml>");
-    }
-
-    // ────────────────────────────────────────────────────────
     //  LIQUID CONDITIONALS — if / unless
     // ────────────────────────────────────────────────────────
 
@@ -264,8 +163,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             groupId,
             "if_true",
             "Status",
-            "<p>Hello {{ name }}.{% if isVip %} You are a VIP member!{% endif %}</p>",
-            EmailTemplateFormat.Html);
+            "<p>Hello {{ name }}.{% if isVip %} You are a VIP member!{% endif %}</p>");
 
         var variables = new Dictionary<string, object>
         {
@@ -287,8 +185,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             groupId,
             "if_false",
             "Status",
-            "<p>Hello {{ name }}.{% if isVip %} You are a VIP member!{% endif %}</p>",
-            EmailTemplateFormat.Html);
+            "<p>Hello {{ name }}.{% if isVip %} You are a VIP member!{% endif %}</p>");
 
         var variables = new Dictionary<string, object>
         {
@@ -310,8 +207,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             groupId,
             "unless_test",
             "Info",
-            "<p>{% unless hideBanner %}SPECIAL OFFER!{% endunless %} Hi {{ name }}.</p>",
-            EmailTemplateFormat.Html);
+            "<p>{% unless hideBanner %}SPECIAL OFFER!{% endunless %} Hi {{ name }}.</p>");
 
         var variables = new Dictionary<string, object>
         {
@@ -333,8 +229,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             groupId,
             "unless_true",
             "Info",
-            "<p>{% unless hideBanner %}SPECIAL OFFER!{% endunless %} Hi {{ name }}.</p>",
-            EmailTemplateFormat.Html);
+            "<p>{% unless hideBanner %}SPECIAL OFFER!{% endunless %} Hi {{ name }}.</p>");
 
         var variables = new Dictionary<string, object>
         {
@@ -349,34 +244,6 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
         log.HtmlBody.Should().Contain("Hi Leo.");
     }
 
-    [Fact]
-    public async Task MjmlTemplate_WithConditionals_ShouldCompileAndEvaluateConditions()
-    {
-        var groupId = await CreateEmailGroupAsync();
-        var mjml = BuildMjmlBody(
-            "<mj-text>Hello {{ name }}.{% if showPromo %} Use promo: {{ promoCode }}!{% endif %}</mj-text>");
-
-        await CreateTemplateViaApiAsync(
-            groupId,
-            "mjml_cond",
-            "Promo",
-            mjml,
-            EmailTemplateFormat.Mjml);
-
-        var variables = new Dictionary<string, object>
-        {
-            ["name"] = "Mia",
-            ["showPromo"] = "true",
-            ["promoCode"] = "SAVE20",
-        };
-
-        await SendEmailAsync("mjml_cond", "en", "mia@test.net", variables);
-
-        var log = await GetLastEmailLogAsync();
-        log.HtmlBody.Should().NotContain("<mjml>");
-        log.HtmlBody.Should().Contain("Hello Mia. Use promo: SAVE20!");
-    }
-
     // ────────────────────────────────────────────────────────
     //  EDGE CASES and QA-style break-it scenarios
     // ────────────────────────────────────────────────────────
@@ -389,8 +256,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             groupId,
             "no_vars",
             "Hello {{ name }}",
-            "<p>Your code is {{ code }}.</p>",
-            EmailTemplateFormat.Html);
+            "<p>Your code is {{ code }}.</p>");
 
         await SendEmailAsync("no_vars", "en", "nobody@test.net", null);
 
@@ -407,8 +273,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             groupId,
             "plain_body",
             "Subject only",
-            "<p>No variables here, just static text.</p>",
-            EmailTemplateFormat.Html);
+            "<p>No variables here, just static text.</p>");
 
         await SendEmailAsync("plain_body", "en", "test@test.net", null);
 
@@ -425,8 +290,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             groupId,
             "special_chars",
             "Hi {{ name }}",
-            "<p>Note: {{ note }}</p>",
-            EmailTemplateFormat.Html);
+            "<p>Note: {{ note }}</p>");
 
         var variables = new Dictionary<string, object>
         {
@@ -441,54 +305,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
     }
 
     [Fact]
-    public async Task MjmlTemplate_ShouldProduceResponsiveHtmlStructure()
-    {
-        var groupId = await CreateEmailGroupAsync();
-        var mjml = @"<mjml>
-  <mj-head>
-    <mj-attributes>
-      <mj-all font-family=""Arial, sans-serif"" />
-    </mj-attributes>
-  </mj-head>
-  <mj-body background-color=""#f4f4f4"">
-    <mj-section background-color=""#ffffff"">
-      <mj-column>
-        <mj-text font-size=""20px"" color=""#333333"">Welcome {{ name }}!</mj-text>
-        <mj-button href=""{{ actionUrl }}"" background-color=""#007bff"">Click Here</mj-button>
-      </mj-column>
-    </mj-section>
-  </mj-body>
-</mjml>";
-
-        await CreateTemplateViaApiAsync(
-            groupId,
-            "mjml_responsive",
-            "Welcome {{ name }}",
-            mjml,
-            EmailTemplateFormat.Mjml);
-
-        var variables = new Dictionary<string, object>
-        {
-            ["name"] = "Nora",
-            ["actionUrl"] = "https://example.com/action",
-        };
-
-        await SendEmailAsync("mjml_responsive", "en", "nora@test.net", variables);
-
-        var log = await GetLastEmailLogAsync();
-        log.Subject.Should().Be("Welcome Nora");
-        log.HtmlBody.Should().NotContain("<mjml>");
-        log.HtmlBody.Should().NotContain("<mj-section>");
-        log.HtmlBody.Should().NotContain("<mj-column>");
-        log.HtmlBody.Should().NotContain("<mj-text>");
-        log.HtmlBody.Should().NotContain("<mj-button>");
-        log.HtmlBody.Should().Contain("<table");
-        log.HtmlBody.Should().Contain("Welcome Nora!");
-        log.HtmlBody.Should().Contain("https://example.com/action");
-    }
-
-    [Fact]
-    public async Task HtmlTemplate_FormatFieldDefaultsToHtml_WhenNotSpecified()
+    public async Task HtmlTemplate_CreatedWithMinimalFields_ShouldRenderCorrectly()
     {
         var groupId = await CreateEmailGroupAsync();
 
@@ -505,7 +322,6 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
 
         var created = await PostTest<EmailTemplateDetailsDto>(EmailTemplatesApi, dto);
         created.Should().NotBeNull();
-        created!.Format.Should().Be(EmailTemplateFormat.Html);
 
         var variables = new Dictionary<string, object> { ["message"] = "It works!" };
 
@@ -516,7 +332,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
     }
 
     [Fact]
-    public async Task HtmlTemplate_ShouldNotGoThroughMjmlCompiler()
+    public async Task HtmlTemplate_ShouldRenderHtmlDirectly()
     {
         var groupId = await CreateEmailGroupAsync();
         var htmlBody = "<html><body><table><tr><td>Row 1 {{ val }}</td></tr></table></body></html>";
@@ -525,8 +341,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             groupId,
             "html_passthrough",
             "Test",
-            htmlBody,
-            EmailTemplateFormat.Html);
+            htmlBody);
 
         var variables = new Dictionary<string, object> { ["val"] = "DATA" };
 
@@ -534,33 +349,6 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
 
         var log = await GetLastEmailLogAsync();
         log.HtmlBody.Should().Contain("<html><body><table><tr><td>Row 1 DATA</td></tr></table></body></html>");
-    }
-
-    [Fact]
-    public async Task MjmlTemplate_WithLiquidVariablesInAttributes_ShouldRender()
-    {
-        var groupId = await CreateEmailGroupAsync();
-        var mjml = BuildMjmlBody(
-            "<mj-text>Click below</mj-text>" +
-            @"<mj-button href=""{{ link }}"">Go</mj-button>");
-
-        await CreateTemplateViaApiAsync(
-            groupId,
-            "mjml_attr_var",
-            "Link",
-            mjml,
-            EmailTemplateFormat.Mjml);
-
-        var variables = new Dictionary<string, object>
-        {
-            ["link"] = "https://example.com/go",
-        };
-
-        await SendEmailAsync("mjml_attr_var", "en", "user@test.net", variables);
-
-        var log = await GetLastEmailLogAsync();
-        log.HtmlBody.Should().Contain("https://example.com/go");
-        log.HtmlBody.Should().NotContain("{{");
     }
 
     // ────────────────────────────────────────────────────────
@@ -575,8 +363,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             groupId,
             "html_newlines",
             "Address for {{ name }}",
-            "<p>{{ address }}</p>",
-            EmailTemplateFormat.Html);
+            "<p>{{ address }}</p>");
 
         var variables = new Dictionary<string, object>
         {
@@ -592,42 +379,9 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
         log.HtmlBody.Should().NotContain("{{");
     }
 
-    [Fact]
-    public async Task MjmlTemplate_WithNewlinesInVariableValue_ShouldConvertToBrTags()
-    {
-        var groupId = await CreateEmailGroupAsync();
-        var mjml = BuildMjmlBody("<mj-text>{{ details }}</mj-text>");
-
-        await CreateTemplateViaApiAsync(
-            groupId,
-            "mjml_newlines",
-            "Info",
-            mjml,
-            EmailTemplateFormat.Mjml);
-
-        var variables = new Dictionary<string, object>
-        {
-            ["details"] = "Line one\nLine two\nLine three",
-        };
-
-        await SendEmailAsync("mjml_newlines", "en", "nl@test.net", variables);
-
-        var log = await GetLastEmailLogAsync();
-        log.HtmlBody.Should().Contain("Line one<br />Line two<br />Line three");
-        log.HtmlBody.Should().NotContain("{{");
-    }
-
     // ────────────────────────────────────────────────────────
     //  Helpers — static first (SA1204)
     // ────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Builds a minimal valid MJML document wrapping the given inner components.
-    /// </summary>
-    private static string BuildMjmlBody(string innerComponents)
-    {
-        return $"<mjml><mj-body><mj-section><mj-column>{innerComponents}</mj-column></mj-section></mj-body></mjml>";
-    }
 
     private async Task<int> CreateEmailGroupAsync()
     {
@@ -642,15 +396,13 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
         int groupId,
         string name,
         string subject,
-        string body,
-        EmailTemplateFormat format)
+        string body)
     {
         var dto = new EmailTemplateCreateDto
         {
             Name = name,
             Subject = subject,
             BodyTemplate = body,
-            Format = format,
             FromEmail = "sender@test.net",
             FromName = "Test Sender",
             Language = "en",
@@ -660,7 +412,6 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
         var created = await PostTest<EmailTemplateDetailsDto>(EmailTemplatesApi, dto);
         created.Should().NotBeNull();
         created!.Name.Should().Be(name);
-        created.Format.Should().Be(format);
     }
 
     private async Task SendEmailAsync(

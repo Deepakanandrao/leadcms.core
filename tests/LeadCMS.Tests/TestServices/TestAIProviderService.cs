@@ -16,7 +16,7 @@ public class TestAIProviderService : IAIProviderService
     private static readonly object LogLock = new object();
     private static readonly List<RecordedRequest> RecordedRequests = new List<RecordedRequest>();
     private static readonly Queue<string> NextTextResponses = new Queue<string>();
-    private static readonly string LogFilePath = ResolveLogFilePath();
+    private static readonly string LogDirectory = ResolveLogDirectory();
 
     public static IReadOnlyList<RecordedRequest> Requests => RecordedRequests.AsReadOnly();
 
@@ -69,8 +69,6 @@ public class TestAIProviderService : IAIProviderService
             request.UserPrompt ?? string.Empty,
             request.Images ?? new List<TextImageInput>());
 
-        RecordAndLog("Text", record, BuildTextRequestLog(record));
-
         var response = new TextGenerationResponse
         {
             GeneratedText = generatedText,
@@ -83,6 +81,8 @@ public class TestAIProviderService : IAIProviderService
                 ["timestamp"] = record.Timestamp,
             },
         };
+
+        RecordAndLog("Text", record, BuildTextRequestLog(record), BuildTextResponseLog(response));
 
         return Task.FromResult(response);
     }
@@ -98,8 +98,6 @@ public class TestAIProviderService : IAIProviderService
             request.Height,
             request.EditImage,
             request.SampleImages ?? new List<ImageInput>());
-
-        RecordAndLog("Image", record, BuildImageRequestLog(record));
 
         var response = new ImageGenerationResponse
         {
@@ -120,27 +118,29 @@ public class TestAIProviderService : IAIProviderService
             },
         };
 
+        RecordAndLog("Image", record, BuildImageRequestLog(record), BuildImageResponseLog(response));
+
         return Task.FromResult(response);
     }
 
-    private static void RecordAndLog(string requestType, RecordedRequest record, string logBody)
+    private static void RecordAndLog(string requestType, RecordedRequest record, string requestBody, string responseBody)
     {
         lock (LogLock)
         {
             RecordedRequests.Add(record);
             try
             {
-                var header = $"==== Test OpenAI Request ({requestType}) | {record.Timestamp:O} ====";
-                var entry = string.Join(
-                    System.Environment.NewLine,
-                    string.Empty,
-                    string.Empty,
-                    header,
-                    logBody,
-                    "==== End Request ====",
-                    string.Empty,
-                    string.Empty);
-                System.IO.File.AppendAllText(LogFilePath, entry);
+                var fileName = $"openai-{requestType.ToLowerInvariant()}-{record.Timestamp:yyyyMMdd-HHmmss-fff}.log";
+                var filePath = Path.Combine(LogDirectory, fileName);
+
+                var entry = new StringBuilder();
+                entry.AppendLine($"==== Test OpenAI Request ({requestType}) | {record.Timestamp:O} ====");
+                entry.AppendLine(requestBody);
+                entry.AppendLine($"==== Response ====");
+                entry.AppendLine(responseBody);
+                entry.AppendLine($"==== End ====");
+
+                System.IO.File.WriteAllText(filePath, entry.ToString());
             }
             catch (Exception ex)
             {
@@ -231,6 +231,40 @@ public class TestAIProviderService : IAIProviderService
         return $"{fileName} | {mimeType} | {byteCount} bytes";
     }
 
+    private static string BuildTextResponseLog(TextGenerationResponse response)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine($"Model: {response.Model}");
+        builder.AppendLine($"Tokens Used: {response.TokensUsed}");
+        builder.AppendLine($"Finish Reason: {response.FinishReason}");
+        builder.AppendLine();
+        builder.AppendLine("Generated Text:");
+        builder.AppendLine(string.IsNullOrWhiteSpace(response.GeneratedText) ? "(empty)" : response.GeneratedText);
+        return builder.ToString();
+    }
+
+    private static string BuildImageResponseLog(ImageGenerationResponse response)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine($"Model: {response.Model}");
+        builder.AppendLine($"Images Generated: {response.Images?.Count ?? 0}");
+
+        if (response.Images != null)
+        {
+            for (var i = 0; i < response.Images.Count; i++)
+            {
+                var img = response.Images[i];
+                builder.AppendLine($"  Image {i + 1}: {img.ImageData?.Length ?? 0} bytes");
+                if (!string.IsNullOrWhiteSpace(img.RevisedPrompt))
+                {
+                    builder.AppendLine($"  Revised Prompt: {img.RevisedPrompt}");
+                }
+            }
+        }
+
+        return builder.ToString();
+    }
+
     private static byte[] LoadEmbeddedResource(string fileName)
     {
         var assembly = Assembly.GetExecutingAssembly();
@@ -246,12 +280,12 @@ public class TestAIProviderService : IAIProviderService
         return memory.ToArray();
     }
 
-    private static string ResolveLogFilePath()
+    private static string ResolveLogDirectory()
     {
         var baseDirectory = Directory.GetCurrentDirectory();
         var logDirectory = Path.Combine(baseDirectory, "TestOutputs");
         Directory.CreateDirectory(logDirectory);
-        return Path.Combine(logDirectory, "openai-requests.log");
+        return logDirectory;
     }
 
     public abstract class RecordedRequest

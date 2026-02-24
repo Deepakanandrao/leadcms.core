@@ -28,7 +28,7 @@ public class OpenAIProviderService : IAIProviderService
         };
 
     private static readonly object LogLock = new object();
-    private static readonly string LogFilePath = ResolveLogFilePath();
+    private static readonly string LogDirectory = ResolveLogDirectory();
 
     private readonly HttpClient httpClient;
     private readonly string apiKey;
@@ -55,7 +55,7 @@ public class OpenAIProviderService : IAIProviderService
                 throw new AIProviderException(ProviderName, "OpenAI API key is not configured.");
             }
 
-            RecordAndLog("Text", BuildTextRequestLog(request));
+            var requestLog = BuildTextRequestLog(request);
 
             // Calculate input character counts for logging
             var systemPromptChars = request.SystemPrompt?.Length ?? 0;
@@ -159,7 +159,7 @@ public class OpenAIProviderService : IAIProviderService
                 totalTokens,
                 modelToUse);
 
-            return new TextGenerationResponse
+            var textResponse = new TextGenerationResponse
             {
                 GeneratedText = generatedText,
                 Model = modelToUse,
@@ -187,6 +187,11 @@ public class OpenAIProviderService : IAIProviderService
                     },
                 },
             };
+
+            var responseLog = BuildTextResponseLog(textResponse, elapsedMs);
+            WriteRequestResponseLog("Text", requestLog, responseLog);
+
+            return textResponse;
         }
         catch (Exception ex)
         {
@@ -216,25 +221,33 @@ public class OpenAIProviderService : IAIProviderService
             var prompt = BuildViewportGuidance(request.Prompt, request.Width, request.Height);
 
             var includePrompt = !string.IsNullOrWhiteSpace(request.Prompt);
-            RecordAndLog("Image", BuildImageRequestLog(request, prompt, includePrompt));
+            var imageRequestLog = BuildImageRequestLog(request, prompt, includePrompt);
+
+            ImageGenerationResponse imageResponse;
 
             if (request.EditImage != null)
             {
-                return await GenerateImageEditAsync(
+                imageResponse = await GenerateImageEditAsync(
                     prompt,
                     NormalizeImageInputForOpenAi(request.EditImage),
                     request.SampleImages ?? new List<ImageInput>(),
                     quality,
                     sizeValue);
             }
-
-            if (request.SampleImages != null && request.SampleImages.Count > 0)
+            else if (request.SampleImages != null && request.SampleImages.Count > 0)
             {
                 var normalizedSamples = request.SampleImages.Select(NormalizeImageInputForOpenAi).ToList();
-                return await GenerateImageEditAsync(prompt, null, normalizedSamples, quality, sizeValue);
+                imageResponse = await GenerateImageEditAsync(prompt, null, normalizedSamples, quality, sizeValue);
+            }
+            else
+            {
+                imageResponse = await GenerateImageFromPromptAsync(prompt, quality, sizeValue);
             }
 
-            return await GenerateImageFromPromptAsync(prompt, quality, sizeValue);
+            var imageResponseLog = BuildImageResponseLog(imageResponse);
+            WriteRequestResponseLog("Image", imageRequestLog, imageResponseLog);
+
+            return imageResponse;
         }
         catch (Exception ex)
         {
@@ -288,29 +301,65 @@ public class OpenAIProviderService : IAIProviderService
         return string.Join("\n", texts);
     }
 
-    private static void RecordAndLog(string requestType, string logBody)
+    private static void WriteRequestResponseLog(string requestType, string requestBody, string responseBody)
     {
         lock (LogLock)
         {
             try
             {
-                var header = $"==== OpenAI Request ({requestType}) | {DateTimeOffset.UtcNow:O} ====";
-                var entry = string.Join(
-                    System.Environment.NewLine,
-                    string.Empty,
-                    string.Empty,
-                    header,
-                    logBody,
-                    "==== End Request ====",
-                    string.Empty,
-                    string.Empty);
-                System.IO.File.AppendAllText(LogFilePath, entry);
+                var timestamp = DateTimeOffset.UtcNow;
+                var fileName = $"openai-{requestType.ToLowerInvariant()}-{timestamp:yyyyMMdd-HHmmss-fff}.log";
+                var filePath = Path.Combine(LogDirectory, fileName);
+
+                var entry = new StringBuilder();
+                entry.AppendLine($"==== OpenAI Request ({requestType}) | {timestamp:O} ====");
+                entry.AppendLine(requestBody);
+                entry.AppendLine($"==== Response ====");
+                entry.AppendLine(responseBody);
+                entry.AppendLine($"==== End ====");
+
+                System.IO.File.WriteAllText(filePath, entry.ToString());
             }
             catch (Exception ex)
             {
-                Log.Warning(ex, "Failed to write OpenAI request log.");
+                Log.Warning(ex, "Failed to write OpenAI request/response log.");
             }
         }
+    }
+
+    private static string BuildTextResponseLog(TextGenerationResponse response, long elapsedMs)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine($"Model: {response.Model}");
+        builder.AppendLine($"Tokens Used: {response.TokensUsed}");
+        builder.AppendLine($"Finish Reason: {response.FinishReason}");
+        builder.AppendLine($"Duration: {elapsedMs}ms");
+        builder.AppendLine();
+        builder.AppendLine("Generated Text:");
+        builder.AppendLine(string.IsNullOrWhiteSpace(response.GeneratedText) ? "(empty)" : response.GeneratedText);
+        return builder.ToString();
+    }
+
+    private static string BuildImageResponseLog(ImageGenerationResponse response)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine($"Model: {response.Model}");
+        builder.AppendLine($"Images Generated: {response.Images?.Count ?? 0}");
+
+        if (response.Images != null)
+        {
+            for (var i = 0; i < response.Images.Count; i++)
+            {
+                var img = response.Images[i];
+                builder.AppendLine($"  Image {i + 1}: {img.ImageData?.Length ?? 0} bytes");
+                if (!string.IsNullOrWhiteSpace(img.RevisedPrompt))
+                {
+                    builder.AppendLine($"  Revised Prompt: {img.RevisedPrompt}");
+                }
+            }
+        }
+
+        return builder.ToString();
     }
 
     private static string BuildTextRequestLog(TextGenerationRequest request)
@@ -526,12 +575,12 @@ public class OpenAIProviderService : IAIProviderService
         };
     }
 
-    private static string ResolveLogFilePath()
+    private static string ResolveLogDirectory()
     {
         var baseDirectory = Directory.GetCurrentDirectory();
         var logDirectory = Path.Combine(baseDirectory, "TestOutputs");
         Directory.CreateDirectory(logDirectory);
-        return Path.Combine(logDirectory, "openai-requests.log");
+        return logDirectory;
     }
 
     private static ImageGenerationResponse ParseImageResponse(string responseBody, string model)

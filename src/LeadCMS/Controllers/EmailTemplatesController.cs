@@ -64,7 +64,8 @@ public class EmailTemplatesController : BaseController<EmailTemplate, EmailTempl
     }
 
     /// <summary>
-    /// Generates a rendered email template preview.
+    /// Generates a rendered email template preview from inline template data.
+    /// The template does not need to be saved — the caller supplies subject, body, format, and sender info.
     /// Renders the template using the specified contact's data, or generates a dummy contact
     /// with meaningful sample data when no contact ID is provided.
     /// </summary>

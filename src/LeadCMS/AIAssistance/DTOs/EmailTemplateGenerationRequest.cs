@@ -22,12 +22,6 @@ public class EmailTemplateGenerationRequest
     public string Prompt { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets or sets the required output format for the generated template.
-    /// </summary>
-    [Required(ErrorMessage = "Format is required")]
-    public EmailTemplateFormat? Format { get; set; }
-
-    /// <summary>
     /// Gets or sets the category of the email template to generate.
     /// Used to give the AI additional context about the expected visual style and purpose.
     /// When not specified, defaults to General (no additional category-specific guidance).

@@ -11,10 +11,29 @@ namespace LeadCMS.DTOs;
 public class EmailTemplatePreviewRequestDto
 {
     /// <summary>
-    /// Gets or sets the email template ID to use for the preview.
+    /// Gets or sets the subject line template (may contain Liquid variables).
     /// </summary>
     [Required]
-    public int EmailTemplateId { get; set; }
+    public string Subject { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the body template (may contain Liquid variables).
+    /// </summary>
+    [Required]
+    public string BodyTemplate { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the sender email address.
+    /// </summary>
+    [Required]
+    [EmailAddress]
+    public string FromEmail { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the sender display name.
+    /// </summary>
+    [Required]
+    public string FromName { get; set; } = string.Empty;
 
     /// <summary>
     /// Gets or sets the language for template matching. Defaults to system default language if not provided.
@@ -88,15 +107,10 @@ public class EmailTemplateSendTestDto
     public string Subject { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets or sets the body template (may contain Liquid variables). Can be HTML or MJML.
+    /// Gets or sets the body template (may contain Liquid variables).
     /// </summary>
     [Required]
     public string BodyTemplate { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Gets or sets the body template format. Defaults to HTML.
-    /// </summary>
-    public EmailTemplateFormat Format { get; set; } = EmailTemplateFormat.Html;
 
     /// <summary>
     /// Gets or sets the sender email address.
