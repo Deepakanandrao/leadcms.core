@@ -32,10 +32,6 @@ public class Segment : BaseEntity
 
     [Column(TypeName = "integer[]")]
     public int[]? ContactIds { get; set; }
-
-    [Searchable]
-    [Column(TypeName = "text[]")]
-    public string[]? Tags { get; set; }
 }
 
 public enum SegmentType

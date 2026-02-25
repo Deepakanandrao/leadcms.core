@@ -38,6 +38,8 @@ public class MediaTests : BaseTestAutoLogin
 
     [Theory]
     [InlineData("HelloWorld-ThisIs---     ...DotNet.png", "helloworld-thisis---...dotnet.png", 1024)]
+    [InlineData("my_photo_file.png", "my-photo-file.png", 1024)]
+    [InlineData("UPPER_CASE_File.png", "upper-case-file.png", 1024)]
     public async Task TransliterationAndSlugifyTest(string fileName, string expectedTransliteratedName, int fileSize)
     {
         var testImage = new TestMedia(fileName, fileSize);
@@ -892,6 +894,159 @@ public class MediaTests : BaseTestAutoLogin
         var newLinkPattern = $"/api/media/{renameRequest.NewScopeUid}/{renameRequest.NewFileName}";
         var occurrences = updatedContent.Body!.Split(newLinkPattern).Length - 1;
         occurrences.Should().Be(2, "both the original name link and current name link should be replaced with new current link");
+    }
+
+    [Fact]
+    public async Task Upload_NewFile_WithUppercaseName_ShouldUpdateContentReferencesToLowercase()
+    {
+        // Case 1: Content references "UPPERCASE.png" (the raw upload name).
+        // After upload, the file is stored as "uppercase.png" (slugified).
+        // Content references should be updated from UPPERCASE.png to uppercase.png.
+        TrackEntityType<Content>();
+
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
+
+        const string scopeUid = "upload-slug-case";
+        const string rawFileName = "UPPERCASE-IMAGE.png";
+        var expectedStoredName = rawFileName.ToTranslit().Slugify(); // "uppercase-image.png"
+
+        // Step 1: Create content that references the raw file name
+        var content = new ContentCreateDto
+        {
+            Title = "Content With Uppercase Media",
+            Description = "Description long enough for slugify rename test content",
+            Body = $"Image link: /api/media/{scopeUid}/{rawFileName} and /media/{scopeUid}/{rawFileName}.",
+            Slug = "content-uppercase-media",
+            Type = "blog-post",
+            Author = "Tester",
+            Language = "en",
+            Category = "Product",
+            Tags = new[] { "Tag1" },
+            AllowComments = true,
+            CoverImageUrl = $"/api/media/{scopeUid}/{rawFileName}",
+        };
+
+        var createdContent = await PostTest<ContentDetailsDto>("/api/content", content, HttpStatusCode.Created);
+        createdContent.Should().NotBeNull();
+
+        // Step 2: Upload the file with uppercase name (simulating SDK bulk upload)
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var media = await UploadMediaAsync(imageBytes, rawFileName, scopeUid);
+
+        media.Name.Should().Be(expectedStoredName);
+
+        // Step 3: Verify content references are updated to the slugified name
+        var updatedContent = await GetTest<ContentDetailsDto>($"/api/content/{createdContent!.Id}", HttpStatusCode.OK);
+        updatedContent.Should().NotBeNull();
+        updatedContent!.CoverImageUrl.Should().Be($"/api/media/{scopeUid}/{expectedStoredName}");
+        updatedContent.Body.Should().Contain($"/api/media/{scopeUid}/{expectedStoredName}");
+        updatedContent.Body.Should().Contain($"/media/{scopeUid}/{expectedStoredName}");
+        updatedContent.Body.Should().NotContain(rawFileName);
+    }
+
+    [Fact]
+    public async Task Upload_NewFile_WithUppercaseName_OptimisedToAvif_ShouldUpdateContentReferences()
+    {
+        // Case 2: Content references "UPPERCASE.png" (the raw upload name).
+        // After upload + optimization, file is stored as "uppercase.avif".
+        // Content references should update from UPPERCASE.png to uppercase.avif.
+        TrackEntityType<Content>();
+
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        const string scopeUid = "upload-slug-optim";
+        const string rawFileName = "UPPERCASE-PHOTO.png";
+
+        // Step 1: Create content that references the raw file name
+        var content = new ContentCreateDto
+        {
+            Title = "Content With Optimized Media",
+            Description = "Description long enough for optimized slugify rename test",
+            Body = $"Image link: /api/media/{scopeUid}/{rawFileName} and /media/{scopeUid}/{rawFileName}.",
+            Slug = "content-optimized-media",
+            Type = "blog-post",
+            Author = "Tester",
+            Language = "en",
+            Category = "Product",
+            Tags = new[] { "Tag1" },
+            AllowComments = true,
+            CoverImageUrl = $"/api/media/{scopeUid}/{rawFileName}",
+        };
+
+        var createdContent = await PostTest<ContentDetailsDto>("/api/content", content, HttpStatusCode.Created);
+        createdContent.Should().NotBeNull();
+
+        // Step 2: Upload the file with uppercase name
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var media = await UploadMediaAsync(imageBytes, rawFileName, scopeUid);
+
+        // The stored name should be slugified and have the optimized extension
+        media.Name.Should().EndWith(".avif");
+        media.OriginalName.Should().NotBeNull();
+
+        // Step 3: Verify content references are updated to the final stored name
+        var updatedContent = await GetTest<ContentDetailsDto>($"/api/content/{createdContent!.Id}", HttpStatusCode.OK);
+        updatedContent.Should().NotBeNull();
+        updatedContent!.CoverImageUrl.Should().Be($"/api/media/{scopeUid}/{media.Name}");
+        updatedContent.Body.Should().Contain($"/api/media/{scopeUid}/{media.Name}");
+        updatedContent.Body.Should().Contain($"/media/{scopeUid}/{media.Name}");
+        updatedContent.Body.Should().NotContain(rawFileName);
+    }
+
+    [Fact]
+    public async Task Upload_ExistingFile_WithExtensionChange_ShouldUpdateContentReferences()
+    {
+        // Case 3: A file already exists as "image.png" (optimization was off).
+        // Now re-uploaded with optimization enabled, becoming "image.avif".
+        // Content references should update from image.png to image.avif.
+        TrackEntityType<Content>();
+
+        // First upload without optimization
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
+
+        const string scopeUid = "upload-ext-change";
+        const string originalFileName = "test-image.png";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var media = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+        media.Name.Should().Be(originalFileName);
+
+        // Create content that references the existing file
+        var content = new ContentCreateDto
+        {
+            Title = "Content With Existing Media",
+            Description = "Description long enough for extension change rename test",
+            Body = $"Image link: /api/media/{scopeUid}/{originalFileName} and /media/{scopeUid}/{originalFileName}.",
+            Slug = "content-existing-media",
+            Type = "blog-post",
+            Author = "Tester",
+            Language = "en",
+            Category = "Product",
+            Tags = new[] { "Tag1" },
+            AllowComments = true,
+            CoverImageUrl = $"/api/media/{scopeUid}/{originalFileName}",
+        };
+
+        var createdContent = await PostTest<ContentDetailsDto>("/api/content", content, HttpStatusCode.Created);
+        createdContent.Should().NotBeNull();
+
+        // Now enable optimization and re-upload the same file
+        await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");
+        await SetSystemSettingAsync(SettingKeys.MediaPreferredFormat, "avif");
+        await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
+
+        var updatedMedia = await UploadMediaAsync(imageBytes, originalFileName, scopeUid);
+        updatedMedia.Name.Should().EndWith(".avif");
+
+        // Verify content references are updated to the new extension
+        var updatedContent = await GetTest<ContentDetailsDto>($"/api/content/{createdContent!.Id}", HttpStatusCode.OK);
+        updatedContent.Should().NotBeNull();
+        updatedContent!.CoverImageUrl.Should().Be($"/api/media/{scopeUid}/{updatedMedia.Name}");
+        updatedContent.Body.Should().Contain($"/api/media/{scopeUid}/{updatedMedia.Name}");
+        updatedContent.Body.Should().Contain($"/media/{scopeUid}/{updatedMedia.Name}");
+        updatedContent.Body.Should().NotContain(originalFileName);
     }
 
     [Fact]

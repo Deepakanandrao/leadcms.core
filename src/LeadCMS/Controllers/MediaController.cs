@@ -63,7 +63,8 @@ public class MediaController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult> Post([FromForm] MediaCreateDto imageCreateDto)
     {
-        var incomingFileName = imageCreateDto.File!.FileName.ToTranslit().Slugify();
+        var rawFileName = imageCreateDto.File!.FileName;
+        var incomingFileName = rawFileName.ToTranslit().Slugify();
         var incomingFileExtension = Path.GetExtension(imageCreateDto.File!.FileName);
         var incomingFileSize = imageCreateDto.File!.Length; // bytes
         var incomingFileMimeType = ContentTypeHelper.GetMimeTypeOrThrow(incomingFileName, ModelState);
@@ -102,40 +103,20 @@ public class MediaController : ControllerBase
             var oldScope = uploadedMedia.ScopeUid;
             var oldName = uploadedMedia.Name;
             var oldOriginalName = uploadedMedia.OriginalName;
-            var optimizedName = GetOptimizedFileName(incomingFileName, optimizationResult.Extension);
             var newScope = imageCreateDto.ScopeUid.Trim();
-            string newName;
 
-            // If optimization is enabled, store both original and optimized
-            if (settings.EnableOptimisation)
-            {
-                uploadedMedia!.OriginalData = imageInBytes;
-                uploadedMedia!.OriginalSize = incomingFileSize;
-                uploadedMedia!.OriginalExtension = incomingFileExtension;
-                uploadedMedia!.OriginalMimeType = incomingFileMimeType;
-                uploadedMedia!.OriginalName = incomingFileName;
-                uploadedMedia!.Data = processedResult.Data;
-                uploadedMedia!.Size = processedResult.Size;
-                uploadedMedia!.Extension = optimizationResult.Extension;
-                uploadedMedia!.MimeType = optimizationResult.MimeType;
-                newName = optimizedName;
-                uploadedMedia!.Name = newName;
-            }
-            else
-            {
-                // If optimization is disabled, just save as main data, no Original fields
-                uploadedMedia!.Data = processedResult.Data;
-                uploadedMedia!.Size = processedResult.Size;
-                uploadedMedia!.Extension = incomingFileExtension;
-                uploadedMedia!.MimeType = incomingFileMimeType;
-                newName = incomingFileName;
-                uploadedMedia!.Name = newName;
-                uploadedMedia!.OriginalData = null;
-                uploadedMedia!.OriginalSize = null;
-                uploadedMedia!.OriginalExtension = null;
-                uploadedMedia!.OriginalMimeType = null;
-                uploadedMedia!.OriginalName = null;
-            }
+            var newName = ApplyMediaBinaryData(
+                uploadedMedia,
+                settings.EnableOptimisation,
+                imageInBytes,
+                incomingFileSize,
+                incomingFileExtension,
+                incomingFileMimeType,
+                incomingFileName,
+                processedResult.Data,
+                processedResult.Size,
+                optimizationResult.Extension,
+                optimizationResult.MimeType);
 
             TrySetImageDimensions(
                 uploadedMedia,
@@ -166,43 +147,43 @@ public class MediaController : ControllerBase
                     newName);
             }
 
+            // Also update references from the raw upload file name if it differs
+            // (e.g., content was uploaded via SDK with "UPPERCASE.png" but stored as "uppercase.png")
+            // Use case-sensitive comparison because slugification lowercases the name.
+            if (!string.Equals(rawFileName, oldName, StringComparison.Ordinal) &&
+                !string.Equals(rawFileName, oldOriginalName, StringComparison.Ordinal))
+            {
+                await UpdateContentReferencesAsync(
+                    newScope,
+                    rawFileName,
+                    null,
+                    newScope,
+                    newName);
+            }
+
             pgDbContext.Media!.Update(uploadedMedia);
         }
         else
         {
-            if (settings.EnableOptimisation)
+            uploadedMedia = new Media()
             {
-                uploadedMedia = new Media()
-                {
-                    Name = GetOptimizedFileName(incomingFileName, optimizationResult.Extension),
-                    OriginalName = incomingFileName,
-                    Size = processedResult.Size,
-                    Data = processedResult.Data,
-                    MimeType = optimizationResult.MimeType,
-                    ScopeUid = imageCreateDto.ScopeUid.Trim(),
-                    Extension = optimizationResult.Extension,
-                    OriginalData = imageInBytes,
-                    OriginalSize = incomingFileSize,
-                    OriginalExtension = incomingFileExtension,
-                    OriginalMimeType = incomingFileMimeType,
-                    Description = string.IsNullOrWhiteSpace(imageCreateDto.Description) ? null : imageCreateDto.Description!.Trim(),
-                    Tags = normalizedTags,
-                };
-            }
-            else
-            {
-                uploadedMedia = new Media()
-                {
-                    Name = incomingFileName,
-                    Size = processedResult.Size,
-                    Data = processedResult.Data,
-                    MimeType = incomingFileMimeType,
-                    ScopeUid = imageCreateDto.ScopeUid.Trim(),
-                    Extension = incomingFileExtension,
-                    Description = string.IsNullOrWhiteSpace(imageCreateDto.Description) ? null : imageCreateDto.Description!.Trim(),
-                    Tags = normalizedTags,
-                };
-            }
+                ScopeUid = imageCreateDto.ScopeUid.Trim(),
+                Description = string.IsNullOrWhiteSpace(imageCreateDto.Description) ? null : imageCreateDto.Description!.Trim(),
+                Tags = normalizedTags,
+            };
+
+            ApplyMediaBinaryData(
+                uploadedMedia,
+                settings.EnableOptimisation,
+                imageInBytes,
+                incomingFileSize,
+                incomingFileExtension,
+                incomingFileMimeType,
+                incomingFileName,
+                processedResult.Data,
+                processedResult.Size,
+                optimizationResult.Extension,
+                optimizationResult.MimeType);
 
             TrySetImageDimensions(
                 uploadedMedia,
@@ -211,6 +192,19 @@ public class MediaController : ControllerBase
                 optimizationResult.MimeType,
                 processedResult.Data);
             await pgDbContext.Media!.AddAsync(uploadedMedia);
+
+            // Update content references from the raw upload file name to the final stored name
+            // Use case-sensitive comparison because slugification lowercases the name.
+            var newScope = imageCreateDto.ScopeUid.Trim();
+            if (!string.Equals(rawFileName, uploadedMedia.Name, StringComparison.Ordinal))
+            {
+                await UpdateContentReferencesAsync(
+                    newScope,
+                    rawFileName,
+                    null,
+                    newScope,
+                    uploadedMedia.Name);
+            }
         }
 
         await pgDbContext.SaveChangesAsync();
@@ -542,41 +536,19 @@ public class MediaController : ControllerBase
 
             // Update only the binary content and size, preserve other properties (ScopeUid, Name, Extension)
             var baseFileName = mediaUpdateDto.File.FileName.ToTranslit().Slugify();
-            var optimizedName = GetOptimizedFileName(baseFileName, optimizationResult.Extension);
-            string newName;
-            string? newOriginalName;
 
-            // If optimization is enabled, store both original and optimized
-            if (settings.EnableOptimisation)
-            {
-                existingMedia.OriginalData = imageInBytes;
-                existingMedia.OriginalSize = incomingFileSize;
-                existingMedia.OriginalExtension = incomingFileExtension;
-                existingMedia.OriginalMimeType = incomingFileMimeType;
-                newOriginalName = baseFileName;
-                existingMedia.OriginalName = newOriginalName;
-                existingMedia.Data = processedResult.Data;
-                existingMedia.Size = processedResult.Size;
-                existingMedia.Extension = optimizationResult.Extension;
-                existingMedia.MimeType = optimizationResult.MimeType;
-                newName = optimizedName;
-                existingMedia.Name = newName;
-            }
-            else
-            {
-                // If optimization is disabled, just save as main data, no Original fields
-                existingMedia.Data = processedResult.Data;
-                existingMedia.Size = processedResult.Size;
-                existingMedia.Extension = incomingFileExtension;
-                existingMedia.MimeType = incomingFileMimeType;
-                newName = baseFileName;
-                existingMedia.Name = newName;
-                existingMedia.OriginalData = null;
-                existingMedia.OriginalSize = null;
-                existingMedia.OriginalExtension = null;
-                existingMedia.OriginalMimeType = null;
-                existingMedia.OriginalName = null;
-            }
+            var newName = ApplyMediaBinaryData(
+                existingMedia,
+                settings.EnableOptimisation,
+                imageInBytes,
+                incomingFileSize,
+                incomingFileExtension,
+                incomingFileMimeType,
+                baseFileName,
+                processedResult.Data,
+                processedResult.Size,
+                optimizationResult.Extension,
+                optimizationResult.MimeType);
 
             TrySetImageDimensions(
                 existingMedia,
@@ -699,26 +671,7 @@ public class MediaController : ControllerBase
                 {
                     if (media.OriginalData != null && media.OriginalData.Length > 0)
                     {
-                        var originalData = media.OriginalData;
-                        var originalExtension = media.OriginalExtension ?? media.Extension ?? string.Empty;
-                        var originalMimeType = media.OriginalMimeType ?? media.MimeType ?? string.Empty;
-                        var originalName = media.OriginalName ?? media.Name ?? string.Empty;
-
-                        media.Data = originalData;
-                        media.Size = media.OriginalSize ?? originalData.Length;
-                        media.Extension = originalExtension;
-                        media.MimeType = originalMimeType;
-                        media.UpdatedAt = DateTime.UtcNow;
-
-                        TrySetImageDimensions(media, originalMimeType, originalData, originalMimeType, originalData);
-
-                        media.OriginalData = null;
-                        media.OriginalSize = null;
-                        media.OriginalExtension = null;
-                        media.OriginalMimeType = null;
-                        media.OriginalName = null;
-                        media.OriginalWidth = null;
-                        media.OriginalHeight = null;
+                        var originalName = RevertToOriginalData(media);
 
                         if (!string.IsNullOrWhiteSpace(originalName) &&
                             !string.Equals(media.Name, originalName, StringComparison.OrdinalIgnoreCase))
@@ -735,22 +688,7 @@ public class MediaController : ControllerBase
                     continue;
                 }
 
-                if (media.OriginalData == null || media.OriginalData.Length == 0)
-                {
-                    media.OriginalData = media.Data;
-                    media.OriginalSize = media.Size;
-                    media.OriginalExtension = media.Extension;
-                    media.OriginalMimeType = media.MimeType;
-                    if (string.IsNullOrWhiteSpace(media.OriginalName))
-                    {
-                        media.OriginalName = media.Name;
-                    }
-                }
-
-                if (string.IsNullOrWhiteSpace(media.OriginalName))
-                {
-                    media.OriginalName = media.Name;
-                }
+                EnsureOriginalDataPreserved(media);
 
                 var shouldReoptimize = false;
 
@@ -881,27 +819,7 @@ public class MediaController : ControllerBase
             });
         }
 
-        var originalData = media.OriginalData;
-        var originalExtension = media.OriginalExtension ?? media.Extension ?? string.Empty;
-        var originalMimeType = media.OriginalMimeType ?? media.MimeType ?? string.Empty;
-        var originalName = media.OriginalName ?? media.Name ?? string.Empty;
-
-        media.Data = originalData;
-        media.Size = media.OriginalSize ?? originalData.Length;
-        media.Extension = originalExtension;
-        media.MimeType = originalMimeType;
-        media.UpdatedAt = DateTime.UtcNow;
-
-        TrySetImageDimensions(media, originalMimeType, originalData, originalMimeType, originalData);
-
-        // Clear original fields since we're reverting to original
-        media.OriginalData = null;
-        media.OriginalSize = null;
-        media.OriginalExtension = null;
-        media.OriginalMimeType = null;
-        media.OriginalName = null;
-        media.OriginalWidth = null;
-        media.OriginalHeight = null;
+        var originalName = RevertToOriginalData(media);
 
         // Rename if needed
         if (!string.IsNullOrWhiteSpace(originalName) &&
@@ -972,27 +890,7 @@ public class MediaController : ControllerBase
                     continue;
                 }
 
-                var originalData = media.OriginalData;
-                var originalExtension = media.OriginalExtension ?? media.Extension ?? string.Empty;
-                var originalMimeType = media.OriginalMimeType ?? media.MimeType ?? string.Empty;
-                var originalName = media.OriginalName ?? media.Name ?? string.Empty;
-
-                media.Data = originalData;
-                media.Size = media.OriginalSize ?? originalData.Length;
-                media.Extension = originalExtension;
-                media.MimeType = originalMimeType;
-                media.UpdatedAt = DateTime.UtcNow;
-
-                TrySetImageDimensions(media, originalMimeType, originalData, originalMimeType, originalData);
-
-                // Clear original fields since we're reverting to original
-                media.OriginalData = null;
-                media.OriginalSize = null;
-                media.OriginalExtension = null;
-                media.OriginalMimeType = null;
-                media.OriginalName = null;
-                media.OriginalWidth = null;
-                media.OriginalHeight = null;
+                var originalName = RevertToOriginalData(media);
 
                 // Rename if needed
                 if (!string.IsNullOrWhiteSpace(originalName) &&
@@ -1501,6 +1399,119 @@ public class MediaController : ControllerBase
             .Select(tag => tag.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    /// <summary>
+    /// Applies media binary data to an entity, handling both optimized and non-optimized scenarios.
+    /// When optimization is enabled, stores the incoming data as Original* fields and the processed data as main fields.
+    /// When disabled, stores the incoming data as main fields and clears Original* fields.
+    /// Returns the resulting file name.
+    /// </summary>
+    private static string ApplyMediaBinaryData(
+        Media media,
+        bool enableOptimisation,
+        byte[] incomingData,
+        long incomingSize,
+        string incomingExtension,
+        string incomingMimeType,
+        string incomingName,
+        byte[] processedData,
+        long processedSize,
+        string optimizedExtension,
+        string optimizedMimeType)
+    {
+        media.Data = processedData;
+        media.Size = processedSize;
+
+        if (enableOptimisation)
+        {
+            media.OriginalData = incomingData;
+            media.OriginalSize = incomingSize;
+            media.OriginalExtension = incomingExtension;
+            media.OriginalMimeType = incomingMimeType;
+            media.OriginalName = incomingName;
+            media.Extension = optimizedExtension;
+            media.MimeType = optimizedMimeType;
+            var optimizedName = GetOptimizedFileName(incomingName, optimizedExtension);
+            media.Name = optimizedName;
+            return optimizedName;
+        }
+        else
+        {
+            media.Extension = incomingExtension;
+            media.MimeType = incomingMimeType;
+            media.Name = incomingName;
+            ClearOriginalFields(media);
+            return incomingName;
+        }
+    }
+
+    /// <summary>
+    /// Reverts a media entity to its original (pre-optimization) state.
+    /// Copies Original* fields into the main fields, clears all Original* fields, and returns the original name.
+    /// Returns null if no original data is available.
+    /// </summary>
+    private static string? RevertToOriginalData(Media media)
+    {
+        if (media.OriginalData == null || media.OriginalData.Length == 0)
+        {
+            return null;
+        }
+
+        var originalExtension = media.OriginalExtension ?? media.Extension ?? string.Empty;
+        var originalMimeType = media.OriginalMimeType ?? media.MimeType ?? string.Empty;
+        var originalName = media.OriginalName ?? media.Name ?? string.Empty;
+
+        media.Data = media.OriginalData;
+        media.Size = media.OriginalSize ?? media.OriginalData.Length;
+        media.Extension = originalExtension;
+        media.MimeType = originalMimeType;
+        media.UpdatedAt = DateTime.UtcNow;
+
+        TrySetImageDimensions(media, originalMimeType, media.OriginalData, originalMimeType, media.OriginalData);
+        ClearOriginalFields(media, includeDimensions: true);
+
+        return originalName;
+    }
+
+    /// <summary>
+    /// Clears all Original* fields on a media entity.
+    /// When <paramref name="includeDimensions"/> is true, also clears OriginalWidth and OriginalHeight.
+    /// </summary>
+    private static void ClearOriginalFields(Media media, bool includeDimensions = false)
+    {
+        media.OriginalData = null;
+        media.OriginalSize = null;
+        media.OriginalExtension = null;
+        media.OriginalMimeType = null;
+        media.OriginalName = null;
+
+        if (includeDimensions)
+        {
+            media.OriginalWidth = null;
+            media.OriginalHeight = null;
+        }
+    }
+
+    /// <summary>
+    /// Ensures original data fields are populated before re-optimization.
+    /// Copies current main fields to Original* if OriginalData is empty,
+    /// and ensures OriginalName is set.
+    /// </summary>
+    private static void EnsureOriginalDataPreserved(Media media)
+    {
+        if (media.OriginalData == null || media.OriginalData.Length == 0)
+        {
+            media.OriginalData = media.Data;
+            media.OriginalSize = media.Size;
+            media.OriginalExtension = media.Extension;
+            media.OriginalMimeType = media.MimeType;
+        }
+
+        if (string.IsNullOrWhiteSpace(media.OriginalName))
+        {
+            media.OriginalName = media.Name;
+        }
     }
 
     private static void TrySetImageDimensions(

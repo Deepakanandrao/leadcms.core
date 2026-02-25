@@ -28,8 +28,6 @@ public class SegmentDetailsDto
 
     public int[]? ContactIds { get; set; }
 
-    public string[]? Tags { get; set; }
-
     public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }
@@ -60,8 +58,6 @@ public class SegmentCreateDto
     public SegmentDefinition? Definition { get; set; }
 
     public int[]? ContactIds { get; set; }
-
-    public string[]? Tags { get; set; }
 }
 
 public class SegmentUpdateDto : IPatchDto
@@ -77,8 +73,6 @@ public class SegmentUpdateDto : IPatchDto
     public SegmentDefinition? Definition { get; set; }
 
     public int[]? ContactIds { get; set; }
-
-    public string[]? Tags { get; set; }
 }
 
 public class SegmentDefinition

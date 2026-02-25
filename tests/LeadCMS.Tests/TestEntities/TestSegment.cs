@@ -13,7 +13,6 @@ public class TestSegment : SegmentCreateDto
         Type = type;
         Definition = definition;
         ContactIds = contactIds;
-        Tags = new[] { "test", $"segment-{uid}" };
     }
 
     public static SegmentDefinition CreateSimpleDefinition(string fieldId, FieldOperator op, object? value)

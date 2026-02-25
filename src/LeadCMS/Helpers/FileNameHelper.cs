@@ -13,7 +13,7 @@ public static class FileNameHelper
 {
     public static string Slugify(this string input)
     {
-        return input.RemoveWhitespace().RemoveDeniedCharacters().RemoveDiacritics().ToLower();
+        return input.RemoveWhitespace().RemoveDeniedCharacters().RemoveDiacritics().ReplaceUnderscores().ToLower();
     }
 
     public static string ToTranslit(this string input)
@@ -48,5 +48,10 @@ public static class FileNameHelper
         return stringBuilder
             .ToString()
             .Normalize(NormalizationForm.FormC);
+    }
+
+    private static string ReplaceUnderscores(this string input)
+    {
+        return input.Replace('_', '-');
     }
 }
