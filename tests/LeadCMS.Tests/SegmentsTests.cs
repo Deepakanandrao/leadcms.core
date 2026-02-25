@@ -17,6 +17,13 @@ public class SegmentsTests : BaseTestAutoLogin
     {
         TrackEntityType<Contact>();
         TrackEntityType<Segment>();
+        TrackEntityType<Order>();
+        TrackEntityType<OrderItem>();
+        TrackEntityType<Deal>();
+        TrackEntityType<DealPipeline>();
+        TrackEntityType<DealPipelineStage>();
+        TrackEntityType<Account>();
+        TrackEntityType<Unsubscribe>();
     }
 
     [Fact]
@@ -31,7 +38,6 @@ public class SegmentsTests : BaseTestAutoLogin
             Name = "Static segment",
             Type = SegmentType.Static,
             ContactIds = new[] { firstId, secondId },
-            Tags = new[] { "vip" },
         };
 
         var segmentLocation = await PostTest(SegmentsUrl, segmentDto);
@@ -497,6 +503,722 @@ public class SegmentsTests : BaseTestAutoLogin
         // Assert: Contact count should be recalculated
         updatedSegment.Should().NotBeNull();
         updatedSegment!.ContactCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task PreviewSegment_TagsContains_FiltersContactsByArrayElement()
+    {
+        var dbContext = App.GetDbContext()!;
+
+        var domain = new Domain { Name = $"tags-{Guid.NewGuid().ToString()[..8]}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var contact1 = new Contact
+        {
+            Email = $"tag1-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "Alice",
+            LastName = "Tagged",
+            DomainId = domain.Id,
+            Tags = new[] { "Automation", "VIP" },
+        };
+        var contact2 = new Contact
+        {
+            Email = $"tag2-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "Bob",
+            LastName = "Tagged",
+            DomainId = domain.Id,
+            Tags = new[] { "Newsletter" },
+        };
+        var contact3 = new Contact
+        {
+            Email = $"tag3-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "Carol",
+            LastName = "NoTags",
+            DomainId = domain.Id,
+        };
+
+        dbContext.Contacts!.AddRange(contact1, contact2, contact3);
+        await dbContext.SaveChangesAsync();
+
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "tags", Operator = FieldOperator.Contains, Value = "Automation" },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts.Should().ContainSingle();
+        preview.Contacts[0].FirstName.Should().Be("Alice");
+    }
+
+    [Fact]
+    public async Task PreviewSegment_TagsNotContains_ExcludesContactsWithTag()
+    {
+        var dbContext = App.GetDbContext()!;
+
+        var domain = new Domain { Name = $"tagsnot-{Guid.NewGuid().ToString()[..8]}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var contact1 = new Contact
+        {
+            Email = $"tagn1-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "Included",
+            DomainId = domain.Id,
+            Tags = new[] { "Newsletter" },
+        };
+        var contact2 = new Contact
+        {
+            Email = $"tagn2-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "Excluded",
+            DomainId = domain.Id,
+            Tags = new[] { "Automation", "VIP" },
+        };
+
+        dbContext.Contacts!.AddRange(contact1, contact2);
+        await dbContext.SaveChangesAsync();
+
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "tags", Operator = FieldOperator.NotContains, Value = "Automation" },
+                    new SegmentRule { FieldId = "tags", Operator = FieldOperator.IsNotEmpty },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts[0].FirstName.Should().Be("Included");
+    }
+
+    [Fact]
+    public async Task PreviewSegment_OrdersFilter_FindsContactsByOrderStatus()
+    {
+        var dbContext = App.GetDbContext()!;
+
+        var domain = new Domain { Name = $"ordstat-{Guid.NewGuid().ToString()[..8]}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var contact1 = new Contact
+        {
+            Email = $"ordstat1-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "PaidBuyer",
+            DomainId = domain.Id,
+        };
+        var contact2 = new Contact
+        {
+            Email = $"ordstat2-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "PendingBuyer",
+            DomainId = domain.Id,
+        };
+
+        dbContext.Contacts!.AddRange(contact1, contact2);
+        await dbContext.SaveChangesAsync();
+
+        var order1 = new Order
+        {
+            ContactId = contact1.Id,
+            RefNo = $"ORD-{Guid.NewGuid().ToString()[..8]}",
+            Currency = "USD",
+            ExchangeRate = 1,
+            Status = OrderStatus.Paid,
+        };
+        var order2 = new Order
+        {
+            ContactId = contact2.Id,
+            RefNo = $"ORD-{Guid.NewGuid().ToString()[..8]}",
+            Currency = "USD",
+            ExchangeRate = 1,
+            Status = OrderStatus.Pending,
+        };
+
+        dbContext.Orders!.AddRange(order1, order2);
+        await dbContext.SaveChangesAsync();
+
+        // Filter contacts who have at least one paid order
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "orders.status", Operator = FieldOperator.Equals, Value = "Paid" },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts.Should().ContainSingle();
+        preview.Contacts[0].FirstName.Should().Be("PaidBuyer");
+    }
+
+    [Fact]
+    public async Task PreviewSegment_OrdersFilter_NoDuplicatesWhenMultipleOrdersMatch()
+    {
+        var dbContext = App.GetDbContext()!;
+
+        var domain = new Domain { Name = $"orddup-{Guid.NewGuid().ToString()[..8]}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var contact = new Contact
+        {
+            Email = $"orddup-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "MultiOrder",
+            DomainId = domain.Id,
+        };
+
+        dbContext.Contacts!.Add(contact);
+        await dbContext.SaveChangesAsync();
+
+        // Create multiple paid orders for the same contact
+        var order1 = new Order
+        {
+            ContactId = contact.Id,
+            RefNo = $"DUP-{Guid.NewGuid().ToString()[..8]}",
+            Currency = "USD",
+            ExchangeRate = 1,
+            Status = OrderStatus.Paid,
+        };
+        var order2 = new Order
+        {
+            ContactId = contact.Id,
+            RefNo = $"DUP-{Guid.NewGuid().ToString()[..8]}",
+            Currency = "USD",
+            ExchangeRate = 1,
+            Status = OrderStatus.Paid,
+        };
+
+        dbContext.Orders!.AddRange(order1, order2);
+        await dbContext.SaveChangesAsync();
+
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "orders.status", Operator = FieldOperator.Equals, Value = "Paid" },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        // Should be exactly 1 contact, not 2 (no duplicates from multiple orders)
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts.Should().ContainSingle();
+        preview.Contacts[0].FirstName.Should().Be("MultiOrder");
+    }
+
+    [Fact]
+    public async Task PreviewSegment_OrderItemsFilter_FindsContactsByProductName()
+    {
+        var dbContext = App.GetDbContext()!;
+
+        var domain = new Domain { Name = $"oiprod-{Guid.NewGuid().ToString()[..8]}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var contact1 = new Contact
+        {
+            Email = $"oiprod1-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "AutoBuyer",
+            DomainId = domain.Id,
+        };
+        var contact2 = new Contact
+        {
+            Email = $"oiprod2-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "OtherBuyer",
+            DomainId = domain.Id,
+        };
+
+        dbContext.Contacts!.AddRange(contact1, contact2);
+        await dbContext.SaveChangesAsync();
+
+        var order1 = new Order
+        {
+            ContactId = contact1.Id,
+            RefNo = $"OIP-{Guid.NewGuid().ToString()[..8]}",
+            Currency = "USD",
+            ExchangeRate = 1,
+            Status = OrderStatus.Paid,
+        };
+        var order2 = new Order
+        {
+            ContactId = contact2.Id,
+            RefNo = $"OIP-{Guid.NewGuid().ToString()[..8]}",
+            Currency = "USD",
+            ExchangeRate = 1,
+            Status = OrderStatus.Paid,
+        };
+
+        dbContext.Orders!.AddRange(order1, order2);
+        await dbContext.SaveChangesAsync();
+
+        var orderItem1 = new OrderItem
+        {
+            OrderId = order1.Id,
+            LineNumber = 1,
+            ProductName = "Automation Pro Suite",
+            Currency = "USD",
+            Quantity = 1,
+            UnitPrice = 99.99m,
+        };
+        var orderItem2 = new OrderItem
+        {
+            OrderId = order2.Id,
+            LineNumber = 1,
+            ProductName = "Basic Widget",
+            Currency = "USD",
+            Quantity = 1,
+            UnitPrice = 9.99m,
+        };
+
+        dbContext.OrderItems!.AddRange(orderItem1, orderItem2);
+        await dbContext.SaveChangesAsync();
+
+        // Find contacts where any order has an order item with ProductName containing "Automation"
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "orders.orderItems.productName", Operator = FieldOperator.Contains, Value = "Automation" },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts.Should().ContainSingle();
+        preview.Contacts[0].FirstName.Should().Be("AutoBuyer");
+    }
+
+    [Fact]
+    public async Task PreviewSegment_DealsFilter_FindsContactsByDealPipelineStage()
+    {
+        var dbContext = App.GetDbContext()!;
+
+        var domain = new Domain { Name = $"dealst-{Guid.NewGuid().ToString()[..8]}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var account = new Account { Name = $"Deal Account {Guid.NewGuid().ToString()[..8]}" };
+        dbContext.Accounts!.Add(account);
+        await dbContext.SaveChangesAsync();
+
+        var pipeline = new DealPipeline { Name = $"Pipeline {Guid.NewGuid().ToString()[..8]}" };
+        dbContext.DealPipelines!.Add(pipeline);
+        await dbContext.SaveChangesAsync();
+
+        var stageWon = new DealPipelineStage { Name = "Won", DealPipelineId = pipeline.Id, Order = 1 };
+        var stageLost = new DealPipelineStage { Name = "Lost", DealPipelineId = pipeline.Id, Order = 2 };
+        dbContext.DealPipelineStages!.AddRange(stageWon, stageLost);
+        await dbContext.SaveChangesAsync();
+
+        var contact1 = new Contact
+        {
+            Email = $"dealst1-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "Winner",
+            DomainId = domain.Id,
+        };
+        var contact2 = new Contact
+        {
+            Email = $"dealst2-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "Loser",
+            DomainId = domain.Id,
+        };
+
+        dbContext.Contacts!.AddRange(contact1, contact2);
+        await dbContext.SaveChangesAsync();
+
+        // Get a real user ID for the Deal FK constraint
+        var adminUser = dbContext.Users!.First();
+
+        // Create deals with contacts
+        var deal1 = new Deal
+        {
+            AccountId = account.Id,
+            DealPipelineId = pipeline.Id,
+            DealPipelineStageId = stageWon.Id,
+            DealValue = 5000,
+            DealCurrency = "USD",
+            UserId = adminUser.Id,
+            Contacts = new List<Contact> { contact1 },
+        };
+        var deal2 = new Deal
+        {
+            AccountId = account.Id,
+            DealPipelineId = pipeline.Id,
+            DealPipelineStageId = stageLost.Id,
+            DealValue = 3000,
+            DealCurrency = "USD",
+            UserId = adminUser.Id,
+            Contacts = new List<Contact> { contact2 },
+        };
+
+        dbContext.Deals!.AddRange(deal1, deal2);
+        await dbContext.SaveChangesAsync();
+
+        // Find contacts where any deal is in the "Won" stage
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "deals.dealPipelineStageId", Operator = FieldOperator.Equals, Value = stageWon.Id },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts.Should().ContainSingle();
+        preview.Contacts[0].FirstName.Should().Be("Winner");
+    }
+
+    [Fact]
+    public async Task PreviewSegment_ExcludeUnsubscribed_FiltersOutUnsubscribedContacts()
+    {
+        var dbContext = App.GetDbContext()!;
+
+        var domain = new Domain { Name = $"unsub-{Guid.NewGuid().ToString()[..8]}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var contact1 = new Contact
+        {
+            Email = $"unsub1-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "Subscribed",
+            DomainId = domain.Id,
+        };
+        var contact2 = new Contact
+        {
+            Email = $"unsub2-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "Unsubscribed",
+            DomainId = domain.Id,
+        };
+
+        dbContext.Contacts!.AddRange(contact1, contact2);
+        await dbContext.SaveChangesAsync();
+
+        // Create an unsubscribe record for contact2
+        var unsubscribe = new Unsubscribe
+        {
+            Reason = "Not interested",
+            ContactId = contact2.Id,
+        };
+
+        dbContext.Unsubscribes!.Add(unsubscribe);
+        await dbContext.SaveChangesAsync();
+
+        // Update contact2 with unsubscribe reference
+        contact2.UnsubscribeId = unsubscribe.Id;
+        await dbContext.SaveChangesAsync();
+
+        // Find all contacts with email containing "unsub" but exclude unsubscribed
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "email", Operator = FieldOperator.Contains, Value = "unsub" },
+                },
+            },
+            ExcludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "isUnsubscribed", Operator = FieldOperator.IsTrue },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts.Should().ContainSingle();
+        preview.Contacts[0].FirstName.Should().Be("Subscribed");
+    }
+
+    [Fact]
+    public async Task PreviewSegment_CombinedCollectionAndExclude_ComplexScenario()
+    {
+        var dbContext = App.GetDbContext()!;
+
+        var domain = new Domain { Name = $"combo-{Guid.NewGuid().ToString()[..8]}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var contact1 = new Contact
+        {
+            Email = $"combo1-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "MatchKeep",
+            DomainId = domain.Id,
+            Tags = new[] { "VIP" },
+        };
+        var contact2 = new Contact
+        {
+            Email = $"combo2-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "MatchExclude",
+            DomainId = domain.Id,
+            Tags = new[] { "VIP" },
+        };
+        var contact3 = new Contact
+        {
+            Email = $"combo3-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "NoMatch",
+            DomainId = domain.Id,
+            Tags = new[] { "Regular" },
+        };
+
+        dbContext.Contacts!.AddRange(contact1, contact2, contact3);
+        await dbContext.SaveChangesAsync();
+
+        // Give contact1 and contact2 paid orders
+        var order1 = new Order
+        {
+            ContactId = contact1.Id,
+            RefNo = $"CMB-{Guid.NewGuid().ToString()[..8]}",
+            Currency = "USD",
+            ExchangeRate = 1,
+            Status = OrderStatus.Paid,
+        };
+        var order2 = new Order
+        {
+            ContactId = contact2.Id,
+            RefNo = $"CMB-{Guid.NewGuid().ToString()[..8]}",
+            Currency = "USD",
+            ExchangeRate = 1,
+            Status = OrderStatus.Paid,
+        };
+
+        dbContext.Orders!.AddRange(order1, order2);
+        await dbContext.SaveChangesAsync();
+
+        // Unsubscribe contact2
+        var unsubscribe = new Unsubscribe { Reason = "Too many emails", ContactId = contact2.Id };
+        dbContext.Unsubscribes!.Add(unsubscribe);
+        await dbContext.SaveChangesAsync();
+        contact2.UnsubscribeId = unsubscribe.Id;
+        await dbContext.SaveChangesAsync();
+
+        // Include: contacts with VIP tag AND paid orders
+        // Exclude: unsubscribed contacts
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "tags", Operator = FieldOperator.Contains, Value = "VIP" },
+                    new SegmentRule { FieldId = "orders.status", Operator = FieldOperator.Equals, Value = "Paid" },
+                },
+            },
+            ExcludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "isUnsubscribed", Operator = FieldOperator.IsTrue },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts.Should().ContainSingle();
+        preview.Contacts[0].FirstName.Should().Be("MatchKeep");
+    }
+
+    [Fact]
+    public async Task PreviewSegment_DealsFilter_ByDealValue()
+    {
+        var dbContext = App.GetDbContext()!;
+
+        var domain = new Domain { Name = $"dealval-{Guid.NewGuid().ToString()[..8]}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var account = new Account { Name = $"Deal Value Account {Guid.NewGuid().ToString()[..8]}" };
+        dbContext.Accounts!.Add(account);
+        await dbContext.SaveChangesAsync();
+
+        var pipeline = new DealPipeline { Name = $"ValPipeline {Guid.NewGuid().ToString()[..8]}" };
+        dbContext.DealPipelines!.Add(pipeline);
+        await dbContext.SaveChangesAsync();
+
+        var stage = new DealPipelineStage { Name = "Negotiation", DealPipelineId = pipeline.Id, Order = 1 };
+        dbContext.DealPipelineStages!.Add(stage);
+        await dbContext.SaveChangesAsync();
+
+        var contact1 = new Contact
+        {
+            Email = $"dealval1-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "HighValue",
+            DomainId = domain.Id,
+        };
+        var contact2 = new Contact
+        {
+            Email = $"dealval2-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "LowValue",
+            DomainId = domain.Id,
+        };
+
+        dbContext.Contacts!.AddRange(contact1, contact2);
+        await dbContext.SaveChangesAsync();
+
+        // Get a real user ID for the Deal FK constraint
+        var adminUser = dbContext.Users!.First();
+
+        var deal1 = new Deal
+        {
+            AccountId = account.Id,
+            DealPipelineId = pipeline.Id,
+            DealPipelineStageId = stage.Id,
+            DealValue = 50000,
+            DealCurrency = "USD",
+            UserId = adminUser.Id,
+            Contacts = new List<Contact> { contact1 },
+        };
+        var deal2 = new Deal
+        {
+            AccountId = account.Id,
+            DealPipelineId = pipeline.Id,
+            DealPipelineStageId = stage.Id,
+            DealValue = 500,
+            DealCurrency = "USD",
+            UserId = adminUser.Id,
+            Contacts = new List<Contact> { contact2 },
+        };
+
+        dbContext.Deals!.AddRange(deal1, deal2);
+        await dbContext.SaveChangesAsync();
+
+        // Find contacts where any deal has value > 10000
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "deals.dealValue", Operator = FieldOperator.GreaterThan, Value = "10000" },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts.Should().ContainSingle();
+        preview.Contacts[0].FirstName.Should().Be("HighValue");
+    }
+
+    [Fact]
+    public async Task PreviewSegment_OrConnector_WithCollectionFilters()
+    {
+        var dbContext = App.GetDbContext()!;
+
+        var domain = new Domain { Name = $"orcoll-{Guid.NewGuid().ToString()[..8]}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var contact1 = new Contact
+        {
+            Email = $"orcoll1-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "TagOnly",
+            DomainId = domain.Id,
+            Tags = new[] { "Automation" },
+        };
+        var contact2 = new Contact
+        {
+            Email = $"orcoll2-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "OrderOnly",
+            DomainId = domain.Id,
+        };
+        var contact3 = new Contact
+        {
+            Email = $"orcoll3-{Guid.NewGuid().ToString()[..8]}@test.net",
+            FirstName = "Neither",
+            DomainId = domain.Id,
+        };
+
+        dbContext.Contacts!.AddRange(contact1, contact2, contact3);
+        await dbContext.SaveChangesAsync();
+
+        var order = new Order
+        {
+            ContactId = contact2.Id,
+            RefNo = $"ORC-{Guid.NewGuid().ToString()[..8]}",
+            Currency = "USD",
+            ExchangeRate = 1,
+            Status = OrderStatus.Paid,
+        };
+
+        dbContext.Orders!.Add(order);
+        await dbContext.SaveChangesAsync();
+
+        // Find contacts who have Automation tag OR have a paid order (using OR connector)
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.Or,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "tags", Operator = FieldOperator.Contains, Value = "Automation" },
+                    new SegmentRule { FieldId = "orders.status", Operator = FieldOperator.Equals, Value = "Paid" },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(2);
+        preview.Contacts.Select(c => c.FirstName).Should().BeEquivalentTo("TagOnly", "OrderOnly");
     }
 
     private static int ExtractId(string location)

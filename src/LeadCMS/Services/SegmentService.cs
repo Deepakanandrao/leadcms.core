@@ -15,6 +15,20 @@ namespace LeadCMS.Services;
 
 public class SegmentService : ISegmentService
 {
+    private static readonly Dictionary<string, (string PropertyName, Type ElementType)> ContactCollectionNavigations = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["orders"] = ("Orders", typeof(Order)),
+        ["deals"] = ("Deals", typeof(Deal)),
+    };
+
+    private static readonly Dictionary<string, Dictionary<string, (string PropertyName, Type ElementType)>> SubCollectionNavigations = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [nameof(Order)] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["orderItems"] = ("OrderItems", typeof(OrderItem)),
+        },
+    };
+
     private readonly PgDbContext dbContext;
     private readonly IMapper mapper;
 
@@ -208,6 +222,7 @@ public class SegmentService : ISegmentService
         // Check if we need to include related entities based on the rules
         var needsAccountInclude = HasNestedPropertyReference(definition, "account");
         var needsDomainInclude = HasNestedPropertyReference(definition, "domain");
+        var needsUnsubscribeInclude = HasNestedPropertyReference(definition, "unsubscribe");
 
         if (needsAccountInclude)
         {
@@ -217,6 +232,11 @@ public class SegmentService : ISegmentService
         if (needsDomainInclude)
         {
             query = query.Include(c => c.Domain);
+        }
+
+        if (needsUnsubscribeInclude)
+        {
+            query = query.Include(c => c.Unsubscribe);
         }
 
         // Apply include rules
@@ -324,84 +344,331 @@ public class SegmentService : ISegmentService
     private Expression<Func<Contact, bool>>? BuildRuleExpression(SegmentRule rule)
     {
         var parameter = Expression.Parameter(typeof(Contact), "c");
-        var property = GetPropertyExpression(parameter, rule.FieldId);
+        Expression? comparison = null;
 
+        // 1. Handle virtual fields
+        if (rule.FieldId.Equals("isUnsubscribed", StringComparison.OrdinalIgnoreCase))
+        {
+            comparison = BuildIsUnsubscribedExpression(parameter, rule);
+            return comparison == null ? null : Expression.Lambda<Func<Contact, bool>>(comparison, parameter);
+        }
+
+        // 2. Try collection navigation path (e.g., orders.status, orders.orderItems.productName, deals.dealPipelineStageId)
+        var collectionResult = TryBuildCollectionFilterExpression(parameter, rule);
+        if (collectionResult != null)
+        {
+            return collectionResult;
+        }
+
+        // 3. Direct or single-navigation property (existing logic)
+        var property = GetPropertyExpression(parameter, rule.FieldId);
         if (property == null)
         {
             return null;
         }
 
-        Expression? comparison = null;
+        comparison = ApplyOperator(property, rule);
+
+        return comparison == null ? null : Expression.Lambda<Func<Contact, bool>>(comparison, parameter);
+    }
+
+    /// <summary>
+    /// Applies the rule's operator to a property expression, handling both scalar and array property types.
+    /// </summary>
+    private Expression? ApplyOperator(Expression property, SegmentRule rule)
+    {
+        // Route array properties to array-specific operator logic
+        if (property.Type.IsArray)
+        {
+            return ApplyArrayOperator(property, rule);
+        }
 
         try
         {
-            switch (rule.Operator)
+            return rule.Operator switch
             {
-                case FieldOperator.Equals:
-                    comparison = BuildEqualsExpression(property, rule.Value);
-                    break;
-                case FieldOperator.NotEquals:
-                    comparison = BuildNotEqualsExpression(property, rule.Value);
-                    break;
-                case FieldOperator.Contains:
-                    comparison = BuildContainsExpression(property, rule.Value);
-                    break;
-                case FieldOperator.NotContains:
-                    comparison = BuildNotContainsExpression(property, rule.Value);
-                    break;
-                case FieldOperator.StartsWith:
-                    comparison = BuildStartsWithExpression(property, rule.Value);
-                    break;
-                case FieldOperator.EndsWith:
-                    comparison = BuildEndsWithExpression(property, rule.Value);
-                    break;
-                case FieldOperator.IsEmpty:
-                    comparison = BuildIsEmptyExpression(property);
-                    break;
-                case FieldOperator.IsNotEmpty:
-                    comparison = BuildIsNotEmptyExpression(property);
-                    break;
-                case FieldOperator.GreaterThan:
-                    comparison = BuildGreaterThanExpression(property, rule.Value);
-                    break;
-                case FieldOperator.LessThan:
-                    comparison = BuildLessThanExpression(property, rule.Value);
-                    break;
-                case FieldOperator.GreaterThanOrEqual:
-                    comparison = BuildGreaterThanOrEqualExpression(property, rule.Value);
-                    break;
-                case FieldOperator.LessThanOrEqual:
-                    comparison = BuildLessThanOrEqualExpression(property, rule.Value);
-                    break;
-                case FieldOperator.IsTrue:
-                    if (property.Type == typeof(bool) || property.Type == typeof(bool?))
-                    {
-                        comparison = Expression.Equal(property, Expression.Constant(true, property.Type));
-                    }
-
-                    break;
-                case FieldOperator.IsFalse:
-                    if (property.Type == typeof(bool) || property.Type == typeof(bool?))
-                    {
-                        comparison = Expression.Equal(property, Expression.Constant(false, property.Type));
-                    }
-
-                    break;
-                case FieldOperator.In:
-                    comparison = BuildInExpression(property, rule.Value);
-                    break;
-                case FieldOperator.NotIn:
-                    comparison = BuildNotInExpression(property, rule.Value);
-                    break;
-            }
+                FieldOperator.Equals => BuildEqualsExpression(property, rule.Value),
+                FieldOperator.NotEquals => BuildNotEqualsExpression(property, rule.Value),
+                FieldOperator.Contains => BuildContainsExpression(property, rule.Value),
+                FieldOperator.NotContains => BuildNotContainsExpression(property, rule.Value),
+                FieldOperator.StartsWith => BuildStartsWithExpression(property, rule.Value),
+                FieldOperator.EndsWith => BuildEndsWithExpression(property, rule.Value),
+                FieldOperator.IsEmpty => BuildIsEmptyExpression(property),
+                FieldOperator.IsNotEmpty => BuildIsNotEmptyExpression(property),
+                FieldOperator.GreaterThan => BuildGreaterThanExpression(property, rule.Value),
+                FieldOperator.LessThan => BuildLessThanExpression(property, rule.Value),
+                FieldOperator.GreaterThanOrEqual => BuildGreaterThanOrEqualExpression(property, rule.Value),
+                FieldOperator.LessThanOrEqual => BuildLessThanOrEqualExpression(property, rule.Value),
+                FieldOperator.IsTrue when property.Type == typeof(bool) || property.Type == typeof(bool?) =>
+                    Expression.Equal(property, Expression.Constant(true, property.Type)),
+                FieldOperator.IsFalse when property.Type == typeof(bool) || property.Type == typeof(bool?) =>
+                    Expression.Equal(property, Expression.Constant(false, property.Type)),
+                FieldOperator.In => BuildInExpression(property, rule.Value),
+                FieldOperator.NotIn => BuildNotInExpression(property, rule.Value),
+                _ => null,
+            };
         }
         catch (Exception)
         {
             // If expression building fails due to type mismatch or other issues, skip this rule
             return null;
         }
+    }
 
-        return comparison == null ? null : Expression.Lambda<Func<Contact, bool>>(comparison, parameter);
+    /// <summary>
+    /// Handles operators for array properties (e.g., string[] Tags).
+    /// Contains means "array has element", IsEmpty means "array is null or has no elements", etc.
+    /// </summary>
+    private Expression? ApplyArrayOperator(Expression property, SegmentRule rule)
+    {
+        return rule.Operator switch
+        {
+            FieldOperator.Contains => BuildArrayContainsExpression(property, rule.Value),
+            FieldOperator.NotContains => Expression.Not(BuildArrayContainsExpression(property, rule.Value)),
+            FieldOperator.IsEmpty => BuildArrayIsEmptyExpression(property),
+            FieldOperator.IsNotEmpty => BuildArrayIsNotEmptyExpression(property),
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// Builds an expression for checking if a jsonb array property contains a specific element.
+    /// Uses EF.Functions.JsonContains() which translates to PostgreSQL's @&gt; operator.
+    /// </summary>
+    private Expression BuildArrayContainsExpression(Expression property, object? value)
+    {
+        var stringValue = value?.ToString() ?? string.Empty;
+
+        // Use EF.Functions.JsonContains(property, jsonString)
+        // The contained value must be a JSON string so Npgsql parameterizes it as jsonb.
+        var jsonContainsMethod = typeof(NpgsqlJsonDbFunctionsExtensions)
+            .GetMethod("JsonContains", new[] { typeof(DbFunctions), typeof(object), typeof(object) })!;
+
+        var efFunctions = Expression.Property(null, typeof(EF), "Functions");
+
+        // Serialize the value as a JSON array string (e.g., ["Automation"])
+        var jsonString = System.Text.Json.JsonSerializer.Serialize(new[] { stringValue });
+
+        var jsonContainsCall = Expression.Call(
+            jsonContainsMethod,
+            efFunctions,
+            Expression.Convert(property, typeof(object)),
+            Expression.Constant(jsonString, typeof(object)));
+
+        return jsonContainsCall;
+    }
+
+    /// <summary>
+    /// Builds: property == null OR property.Length == 0.
+    /// </summary>
+    private Expression BuildArrayIsEmptyExpression(Expression property)
+    {
+        var nullCheck = Expression.Equal(property, Expression.Constant(null, property.Type));
+        var lengthProperty = Expression.ArrayLength(property);
+        var isEmpty = Expression.Equal(lengthProperty, Expression.Constant(0));
+
+        return Expression.OrElse(nullCheck, isEmpty);
+    }
+
+    /// <summary>
+    /// Builds: property != null AND property.Length > 0.
+    /// </summary>
+    private Expression BuildArrayIsNotEmptyExpression(Expression property)
+    {
+        var nullCheck = Expression.NotEqual(property, Expression.Constant(null, property.Type));
+        var lengthProperty = Expression.ArrayLength(property);
+        var isNotEmpty = Expression.GreaterThan(lengthProperty, Expression.Constant(0));
+
+        return Expression.AndAlso(nullCheck, isNotEmpty);
+    }
+
+    /// <summary>
+    /// Handles the virtual "isUnsubscribed" field by checking if UnsubscribeId is not null (subscribed) or null (unsubscribed).
+    /// </summary>
+    private Expression? BuildIsUnsubscribedExpression(ParameterExpression parameter, SegmentRule rule)
+    {
+        var unsubscribeIdProperty = Expression.Property(parameter, "UnsubscribeId");
+
+        var isTrue = rule.Operator == FieldOperator.IsTrue ||
+                     (rule.Operator == FieldOperator.Equals && string.Equals(rule.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase));
+        var isFalse = rule.Operator == FieldOperator.IsFalse ||
+                      (rule.Operator == FieldOperator.Equals && string.Equals(rule.Value?.ToString(), "false", StringComparison.OrdinalIgnoreCase));
+
+        if (isTrue)
+        {
+            return Expression.NotEqual(unsubscribeIdProperty, Expression.Constant(null, typeof(int?)));
+        }
+
+        if (isFalse)
+        {
+            return Expression.Equal(unsubscribeIdProperty, Expression.Constant(null, typeof(int?)));
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Attempts to build a collection filter expression for paths like "orders.status", "orders.orderItems.productName", "deals.dealValue".
+    /// Returns null if the path does not start with a known collection navigation.
+    /// </summary>
+    private Expression<Func<Contact, bool>>? TryBuildCollectionFilterExpression(ParameterExpression contactParam, SegmentRule rule)
+    {
+        var segments = rule.FieldId.Split('.');
+        if (segments.Length < 2)
+        {
+            return null;
+        }
+
+        if (!ContactCollectionNavigations.TryGetValue(segments[0], out var navInfo))
+        {
+            return null;
+        }
+
+        var expression = BuildCollectionAnyExpression(
+            contactParam,
+            navInfo.PropertyName,
+            navInfo.ElementType,
+            segments.Skip(1).ToArray(),
+            rule);
+
+        return expression == null ? null : Expression.Lambda<Func<Contact, bool>>(expression, contactParam);
+    }
+
+    /// <summary>
+    /// Recursively builds nested Any() expressions for collection navigation paths.
+    /// E.g., for "orders.orderItems.productName" with Contains("Automation"):
+    ///   c.Orders.Any(o =&gt; o.OrderItems.Any(oi =&gt; oi.ProductName.ToLower().Contains("automation"))).
+    /// </summary>
+    private Expression? BuildCollectionAnyExpression(
+        Expression parentExpression,
+        string collectionPropertyName,
+        Type elementType,
+        string[] remainingPath,
+        SegmentRule rule)
+    {
+        if (remainingPath.Length == 0)
+        {
+            return null;
+        }
+
+        var innerParam = Expression.Parameter(elementType, elementType.Name[0..1].ToLower());
+        Expression? innerPredicate;
+
+        if (remainingPath.Length == 1)
+        {
+            // Leaf property — apply the operator
+            var leafPropertyName = GetMappedPropertyName(elementType, remainingPath[0]);
+            if (leafPropertyName == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                var leafProperty = Expression.Property(innerParam, leafPropertyName);
+                innerPredicate = ApplyOperator(leafProperty, rule);
+            }
+            catch (ArgumentException)
+            {
+                return null;
+            }
+        }
+        else
+        {
+            // Check for sub-collection navigation (e.g., orderItems on Order)
+            if (SubCollectionNavigations.TryGetValue(elementType.Name, out var subNavs) &&
+                subNavs.TryGetValue(remainingPath[0], out var subNavInfo))
+            {
+                innerPredicate = BuildCollectionAnyExpression(
+                    innerParam,
+                    subNavInfo.PropertyName,
+                    subNavInfo.ElementType,
+                    remainingPath.Skip(1).ToArray(),
+                    rule);
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        if (innerPredicate == null)
+        {
+            return null;
+        }
+
+        var innerLambda = Expression.Lambda(innerPredicate, innerParam);
+
+        var collectionProperty = Expression.Property(parentExpression, collectionPropertyName);
+
+        var anyMethod = typeof(Enumerable).GetMethods()
+            .First(m => m.Name == "Any" && m.GetParameters().Length == 2)
+            .MakeGenericMethod(elementType);
+
+        return Expression.Call(anyMethod, collectionProperty, innerLambda);
+    }
+
+    /// <summary>
+    /// Maps camelCase field IDs to PascalCase property names for collection entity types.
+    /// </summary>
+    private string? GetMappedPropertyName(Type entityType, string fieldId)
+    {
+        if (entityType == typeof(Order))
+        {
+            return fieldId switch
+            {
+                "refNo" => "RefNo",
+                "orderNumber" => "OrderNumber",
+                "total" => "Total",
+                "currency" => "Currency",
+                "status" => "Status",
+                "currencyTotal" => "CurrencyTotal",
+                "quantity" => "Quantity",
+                "affiliateName" => "AffiliateName",
+                "commission" => "Commission",
+                "refund" => "Refund",
+                "testOrder" => "TestOrder",
+                "tags" => "Tags",
+                "createdAt" => "CreatedAt",
+                "contactId" => "ContactId",
+                _ => fieldId,
+            };
+        }
+
+        if (entityType == typeof(OrderItem))
+        {
+            return fieldId switch
+            {
+                "productName" => "ProductName",
+                "total" => "Total",
+                "currency" => "Currency",
+                "currencyTotal" => "CurrencyTotal",
+                "quantity" => "Quantity",
+                "unitPrice" => "UnitPrice",
+                "lineNumber" => "LineNumber",
+                "orderId" => "OrderId",
+                _ => fieldId,
+            };
+        }
+
+        if (entityType == typeof(Deal))
+        {
+            return fieldId switch
+            {
+                "dealPipelineId" => "DealPipelineId",
+                "dealPipelineStageId" => "DealPipelineStageId",
+                "dealValue" => "DealValue",
+                "dealCurrency" => "DealCurrency",
+                "expectedCloseDate" => "ExpectedCloseDate",
+                "actualCloseDate" => "ActualCloseDate",
+                "tags" => "Tags",
+                "createdAt" => "CreatedAt",
+                "accountId" => "AccountId",
+                _ => fieldId,
+            };
+        }
+
+        return fieldId;
     }
 
     private Expression? GetPropertyExpression(ParameterExpression parameter, string fieldId)
@@ -422,6 +689,7 @@ public class SegmentService : ISegmentService
                     {
                         "account" => BuildAccountPropertyExpression(parameter, targetProperty),
                         "domain" => BuildDomainPropertyExpression(parameter, targetProperty),
+                        "unsubscribe" => BuildUnsubscribePropertyExpression(parameter, targetProperty),
                         _ => null
                     };
                 }
@@ -522,6 +790,26 @@ public class SegmentService : ISegmentService
             // Build expression: contact.Domain.PropertyName
             var domainNavigation = Expression.Property(parameter, "Domain");
             return Expression.Property(domainNavigation, domainPropertyName);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    private Expression? BuildUnsubscribePropertyExpression(ParameterExpression parameter, string propertyName)
+    {
+        try
+        {
+            var unsubscribePropertyName = propertyName switch
+            {
+                "reason" => "Reason",
+                "contactId" => "ContactId",
+                _ => propertyName,
+            };
+
+            var unsubscribeNavigation = Expression.Property(parameter, "Unsubscribe");
+            return Expression.Property(unsubscribeNavigation, unsubscribePropertyName);
         }
         catch (ArgumentException)
         {
@@ -767,6 +1055,19 @@ public class SegmentService : ISegmentService
             if (targetType == typeof(bool) || targetType == typeof(bool?))
             {
                 return Convert.ToBoolean(value);
+            }
+
+            // Handle enum types (e.g., OrderStatus)
+            var underlyingType = Nullable.GetUnderlyingType(targetType);
+            if (targetType.IsEnum || (underlyingType?.IsEnum ?? false))
+            {
+                var enumType = underlyingType ?? targetType;
+                if (value is string strValue && Enum.TryParse(enumType, strValue, ignoreCase: true, out var enumResult))
+                {
+                    return enumResult;
+                }
+
+                return Enum.ToObject(enumType, Convert.ToInt32(value));
             }
 
             return Convert.ChangeType(value, targetType);
