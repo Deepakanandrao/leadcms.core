@@ -41,6 +41,36 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
     }
 
     /// <summary>
+    /// Create or update a setting. Enforces uniqueness on (Key, UserId).
+    /// If a setting with the same Key and UserId already exists, it is updated instead.
+    /// </summary>
+    /// <param name="value">Setting to create or update.</param>
+    /// <returns>Created or updated setting.</returns>
+    [HttpPost]
+    [ProducesResponseType(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public override async Task<ActionResult<SettingDetailsDto>> Post([FromBody] SettingCreateDto value)
+    {
+        if (string.IsNullOrEmpty(value.UserId))
+        {
+            await settingService.SetSystemSettingAsync(value.Key, value.Value);
+        }
+        else
+        {
+            await settingService.SetUserSettingAsync(value.Key, value.Value, value.UserId);
+        }
+
+        var setting = await dbContext.Settings!
+            .Where(s => s.Key == value.Key && s.UserId == (string.IsNullOrEmpty(value.UserId) ? null : value.UserId))
+            .FirstOrDefaultAsync();
+
+        var settingDto = mapper.Map<SettingDetailsDto>(setting);
+        return CreatedAtAction(nameof(GetOne), new { id = setting!.Id }, settingDto);
+    }
+
+    /// <summary>
     /// Get all system-level settings enriched with default values from appsettings (Admin only).
     /// Database settings take precedence over appsettings defaults.
     /// </summary>

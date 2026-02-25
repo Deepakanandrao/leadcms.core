@@ -129,12 +129,14 @@ public class SettingService : ISettingService
         // Get all system settings
         var systemSettings = await dbContext.Settings!
             .Where(s => s.UserId == null)
-            .ToDictionaryAsync(s => s.Key, s => s.Value);
+            .GroupBy(s => s.Key)
+            .ToDictionaryAsync(g => g.Key, g => g.First().Value);
 
         // Get all user settings
         var userSettings = await dbContext.Settings!
             .Where(s => s.UserId == userId)
-            .ToDictionaryAsync(s => s.Key, s => s.Value);
+            .GroupBy(s => s.Key)
+            .ToDictionaryAsync(g => g.Key, g => g.First().Value);
 
         // Merge them, with user settings overriding system settings
         var effectiveSettings = new Dictionary<string, string?>(systemSettings);
@@ -154,7 +156,8 @@ public class SettingService : ISettingService
         // Get system-level settings for the keys
         var systemSettings = await dbContext.Settings!
             .Where(s => keyList.Contains(s.Key) && s.UserId == null)
-            .ToDictionaryAsync(s => s.Key, s => s.Value);
+            .GroupBy(s => s.Key)
+            .ToDictionaryAsync(g => g.Key, g => g.First().Value);
 
         foreach (var kvp in systemSettings)
         {
@@ -166,7 +169,8 @@ public class SettingService : ISettingService
         {
             var userSettings = await dbContext.Settings!
                 .Where(s => keyList.Contains(s.Key) && s.UserId == userId)
-                .ToDictionaryAsync(s => s.Key, s => s.Value);
+                .GroupBy(s => s.Key)
+                .ToDictionaryAsync(g => g.Key, g => g.First().Value);
 
             foreach (var kvp in userSettings)
             {

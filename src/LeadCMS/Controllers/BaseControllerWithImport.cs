@@ -2,7 +2,9 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.ComponentModel.DataAnnotations;
 using System.Linq.Expressions;
+using System.Reflection;
 using AutoMapper;
 using LeadCMS.Data;
 using LeadCMS.DataAnnotations;
@@ -450,6 +452,8 @@ public class BaseControllerWithImport<T, TC, TU, TD, TI> : BaseController<T, TC,
             for (var i = 0; i < compositePropertyNames.Length; i++)
             {
                 var value = importProperties[i]?.GetValue(importRecord);
+                var isRequired = entityProperties[i].GetCustomAttribute(typeof(RequiredAttribute)) != null;
+
                 if (value == null || value.ToString() == "0" || value.ToString() == string.Empty)
                 {
                     value = ResolveFKValueFromSurrogateKey(importRecord, compositePropertyNames[i], tRelatedMap, allRelatedMaps);
@@ -457,8 +461,15 @@ public class BaseControllerWithImport<T, TC, TU, TD, TI> : BaseController<T, TC,
 
                 if (value == null || value.ToString() == "0" || value.ToString() == string.Empty)
                 {
-                    allResolved = false;
-                    break;
+                    if (isRequired)
+                    {
+                        allResolved = false;
+                        break;
+                    }
+
+                    // For non-required (nullable) properties, null is a valid composite key value
+                    keyValues[i] = null;
+                    continue;
                 }
 
                 keyValues[i] = value;
@@ -511,12 +522,14 @@ public class BaseControllerWithImport<T, TC, TU, TD, TI> : BaseController<T, TC,
     private CompositeKey? BuildCompositeKeyForLookup(TI importRecord, RelatedObjectsMap relatedTObjectsMap, TypedRelatedObjectsMap allRelatedMaps)
     {
         var compositePropertyNames = relatedTObjectsMap.CompositeKeyPropertyNames!;
+        var entityProperties = compositePropertyNames.Select(n => typeof(T).GetProperty(n)!).ToArray();
         var keyValues = new object?[compositePropertyNames.Length];
 
         for (var i = 0; i < compositePropertyNames.Length; i++)
         {
             var prop = typeof(TI).GetProperty(compositePropertyNames[i]);
             var value = prop?.GetValue(importRecord);
+            var isRequired = entityProperties[i].GetCustomAttribute(typeof(RequiredAttribute)) != null;
 
             if (value == null || value.ToString() == "0" || value.ToString() == string.Empty)
             {
@@ -525,7 +538,14 @@ public class BaseControllerWithImport<T, TC, TU, TD, TI> : BaseController<T, TC,
 
             if (value == null || value.ToString() == "0" || value.ToString() == string.Empty)
             {
-                return null;
+                if (isRequired)
+                {
+                    return null;
+                }
+
+                // For non-required (nullable) properties, null is a valid composite key value
+                keyValues[i] = null;
+                continue;
             }
 
             keyValues[i] = value;

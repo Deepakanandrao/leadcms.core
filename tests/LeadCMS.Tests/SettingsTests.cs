@@ -3,6 +3,7 @@
 // </copyright>
 
 using LeadCMS.Constants;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace LeadCMS.Tests;
@@ -138,5 +139,162 @@ public class SettingsTests : BaseTestAutoLogin
 
         // Act & Assert
         await GetTest("/api/settings/system", HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Post_SystemSetting_TwiceWithSameKey_DoesNotCreateDuplicate()
+    {
+        // Arrange
+        var settingDto = new SettingCreateDto
+        {
+            Key = "Test.DuplicateCheck.System",
+            Value = "first-value",
+            UserId = null,
+        };
+
+        // Act - create the same system setting twice
+        await PostTest<SettingDetailsDto>("/api/settings", settingDto, HttpStatusCode.Created);
+
+        settingDto.Value = "second-value";
+        await PostTest<SettingDetailsDto>("/api/settings", settingDto, HttpStatusCode.Created);
+
+        // Assert - only one row should exist for this key with null UserId
+        using var scope = App.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<Data.PgDbContext>();
+
+        var count = await dbContext.Settings!
+            .CountAsync(s => s.Key == "Test.DuplicateCheck.System" && s.UserId == null);
+
+        Assert.Equal(1, count);
+
+        // The value should be the latest
+        var setting = await dbContext.Settings!
+            .FirstOrDefaultAsync(s => s.Key == "Test.DuplicateCheck.System" && s.UserId == null);
+        Assert.Equal("second-value", setting!.Value);
+    }
+
+    [Fact]
+    public async Task Post_UserSetting_TwiceWithSameKeyAndUserId_DoesNotCreateDuplicate()
+    {
+        // Arrange
+        var settingDto = new SettingCreateDto
+        {
+            Key = "Test.DuplicateCheck.User",
+            Value = "first-value",
+            UserId = "test-user-123",
+        };
+
+        // Act - create the same user setting twice
+        await PostTest<SettingDetailsDto>("/api/settings", settingDto, HttpStatusCode.Created);
+
+        settingDto.Value = "second-value";
+        await PostTest<SettingDetailsDto>("/api/settings", settingDto, HttpStatusCode.Created);
+
+        // Assert - only one row should exist for this key + userId pair
+        using var scope = App.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<Data.PgDbContext>();
+
+        var count = await dbContext.Settings!
+            .CountAsync(s => s.Key == "Test.DuplicateCheck.User" && s.UserId == "test-user-123");
+
+        Assert.Equal(1, count);
+
+        // The value should be the latest
+        var setting = await dbContext.Settings!
+            .FirstOrDefaultAsync(s => s.Key == "Test.DuplicateCheck.User" && s.UserId == "test-user-123");
+        Assert.Equal("second-value", setting!.Value);
+    }
+
+    [Fact]
+    public async Task Post_SameKeyDifferentUserId_CreatesSeparateSettings()
+    {
+        // Arrange - same key but different user IDs (including null for system)
+        var systemSetting = new SettingCreateDto
+        {
+            Key = "Test.DuplicateCheck.Mixed",
+            Value = "system-value",
+            UserId = null,
+        };
+
+        var userSetting = new SettingCreateDto
+        {
+            Key = "Test.DuplicateCheck.Mixed",
+            Value = "user-value",
+            UserId = "test-user-456",
+        };
+
+        // Act
+        await PostTest<SettingDetailsDto>("/api/settings", systemSetting, HttpStatusCode.Created);
+        await PostTest<SettingDetailsDto>("/api/settings", userSetting, HttpStatusCode.Created);
+
+        // Assert - two separate rows should exist (different UserId)
+        using var scope = App.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<Data.PgDbContext>();
+
+        var count = await dbContext.Settings!
+            .CountAsync(s => s.Key == "Test.DuplicateCheck.Mixed");
+
+        Assert.Equal(2, count);
+    }
+
+    [Fact]
+    public async Task PutSystemSetting_TwiceWithSameKey_DoesNotCreateDuplicate()
+    {
+        // Arrange & Act - set the same system setting twice via PUT
+        var url1 = $"/api/settings/system/{Uri.EscapeDataString("Test.DuplicateCheck.Put")}?value=first";
+        var url2 = $"/api/settings/system/{Uri.EscapeDataString("Test.DuplicateCheck.Put")}?value=second";
+
+        await Request(HttpMethod.Put, url1, null);
+        await Request(HttpMethod.Put, url2, null);
+
+        // Assert
+        using var scope = App.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<Data.PgDbContext>();
+
+        var count = await dbContext.Settings!
+            .CountAsync(s => s.Key == "Test.DuplicateCheck.Put" && s.UserId == null);
+
+        Assert.Equal(1, count);
+
+        var setting = await dbContext.Settings!
+            .FirstOrDefaultAsync(s => s.Key == "Test.DuplicateCheck.Put" && s.UserId == null);
+        Assert.Equal("second", setting!.Value);
+    }
+
+    [Fact]
+    public async Task Import_SystemSettings_DoesNotCreateDuplicates()
+    {
+        // Arrange - first create a system setting
+        var settingDto = new SettingCreateDto
+        {
+            Key = "Test.DuplicateCheck.Import",
+            Value = "original-value",
+            UserId = null,
+        };
+
+        await PostTest<SettingDetailsDto>("/api/settings", settingDto, HttpStatusCode.Created);
+
+        // Act - import settings with the same key and null userId
+        var importRecords = new List<SettingImportDto>
+        {
+            new SettingImportDto
+            {
+                Key = "Test.DuplicateCheck.Import",
+                Value = "imported-value",
+                UserId = null,
+            },
+        };
+
+        var response = await Request(HttpMethod.Post, "/api/settings/import", importRecords);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Assert - only one row should exist
+        using var scope = App.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<Data.PgDbContext>();
+
+        var count = await dbContext.Settings!
+            .CountAsync(s => s.Key == "Test.DuplicateCheck.Import" && s.UserId == null);
+
+        Assert.Equal(1, count);
     }
 }
