@@ -21,12 +21,13 @@ namespace LeadCMS.Plugin.Site.Controllers;
 [Route("api/contact-us")]
 public class ContactUsController : Controller
 {
-    private readonly IEmailFromTemplateService emailService;
-    private readonly PluginSettings? pluginSettings;
-    private readonly LeadCmsSiteDbContext dbContext;
-    private readonly IContactService contactService;
-    private readonly ILeadNotificationService leadNotificationService;
-    private readonly IHttpContextHelper? httpContextHelper;
+    protected readonly IEmailFromTemplateService emailService;
+    protected readonly PluginSettings? pluginSettings;
+    protected readonly LeadCmsSiteDbContext dbContext;
+    protected readonly IContactService contactService;
+    protected readonly ILeadNotificationService leadNotificationService;
+    protected readonly ILeadNotificationMessageBuilder leadNotificationMessageBuilder;
+    protected readonly IHttpContextHelper? httpContextHelper;
 
     public ContactUsController(
         IEmailFromTemplateService emailService,
@@ -34,6 +35,7 @@ public class ContactUsController : Controller
         LeadCmsSiteDbContext dbContext,
         IContactService contactService,
         ILeadNotificationService leadNotificationService,
+        ILeadNotificationMessageBuilder leadNotificationMessageBuilder,
         IHttpContextHelper httpContextHelper)
     {
         this.emailService = emailService;
@@ -41,6 +43,7 @@ public class ContactUsController : Controller
         this.contactService = contactService;
         this.contactService.SetDBContext(dbContext);
         this.leadNotificationService = leadNotificationService;
+        this.leadNotificationMessageBuilder = leadNotificationMessageBuilder;
         this.httpContextHelper = httpContextHelper;
         var settings = configuration.Get<PluginSettings>();
 
@@ -55,7 +58,7 @@ public class ContactUsController : Controller
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult> Post([FromForm] ContactUsDto contactUsDto)
+    public virtual async Task<ActionResult> Post([FromForm] ContactUsDto contactUsDto)
     {
         if (contactUsDto.ExtraData.Count == 0 && Request.HasFormContentType && Request.Form.TryGetValue("ExtraData", out var extraDataValue))
         {
@@ -139,8 +142,34 @@ public class ContactUsController : Controller
         // Save contact changes
         await dbContext.SaveChangesAsync();
 
-        // Build lead notification info
-        var leadInfo = new LeadNotificationInfo
+        var leadInfo = BuildLeadNotificationInfo(contactUsDto, attachmentFiles, contact.Id);
+
+        // Send lead notifications to all enabled channels (email, Telegram, Slack)
+        await leadNotificationService.SendLeadNotificationAsync(leadInfo);
+
+        // Send acknowledgment to the user only if the email is present and valid
+        if (!string.IsNullOrWhiteSpace(contactUsDto.Email) && MailboxAddress.TryParse(contactUsDto.Email, out _))
+        {
+            var acknowledgmentTemplate = string.IsNullOrWhiteSpace(contactUsDto.AcknowledgmentType)
+                ? "Acknowledgment"
+                : contactUsDto.AcknowledgmentType;
+
+            // Use same template arguments as notification email
+            var templateArgs = leadNotificationMessageBuilder.BuildEmailTemplateArguments(leadInfo);
+
+            await emailService.SendToContactAsync(
+                contact.Id,
+                acknowledgmentTemplate,
+                templateArgs,
+                null);
+        }
+
+        return Ok(contactUsDto);
+    }
+
+    protected virtual LeadNotificationInfo BuildLeadNotificationInfo(ContactUsDto contactUsDto, List<AttachmentDto> attachmentFiles, int contactId)
+    {
+        return new LeadNotificationInfo
         {
             Title = string.IsNullOrWhiteSpace(contactUsDto.Title)
                 ? "New contact form submission"
@@ -159,30 +188,8 @@ public class ContactUsController : Controller
             TimeZoneOffset = contactUsDto.TimeZoneOffset,
             IpAddress = httpContextHelper?.IpAddress,
             UserAgent = httpContextHelper?.UserAgent,
-            ContactId = contact.Id,
+            ContactId = contactId,
         };
-
-        // Send lead notifications to all enabled channels (email, Telegram, Slack)
-        await leadNotificationService.SendLeadNotificationAsync(leadInfo);
-
-        // Send acknowledgment to the user only if the email is present and valid
-        if (!string.IsNullOrWhiteSpace(contactUsDto.Email) && MailboxAddress.TryParse(contactUsDto.Email, out _))
-        {
-            var acknowledgmentTemplate = string.IsNullOrWhiteSpace(contactUsDto.AcknowledgmentType)
-                ? "Acknowledgment"
-                : contactUsDto.AcknowledgmentType;
-
-            // Use same template arguments as notification email
-            var templateArgs = LeadNotificationService.BuildEmailTemplateArguments(leadInfo);
-
-            await emailService.SendToContactAsync(
-                contact.Id,
-                acknowledgmentTemplate,
-                templateArgs,
-                null);
-        }
-
-        return Ok(contactUsDto);
     }
 }
 

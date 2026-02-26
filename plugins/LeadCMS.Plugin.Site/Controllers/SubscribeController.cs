@@ -5,6 +5,7 @@
 using LeadCMS.Entities;
 using LeadCMS.Exceptions;
 using LeadCMS.Interfaces;
+using LeadCMS.Plugin.Site.Configuration;
 using LeadCMS.Plugin.Site.Data;
 using LeadCMS.Plugin.Site.DTOs;
 using LeadCMS.Plugin.Site.Services;
@@ -18,26 +19,29 @@ namespace LeadCMS.Plugin.Site.Controllers;
 [AllowAnonymous]
 public class SubscribesController : Controller
 {
-    private const string DefaultGroup = "SubscriberNewsletters";
+    protected static readonly string DefaultGroup = "SubscriberNewsletters";
 
-    private readonly LeadCmsSiteDbContext dbContext;
-    private readonly IContactService contactService;
-    private readonly IHttpContextHelper httpContextHelper;
-    private readonly IEmailFromTemplateService emailService;
-    private readonly ISubscriptionTokenService tokenService;
+    protected readonly LeadCmsSiteDbContext dbContext;
+    protected readonly IContactService contactService;
+    protected readonly IHttpContextHelper httpContextHelper;
+    protected readonly IEmailFromTemplateService emailService;
+    protected readonly ISubscriptionTokenService tokenService;
+    protected readonly ISitePluginSettingsAccessor siteSettingsAccessor;
 
     public SubscribesController(
         LeadCmsSiteDbContext dbContext,
         IContactService contactService,
         IHttpContextHelper httpContextHelper,
         IEmailFromTemplateService emailService,
-        ISubscriptionTokenService tokenService)
+        ISubscriptionTokenService tokenService,
+        ISitePluginSettingsAccessor siteSettingsAccessor)
     {
         this.dbContext = dbContext;
         this.contactService = contactService;
         this.httpContextHelper = httpContextHelper;
         this.emailService = emailService;
         this.tokenService = tokenService;
+        this.siteSettingsAccessor = siteSettingsAccessor;
         this.contactService.SetDBContext(dbContext);
     }
 
@@ -46,7 +50,7 @@ public class SubscribesController : Controller
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult> Subscribe([FromBody] SubscribeDto subscribeDto)
+    public virtual async Task<ActionResult> Subscribe([FromBody] SubscribeDto subscribeDto)
     {
         var group = string.IsNullOrWhiteSpace(subscribeDto.Group) ? DefaultGroup : subscribeDto.Group;
 
@@ -56,9 +60,7 @@ public class SubscribesController : Controller
             subscribeDto.Language,
             subscribeDto.TimeZoneOffset);
 
-        var confirmationUrl = SitePlugin.Settings.ConfirmationUrlTemplate
-            .Replace("{siteUrl}", SitePlugin.Settings.SiteUrl.TrimEnd('/'))
-            .Replace("{token}", Uri.EscapeDataString(token));
+        var confirmationUrl = BuildConfirmationUrl(token);
 
         await emailService.SendAsync(
             "Subscription_Email_Confirmation",
@@ -79,7 +81,7 @@ public class SubscribesController : Controller
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult> ConfirmSubscription([FromBody] ConfirmSubscribeDto confirmDto)
+    public virtual async Task<ActionResult> ConfirmSubscription([FromBody] ConfirmSubscribeDto confirmDto)
     {
         var payload = tokenService.Validate(confirmDto.Token);
         if (payload == null)
@@ -110,7 +112,7 @@ public class SubscribesController : Controller
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult> Unsubscribe([FromBody] UnsibscribeDto subscribeDto)
+    public virtual async Task<ActionResult> Unsubscribe([FromBody] UnsibscribeDto subscribeDto)
     {
         var contact = await FindOrThrowNotFound(subscribeDto.Email);
 
@@ -121,7 +123,7 @@ public class SubscribesController : Controller
         return Ok();
     }
 
-    protected async Task<Contact> FindOrThrowNotFound(string email)
+    protected virtual async Task<Contact> FindOrThrowNotFound(string email)
     {
         var existingEntity = await (from p in dbContext.Contacts
                                     where p.Email == email
@@ -133,5 +135,13 @@ public class SubscribesController : Controller
         }
 
         return existingEntity;
+    }
+
+    protected virtual string BuildConfirmationUrl(string token)
+    {
+        var settings = siteSettingsAccessor.Settings;
+        return settings.ConfirmationUrlTemplate
+            .Replace("{siteUrl}", settings.SiteUrl.TrimEnd('/'))
+            .Replace("{token}", Uri.EscapeDataString(token));
     }
 }

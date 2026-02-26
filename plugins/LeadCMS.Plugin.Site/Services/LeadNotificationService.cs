@@ -3,7 +3,6 @@
 // </copyright>
 
 using System.Net.Http.Json;
-using System.Text;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
@@ -26,16 +25,19 @@ public class LeadNotificationService : ILeadNotificationService
     private readonly IEmailFromTemplateService emailService;
     private readonly ISettingService settingService;
     private readonly PluginSettings pluginSettings;
+    private readonly ILeadNotificationMessageBuilder leadNotificationMessageBuilder;
     private readonly ILogger<LeadNotificationService> logger;
 
     public LeadNotificationService(
         IEmailFromTemplateService emailService,
         ISettingService settingService,
         IConfiguration configuration,
+        ILeadNotificationMessageBuilder leadNotificationMessageBuilder,
         ILogger<LeadNotificationService> logger)
     {
         this.emailService = emailService;
         this.settingService = settingService;
+        this.leadNotificationMessageBuilder = leadNotificationMessageBuilder;
         this.logger = logger;
 
         var settings = configuration.Get<PluginSettings>();
@@ -49,51 +51,7 @@ public class LeadNotificationService : ILeadNotificationService
     /// <returns>Dictionary of template arguments.</returns>
     public static Dictionary<string, object> BuildEmailTemplateArguments(LeadNotificationInfo leadInfo)
     {
-        var templateArgs = new Dictionary<string, object>
-        {
-            { "email", leadInfo.Email },
-            { "fromEmail", leadInfo.Email },
-            { "firstName", leadInfo.FirstName ?? string.Empty },
-            { "lastName", leadInfo.LastName ?? string.Empty },
-            { "company", leadInfo.Company ?? string.Empty },
-            { "subject", leadInfo.Subject ?? string.Empty },
-            { "message", leadInfo.Message ?? string.Empty },
-            { "title", leadInfo.Title ?? string.Empty },
-        };
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.Phone))
-        {
-            templateArgs.Add("phone", leadInfo.Phone);
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.PageUrl))
-        {
-            templateArgs.Add("pageUrl", leadInfo.PageUrl);
-        }
-
-        var timeZoneText = FormatTimeZoneOffset(leadInfo.TimeZoneOffset);
-        if (!string.IsNullOrWhiteSpace(timeZoneText))
-        {
-            templateArgs.Add("timezone", timeZoneText);
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.IpAddress))
-        {
-            templateArgs.Add("ipAddress", leadInfo.IpAddress);
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.UserAgent))
-        {
-            templateArgs.Add("userAgent", leadInfo.UserAgent);
-        }
-
-        foreach (var item in leadInfo.ExtraData)
-        {
-            templateArgs.Add($"{item.Key}", item.Value);
-            templateArgs.Add($"extraData[{item.Key}]", item.Value);
-        }
-
-        return templateArgs;
+        return new DefaultLeadNotificationMessageBuilder().BuildEmailTemplateArguments(leadInfo);
     }
 
     /// <inheritdoc/>
@@ -139,87 +97,6 @@ public class LeadNotificationService : ILeadNotificationService
         return MailboxAddress.TryParse(email, out _);
     }
 
-    private static string BuildTextMessage(LeadNotificationInfo leadInfo)
-    {
-        var sb = new StringBuilder();
-
-        // Use provided title or generate a sensible default
-        var title = !string.IsNullOrWhiteSpace(leadInfo.Title)
-            ? leadInfo.Title
-            : "New lead captured";
-
-        sb.AppendLine($"📩 {title}");
-        sb.AppendLine($"✔️ Name: {leadInfo.FullName}");
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.Phone))
-        {
-            sb.AppendLine($"✔️ Phone: {leadInfo.Phone}");
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.Company))
-        {
-            sb.AppendLine($"✔️ Company: {leadInfo.Company}");
-        }
-
-        sb.AppendLine($"✔️ Email: {leadInfo.Email}");
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.PageUrl))
-        {
-            sb.AppendLine($"✔️ Page URL: {leadInfo.PageUrl}");
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.Subject))
-        {
-            sb.AppendLine($"✔️ Subject: {leadInfo.Subject}");
-        }
-
-        var timeZoneText = FormatTimeZoneOffset(leadInfo.TimeZoneOffset);
-        if (!string.IsNullOrWhiteSpace(timeZoneText))
-        {
-            sb.AppendLine($"✔️ Timezone: {timeZoneText}");
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.Language))
-        {
-            sb.AppendLine($"✔️ Language: {leadInfo.Language}");
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.IpAddress))
-        {
-            sb.AppendLine($"✔️ IP: {leadInfo.IpAddress}");
-        }
-
-        // if (!string.IsNullOrWhiteSpace(leadInfo.UserAgent))
-        // {
-        //     sb.AppendLine($"✔️ User-Agent: {leadInfo.UserAgent}");
-        // }
-        // Add any extra data
-        foreach (var item in leadInfo.ExtraData)
-        {
-            sb.AppendLine($"✔️ {item.Key}: {item.Value}");
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.Message))
-        {
-            sb.AppendLine($"✔️ Message: {leadInfo.Message}");
-        }
-
-        return sb.ToString().TrimEnd(',', ' ', '\n', '\r');
-    }
-
-    private static string? FormatTimeZoneOffset(int? offsetMinutes)
-    {
-        if (!offsetMinutes.HasValue)
-        {
-            return null;
-        }
-
-        var offset = TimeSpan.FromMinutes(offsetMinutes.Value);
-        var sign = offset >= TimeSpan.Zero ? "+" : "-";
-        var absolute = offset.Duration();
-        return $"UTC{sign}{absolute:hh\\:mm}";
-    }
-
     private static string TruncateMessage(string message, int maxLength)
     {
         if (string.IsNullOrEmpty(message) || maxLength <= 0)
@@ -259,7 +136,7 @@ public class LeadNotificationService : ILeadNotificationService
                 return;
             }
 
-            var templateArgs = BuildEmailTemplateArguments(leadInfo);
+            var templateArgs = leadNotificationMessageBuilder.BuildEmailTemplateArguments(leadInfo);
 
             var templateName = string.IsNullOrWhiteSpace(leadInfo.NotificationType)
                 ? "Contact_Us"
@@ -295,7 +172,7 @@ public class LeadNotificationService : ILeadNotificationService
 
         try
         {
-            var message = BuildTextMessage(leadInfo);
+            var message = leadNotificationMessageBuilder.BuildTextMessage(leadInfo);
             message = TruncateMessage(message, TelegramMessageMaxLength);
 
             using var httpClient = new HttpClient();
@@ -367,7 +244,7 @@ public class LeadNotificationService : ILeadNotificationService
 
         try
         {
-            var message = BuildTextMessage(leadInfo);
+            var message = leadNotificationMessageBuilder.BuildTextMessage(leadInfo);
             message = TruncateMessage(message, SlackMessageMaxLength);
 
             var payload = new SlackMessagePayload

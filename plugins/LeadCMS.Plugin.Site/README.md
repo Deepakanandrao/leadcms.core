@@ -136,6 +136,53 @@ When a lead is captured, the notification message includes all available lead in
 
 This plugin provides the `Site` capability, which can be queried via the capabilities API. When this capability is present, clients can display and configure the Lead Capture settings.
 
+## Reuse in Custom Plugins
+
+The Site plugin now exposes reusable APIs so your custom plugin can reference it as a package and pick only required pieces.
+
+### Reuse DTOs
+
+Use DTOs from `LeadCMS.Plugin.Site.DTOs` directly (for example `LeadNotificationInfo`, `ContactUsDto`, `SubscribeDto`).
+
+### Reuse and Customize Lead Notifications
+
+`LeadNotificationService` now depends on `ILeadNotificationMessageBuilder`.
+
+- Default implementation: `DefaultLeadNotificationMessageBuilder`
+- Override message format (Telegram/Slack/email args): register your own `ILeadNotificationMessageBuilder`
+
+Example registration:
+
+```csharp
+services.AddSiteLeadNotificationServices();
+services.AddScoped<ILeadNotificationMessageBuilder, MyCustomLeadNotificationMessageBuilder>();
+```
+
+### Reuse Only Selected Setting Definitions
+
+Use `LeadCaptureSettingDefinitions`:
+
+- `LeadCaptureSettingDefinitions.All`
+- `LeadCaptureSettingDefinitions.ForKeys(...)`
+- `LeadCaptureSettingDefinitions.TryGet(...)`
+
+This allows custom `ISettingsProvider` implementations to register only a subset of Site lead-capture settings.
+
+### Reuse Service Registrations Selectively
+
+Service registration helpers:
+
+- `AddSitePluginSettingsAccessor(configuration)`
+- `AddSiteLeadNotificationServices()`
+- `AddSiteSubscriptionTokenService()`
+- `AddSiteCoreServices(configuration)`
+
+### Reuse / Inherit Controllers
+
+`ContactUsController` and `SubscribesController` actions are virtual and key hooks are protected virtual, so custom plugins can inherit and override behavior while reusing base flow.
+
+`SubscribesController` no longer depends on static `SitePlugin.Settings`; it uses `ISitePluginSettingsAccessor`, which can be replaced in custom plugins.
+
 ## API Endpoints
 
 ### Contact Form Processing
