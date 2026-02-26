@@ -55,8 +55,8 @@ public class SitePlugin : IPlugin, ICapabilityProvider, ISettingsProvider
         {
             Key = LeadCaptureSettingKeys.EmailRecipients,
             DefaultValue = "[]",
-            Type = "json",
-            Description = "JSON array of email addresses to send lead notifications to.",
+            Type = "email[]",
+            Description = "Array of email addresses to send lead notifications to.",
         };
         yield return new SettingDefinition
         {

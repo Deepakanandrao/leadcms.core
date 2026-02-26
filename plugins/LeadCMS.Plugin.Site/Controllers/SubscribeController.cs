@@ -5,7 +5,6 @@
 using LeadCMS.Entities;
 using LeadCMS.Exceptions;
 using LeadCMS.Interfaces;
-using LeadCMS.Plugin.Site.Configuration;
 using LeadCMS.Plugin.Site.Data;
 using LeadCMS.Plugin.Site.DTOs;
 using LeadCMS.Plugin.Site.Services;

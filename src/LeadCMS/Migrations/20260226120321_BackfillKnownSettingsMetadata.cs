@@ -45,7 +45,7 @@ namespace LeadCMS.Migrations
                 ("AI.SiteProfile.BlogCover.Instructions", false, "string", "Additional instructions for AI-generated blog cover images."),
                 ("AI.SiteProfile.EmailTemplate.Instructions", false, "string", "Additional instructions for AI-generated email templates."),
                 ("LeadCapture.Email.Enabled", false, "bool", "Whether email notifications are enabled for lead capture."),
-                ("LeadCapture.Email.Recipients", false, "json", "JSON array of email addresses to send lead notifications to."),
+                ("LeadCapture.Email.Recipients", false, "email[]", "Array of email addresses to send lead notifications to."),
                 ("LeadCapture.Telegram.Enabled", false, "bool", "Whether Telegram notifications are enabled for lead capture."),
                 ("LeadCapture.Telegram.BotId", true, "string", "The Telegram bot ID for sending lead notifications."),
                 ("LeadCapture.Telegram.ChatId", true, "string", "The Telegram chat ID to send lead notifications to."),

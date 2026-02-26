@@ -70,7 +70,7 @@ public static class KnownSettingMetadata
         new(AiSettingKeys.EmailTemplateInstructions, false, "string", "Additional instructions for AI-generated email templates."),
 
         new("LeadCapture.Email.Enabled", false, "bool", "Whether email notifications are enabled for lead capture.", "false"),
-        new("LeadCapture.Email.Recipients", false, "json", "JSON array of email addresses to send lead notifications to.", "[]"),
+        new("LeadCapture.Email.Recipients", false, "email[]", "Array of email addresses to send lead notifications to.", "[]"),
         new("LeadCapture.Telegram.Enabled", false, "bool", "Whether Telegram notifications are enabled for lead capture.", "false"),
         new("LeadCapture.Telegram.BotId", true, "string", "The Telegram bot ID for sending lead notifications.", string.Empty),
         new("LeadCapture.Telegram.ChatId", true, "string", "The Telegram chat ID to send lead notifications to.", string.Empty),
