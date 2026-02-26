@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using LeadCMS.Constants;
 using LeadCMS.Interfaces;
 
 namespace LeadCMS.Tests.Environment;
@@ -19,28 +20,28 @@ public class TestPluginSettingsProvider : ISettingsProvider
         {
             Key = "LeadCapture.Email.Enabled",
             DefaultValue = "false",
-            Type = "bool",
+            Type = SettingValueTypes.Bool,
             Description = "Whether email notifications are enabled for lead capture.",
         };
         yield return new SettingDefinition
         {
             Key = "LeadCapture.Email.Recipients",
             DefaultValue = "[]",
-            Type = "json",
-            Description = "JSON array of email addresses to send lead notifications to.",
+            Type = SettingValueTypes.EmailArray,
+            Description = "Array of email addresses to send lead notifications to.",
         };
         yield return new SettingDefinition
         {
             Key = "LeadCapture.Telegram.Enabled",
             DefaultValue = "false",
-            Type = "bool",
+            Type = SettingValueTypes.Bool,
             Description = "Whether Telegram notifications are enabled for lead capture.",
         };
         yield return new SettingDefinition
         {
             Key = "LeadCapture.Telegram.BotId",
             DefaultValue = string.Empty,
-            Type = "string",
+            Type = SettingValueTypes.Text,
             Required = true,
             Description = "The Telegram bot ID for sending lead notifications.",
         };
@@ -48,7 +49,7 @@ public class TestPluginSettingsProvider : ISettingsProvider
         {
             Key = "LeadCapture.Telegram.ChatId",
             DefaultValue = string.Empty,
-            Type = "string",
+            Type = SettingValueTypes.Text,
             Required = true,
             Description = "The Telegram chat ID to send lead notifications to.",
         };
@@ -56,14 +57,14 @@ public class TestPluginSettingsProvider : ISettingsProvider
         {
             Key = "LeadCapture.Slack.Enabled",
             DefaultValue = "false",
-            Type = "bool",
+            Type = SettingValueTypes.Bool,
             Description = "Whether Slack notifications are enabled for lead capture.",
         };
         yield return new SettingDefinition
         {
             Key = "LeadCapture.Slack.WebhookUrl",
             DefaultValue = string.Empty,
-            Type = "string",
+            Type = SettingValueTypes.Text,
             Required = true,
             Description = "The Slack incoming webhook URL for sending lead notifications.",
         };

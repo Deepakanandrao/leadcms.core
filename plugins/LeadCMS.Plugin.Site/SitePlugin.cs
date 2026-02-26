@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using LeadCMS.Constants;
 using LeadCMS.Data;
 using LeadCMS.Interfaces;
 using LeadCMS.Plugin.Site.Configuration;
@@ -48,28 +49,28 @@ public class SitePlugin : IPlugin, ICapabilityProvider, ISettingsProvider
         {
             Key = LeadCaptureSettingKeys.EmailEnabled,
             DefaultValue = "false",
-            Type = "bool",
+            Type = SettingValueTypes.Bool,
             Description = "Whether email notifications are enabled for lead capture.",
         };
         yield return new SettingDefinition
         {
             Key = LeadCaptureSettingKeys.EmailRecipients,
             DefaultValue = "[]",
-            Type = "email[]",
+            Type = SettingValueTypes.EmailArray,
             Description = "Array of email addresses to send lead notifications to.",
         };
         yield return new SettingDefinition
         {
             Key = LeadCaptureSettingKeys.TelegramEnabled,
             DefaultValue = "false",
-            Type = "bool",
+            Type = SettingValueTypes.Bool,
             Description = "Whether Telegram notifications are enabled for lead capture.",
         };
         yield return new SettingDefinition
         {
             Key = LeadCaptureSettingKeys.TelegramBotId,
             DefaultValue = string.Empty,
-            Type = "string",
+            Type = SettingValueTypes.Text,
             Required = true,
             Description = "The Telegram bot ID for sending lead notifications.",
         };
@@ -77,7 +78,7 @@ public class SitePlugin : IPlugin, ICapabilityProvider, ISettingsProvider
         {
             Key = LeadCaptureSettingKeys.TelegramChatId,
             DefaultValue = string.Empty,
-            Type = "string",
+            Type = SettingValueTypes.Text,
             Required = true,
             Description = "The Telegram chat ID to send lead notifications to.",
         };
@@ -85,14 +86,14 @@ public class SitePlugin : IPlugin, ICapabilityProvider, ISettingsProvider
         {
             Key = LeadCaptureSettingKeys.SlackEnabled,
             DefaultValue = "false",
-            Type = "bool",
+            Type = SettingValueTypes.Bool,
             Description = "Whether Slack notifications are enabled for lead capture.",
         };
         yield return new SettingDefinition
         {
             Key = LeadCaptureSettingKeys.SlackWebhookUrl,
             DefaultValue = string.Empty,
-            Type = "string",
+            Type = SettingValueTypes.Text,
             Required = true,
             Description = "The Slack incoming webhook URL for sending lead notifications.",
         };

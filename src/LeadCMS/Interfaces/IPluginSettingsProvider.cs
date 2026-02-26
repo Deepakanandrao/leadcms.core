@@ -2,6 +2,8 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using LeadCMS.Constants;
+
 namespace LeadCMS.Interfaces;
 
 /// <summary>
@@ -39,9 +41,9 @@ public class SettingDefinition
     public bool Required { get; set; }
 
     /// <summary>
-    /// Gets or sets the data type of the setting (e.g. "string", "bool", "int", "json").
+    /// Gets or sets the data type of the setting (e.g. "text", "textarea", "bool", "int", "email[]").
     /// </summary>
-    public string Type { get; set; } = "string";
+    public string Type { get; set; } = SettingValueTypes.Text;
 
     /// <summary>
     /// Gets or sets a human-readable description for the admin UI.
