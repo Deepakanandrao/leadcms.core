@@ -5,23 +5,23 @@
 namespace LeadCMS.Interfaces;
 
 /// <summary>
-/// Interface for plugins to declare settings they require.
+/// Interface for any module (core or plugin) to declare settings it requires.
 /// The core will automatically surface these settings in the admin settings API
 /// so clients can discover and edit them.
 /// </summary>
-public interface IPluginSettingsProvider
+public interface ISettingsProvider
 {
     /// <summary>
-    /// Gets the setting definitions that this plugin requires.
+    /// Gets the setting definitions that this module requires.
     /// </summary>
-    /// <returns>A collection of plugin setting definitions.</returns>
-    IEnumerable<PluginSettingDefinition> GetSettingDefinitions();
+    /// <returns>A collection of setting definitions.</returns>
+    IEnumerable<SettingDefinition> GetSettingDefinitions();
 }
 
 /// <summary>
-/// Describes a single setting that a plugin registers with the core.
+/// Describes a single setting that is registered with the core.
 /// </summary>
-public class PluginSettingDefinition
+public class SettingDefinition
 {
     /// <summary>
     /// Gets or sets the setting key, using dot-notation (e.g. "LeadCapture.Telegram.BotId").

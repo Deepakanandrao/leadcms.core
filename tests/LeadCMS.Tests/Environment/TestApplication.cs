@@ -157,8 +157,8 @@ public class TestApplication : WebApplicationFactory<Program>
             services.AddScoped<IAccountExternalService, TestAccountExternalService>();
             services.AddSingleton<IAIProviderService, TestAIProviderService>();
 
-            // Register a test plugin settings provider to validate the IPluginSettingsProvider pipeline
-            services.AddSingleton<IPluginSettingsProvider>(new TestPluginSettingsProvider());
+            // Register a test settings provider to validate the ISettingsProvider pipeline
+            services.AddSingleton<ISettingsProvider>(new TestPluginSettingsProvider());
         });
 
         return base.CreateHost(builder);

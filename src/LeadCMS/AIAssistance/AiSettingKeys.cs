@@ -20,4 +20,6 @@ public static class AiSettingKeys
     public const string StyleExamples = "AI.SiteProfile.StyleExamples";
 
     public const string BlogCoverInstructions = "AI.SiteProfile.BlogCover.Instructions";
+
+    public const string EmailTemplateInstructions = "AI.SiteProfile.EmailTemplate.Instructions";
 }

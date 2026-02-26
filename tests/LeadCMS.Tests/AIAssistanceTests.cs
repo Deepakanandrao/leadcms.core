@@ -7,6 +7,7 @@ using System.Net.Http.Json;
 using System.Reflection;
 using ImageMagick;
 using LeadCMS.Constants;
+using LeadCMS.Core.AIAssistance.Configuration;
 using LeadCMS.Core.AIAssistance.DTOs;
 using LeadCMS.Tests.TestServices;
 using Microsoft.AspNetCore.StaticFiles;
@@ -608,6 +609,185 @@ public class AIAssistanceTests : BaseTestAutoLogin
         var lastRequest = TestAIProviderService.GetLastTextRequest();
         lastRequest.Should().NotBeNull();
         lastRequest!.UserPrompt.Should().Contain(request.Prompt);
+    }
+
+    [Fact]
+    public async Task EmailTemplateGeneration_ShouldInjectSiteProfileIntoSystemPrompt()
+    {
+        TrackEntityType<EmailGroup>();
+
+        await SetSystemSettingAsync(AiSettingKeys.SiteTopic, "Developer Tools");
+        await SetSystemSettingAsync(AiSettingKeys.SiteAudience, "Software Engineers");
+        await SetSystemSettingAsync(AiSettingKeys.BrandVoice, "Professional and technical");
+        await SetSystemSettingAsync(AiSettingKeys.PreferredTerms, "deploy, pipeline, CI/CD");
+        await SetSystemSettingAsync(AiSettingKeys.AvoidTerms, "simple, easy");
+        await SetSystemSettingAsync(AiSettingKeys.StyleExamples, "Concise, data-driven");
+
+        TestAIProviderService.EnqueueTextResponse(@"{
+  ""name"": ""welcome-email"",
+  ""subject"": ""Welcome to DevTools"",
+  ""bodyTemplate"": ""<html><body><h1>Welcome</h1></body></html>"",
+  ""fromName"": ""DevTools Team""
+}");
+
+        var groupUrl = await PostTest("/api/email-groups", new TestEmailGroup("-ai-gen"), HttpStatusCode.Created);
+        var group = await GetTest<EmailGroup>(groupUrl);
+
+        var request = new EmailTemplateGenerationRequest
+        {
+            Language = "en",
+            EmailGroupId = group!.Id,
+            Prompt = "Create a welcome email",
+        };
+
+        await PostTest<EmailTemplateDetailsDto>("/api/email-templates/ai-draft", request, HttpStatusCode.OK);
+
+        var lastRequest = TestAIProviderService.GetLastTextRequest();
+        lastRequest.Should().NotBeNull();
+        lastRequest!.SystemPrompt.Should().Contain("SITE PROFILE");
+        lastRequest.SystemPrompt.Should().Contain("Topic: Developer Tools");
+        lastRequest.SystemPrompt.Should().Contain("Audience: Software Engineers");
+        lastRequest.SystemPrompt.Should().Contain("Voice: Professional and technical");
+        lastRequest.SystemPrompt.Should().Contain("Preferred terms: deploy, pipeline, CI/CD");
+        lastRequest.SystemPrompt.Should().Contain("Avoid: simple, easy");
+        lastRequest.SystemPrompt.Should().Contain("Style examples: Concise, data-driven");
+    }
+
+    [Fact]
+    public async Task EmailTemplateEdit_ShouldInjectSiteProfileIntoSystemPrompt()
+    {
+        await SetSystemSettingAsync(AiSettingKeys.SiteTopic, "E-commerce Platform");
+        await SetSystemSettingAsync(AiSettingKeys.BrandVoice, "Friendly and approachable");
+
+        TestAIProviderService.EnqueueTextResponse(@"{
+  ""name"": ""order-confirmation"",
+  ""subject"": ""Order Confirmed"",
+  ""bodyTemplate"": ""<html><body><h1>Thanks for your order</h1></body></html>"",
+  ""fromName"": ""Shop Team""
+}");
+
+        var request = new EmailTemplateEditRequest
+        {
+            Prompt = "Make the tone more casual",
+            Name = "order-confirmation",
+            Subject = "Your Order",
+            BodyTemplate = "<html><body><p>Order received.</p></body></html>",
+            FromName = "Shop",
+            FromEmail = "shop@test.com",
+            Language = "en",
+        };
+
+        await PostTest<EmailTemplateDetailsDto>("/api/email-templates/ai-edit", request, HttpStatusCode.OK);
+
+        var lastRequest = TestAIProviderService.GetLastTextRequest();
+        lastRequest.Should().NotBeNull();
+        lastRequest!.SystemPrompt.Should().Contain("SITE PROFILE");
+        lastRequest.SystemPrompt.Should().Contain("Topic: E-commerce Platform");
+        lastRequest.SystemPrompt.Should().Contain("Voice: Friendly and approachable");
+    }
+
+    [Fact]
+    public async Task EmailTemplateGeneration_ShouldInjectEmailTemplateInstructionsIntoSystemPrompt()
+    {
+        TrackEntityType<EmailGroup>();
+
+        await SetSystemSettingAsync(AiSettingKeys.EmailTemplateInstructions, "Always include an unsubscribe link. Use #FF5500 as the primary brand color.");
+
+        TestAIProviderService.EnqueueTextResponse(@"{
+  ""name"": ""newsletter"",
+  ""subject"": ""Monthly Newsletter"",
+  ""bodyTemplate"": ""<html><body><h1>Newsletter</h1></body></html>"",
+  ""fromName"": ""Newsletter Team""
+}");
+
+        var groupUrl = await PostTest("/api/email-groups", new TestEmailGroup("-ai-instr"), HttpStatusCode.Created);
+        var group = await GetTest<EmailGroup>(groupUrl);
+
+        var request = new EmailTemplateGenerationRequest
+        {
+            Language = "en",
+            EmailGroupId = group!.Id,
+            Prompt = "Create a monthly newsletter template",
+        };
+
+        await PostTest<EmailTemplateDetailsDto>("/api/email-templates/ai-draft", request, HttpStatusCode.OK);
+
+        var lastRequest = TestAIProviderService.GetLastTextRequest();
+        lastRequest.Should().NotBeNull();
+        lastRequest!.SystemPrompt.Should().Contain("EMAIL TEMPLATE INSTRUCTIONS");
+        lastRequest.SystemPrompt.Should().Contain("Always include an unsubscribe link");
+        lastRequest.SystemPrompt.Should().Contain("#FF5500");
+    }
+
+    [Fact]
+    public async Task EmailTemplateEdit_ShouldInjectEmailTemplateInstructionsIntoSystemPrompt()
+    {
+        await SetSystemSettingAsync(AiSettingKeys.EmailTemplateInstructions, "Keep emails under 600px wide. Use table-based layouts only.");
+
+        TestAIProviderService.EnqueueTextResponse(@"{
+  ""name"": ""promo-edit"",
+  ""subject"": ""Special Offer"",
+  ""bodyTemplate"": ""<html><body><h1>Sale</h1></body></html>"",
+  ""fromName"": ""Promo Team""
+}");
+
+        var request = new EmailTemplateEditRequest
+        {
+            Prompt = "Add a header image",
+            Name = "promo-edit",
+            Subject = "Special Offer",
+            BodyTemplate = "<html><body><p>Check our deals.</p></body></html>",
+            FromName = "Promo",
+            FromEmail = "promo@test.com",
+            Language = "en",
+        };
+
+        await PostTest<EmailTemplateDetailsDto>("/api/email-templates/ai-edit", request, HttpStatusCode.OK);
+
+        var lastRequest = TestAIProviderService.GetLastTextRequest();
+        lastRequest.Should().NotBeNull();
+        lastRequest!.SystemPrompt.Should().Contain("EMAIL TEMPLATE INSTRUCTIONS");
+        lastRequest.SystemPrompt.Should().Contain("Keep emails under 600px wide");
+        lastRequest.SystemPrompt.Should().Contain("table-based layouts only");
+    }
+
+    [Fact]
+    public async Task EmailTemplateGeneration_WithNoSiteProfile_ShouldNotIncludeSiteProfileSection()
+    {
+        TrackEntityType<EmailGroup>();
+
+        // Clear any previously set site profile settings
+        await SetSystemSettingAsync(AiSettingKeys.SiteTopic, string.Empty);
+        await SetSystemSettingAsync(AiSettingKeys.SiteAudience, string.Empty);
+        await SetSystemSettingAsync(AiSettingKeys.BrandVoice, string.Empty);
+        await SetSystemSettingAsync(AiSettingKeys.PreferredTerms, string.Empty);
+        await SetSystemSettingAsync(AiSettingKeys.AvoidTerms, string.Empty);
+        await SetSystemSettingAsync(AiSettingKeys.StyleExamples, string.Empty);
+        await SetSystemSettingAsync(AiSettingKeys.EmailTemplateInstructions, string.Empty);
+
+        TestAIProviderService.EnqueueTextResponse(@"{
+  ""name"": ""bare-email"",
+  ""subject"": ""Test"",
+  ""bodyTemplate"": ""<html><body><p>Test</p></body></html>"",
+  ""fromName"": ""Test""
+}");
+
+        var groupUrl = await PostTest("/api/email-groups", new TestEmailGroup("-ai-empty"), HttpStatusCode.Created);
+        var group = await GetTest<EmailGroup>(groupUrl);
+
+        var request = new EmailTemplateGenerationRequest
+        {
+            Language = "en",
+            EmailGroupId = group!.Id,
+            Prompt = "Create a basic email",
+        };
+
+        await PostTest<EmailTemplateDetailsDto>("/api/email-templates/ai-draft", request, HttpStatusCode.OK);
+
+        var lastRequest = TestAIProviderService.GetLastTextRequest();
+        lastRequest.Should().NotBeNull();
+        lastRequest!.SystemPrompt.Should().NotContain("SITE PROFILE");
+        lastRequest.SystemPrompt.Should().NotContain("EMAIL TEMPLATE INSTRUCTIONS");
     }
 
     private static int CountOccurrences(string value, string token)

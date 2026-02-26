@@ -112,7 +112,7 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
             s => s.Key,
             s =>
             {
-                var pluginDef = settingsEnrichmentService.GetPluginSettingDefinitions()
+                var pluginDef = settingsEnrichmentService.GetSettingDefinitions()
                     .FirstOrDefault(d => d.Key == s.Key);
 
                 // For virtual settings (not from DB), use plugin metadata
@@ -432,7 +432,7 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
             // Enrich with plugin metadata only if not already set (i.e. first save)
             if (setting.Type == null)
             {
-                var pluginDef = settingsEnrichmentService.GetPluginSettingDefinitions()
+                var pluginDef = settingsEnrichmentService.GetSettingDefinitions()
                     .FirstOrDefault(d => d.Key == setting.Key);
 
                 if (pluginDef != null)

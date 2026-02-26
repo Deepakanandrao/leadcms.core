@@ -7,7 +7,6 @@ using LeadCMS.Entities;
 using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 
 namespace LeadCMS.Services;
 
@@ -15,13 +14,14 @@ public class SettingService : ISettingService
 {
     private readonly PgDbContext dbContext;
     private readonly IConfiguration configuration;
-    private readonly IReadOnlyDictionary<string, PluginSettingDefinition> pluginDefinitionsByKey;
+    private readonly IReadOnlyDictionary<string, SettingDefinition> settingDefinitionsByKey;
 
-    public SettingService(PgDbContext dbContext, IConfiguration configuration, IEnumerable<IPluginSettingsProvider> pluginSettingsProviders)
+    public SettingService(PgDbContext dbContext, IConfiguration configuration, IEnumerable<ISettingsProvider> settingsProviders)
     {
         this.dbContext = dbContext;
         this.configuration = configuration;
-        pluginDefinitionsByKey = pluginSettingsProviders
+
+        settingDefinitionsByKey = settingsProviders
             .SelectMany(p => p.GetSettingDefinitions())
             .GroupBy(d => d.Key)
             .Select(g => g.First())
@@ -67,16 +67,16 @@ public class SettingService : ISettingService
             return best;
         }
 
-        // Fallback to plugin definition for settings not yet saved in DB
-        if (pluginDefinitionsByKey.TryGetValue(key, out var pluginDef))
+        // Fallback to provider definition for settings not yet saved in DB
+        if (settingDefinitionsByKey.TryGetValue(key, out var definition))
         {
             return new Setting
             {
-                Key = pluginDef.Key,
-                Value = pluginDef.DefaultValue,
-                Required = pluginDef.Required,
-                Type = pluginDef.Type,
-                Description = pluginDef.Description,
+                Key = definition.Key,
+                Value = definition.DefaultValue,
+                Required = definition.Required,
+                Type = definition.Type,
+                Description = definition.Description,
             };
         }
 
@@ -368,15 +368,15 @@ public class SettingService : ISettingService
 
     /// <summary>
     /// Populates the Required, Type, and Description fields on a Setting entity
-    /// from the matching plugin setting definition, if one exists.
+    /// from the matching provider setting definition, if one exists.
     /// </summary>
     /// <param name="setting">The setting entity to enrich.</param>
     private void EnrichWithPluginMetadata(Setting setting)
     {
-        if (pluginDefinitionsByKey.TryGetValue(setting.Key, out var definition))
+        if (settingDefinitionsByKey.TryGetValue(setting.Key, out var definition))
         {
             setting.Required = definition.Required;
-            setting.Type = definition.Type;
+            setting.Type = string.IsNullOrWhiteSpace(definition.Type) ? "string" : definition.Type;
             setting.Description = definition.Description;
         }
     }

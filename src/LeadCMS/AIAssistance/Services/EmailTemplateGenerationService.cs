@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using AutoMapper;
+using LeadCMS.Core.AIAssistance.Configuration;
 using LeadCMS.Core.AIAssistance.DTOs;
 using LeadCMS.Core.AIAssistance.Exceptions;
 using LeadCMS.Core.AIAssistance.Interfaces;
@@ -102,7 +103,7 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
 
         var (fallbackFromName, fallbackFromEmail) = await ResolveFallbackSenderAsync();
 
-        var systemPrompt = BuildGenerateSystemPrompt(targetCategory, sampleBody, fallbackFromName, fallbackFromEmail);
+        var systemPrompt = await BuildGenerateSystemPromptAsync(targetCategory, sampleBody, fallbackFromName, fallbackFromEmail);
         var userPrompt = BuildGenerateUserPrompt(request.Prompt, request.Language, request.TemplateVariables, targetCategory, sampleBody != null);
 
         try
@@ -173,7 +174,7 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
 
         var (senderFromName, senderFromEmail) = await ResolveFallbackSenderAsync();
 
-        var systemPrompt = BuildEditSystemPrompt(currentCategory, senderFromName, senderFromEmail);
+        var systemPrompt = await BuildEditSystemPromptAsync(currentCategory, senderFromName, senderFromEmail);
         var userPrompt = BuildEditUserPrompt(currentTemplateJson, request.Prompt, request.TemplateVariables, currentCategory, referenceBody);
 
         try
@@ -216,48 +217,8 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  PROMPT BUILDING — GENERATE
+    //  PROMPT BUILDING — STATIC HELPERS
     // ════════════════════════════════════════════════════════════════════
-
-    private static string BuildGenerateSystemPrompt(
-        EmailTemplateCategory category,
-        string? sampleBody,
-        string senderName,
-        string senderEmail)
-    {
-        var sb = new StringBuilder(8192);
-
-        sb.AppendLine($"You are an AI assistant specialised in creating email templates for a CMS platform.");
-        sb.AppendLine($"Generate a new HTML email template.");
-        sb.AppendLine();
-
-        // ── Format rules ────────────────────────────────────────────────
-        AppendFormatRules(sb);
-
-        // ── Category guidance ───────────────────────────────────────────
-        AppendCategoryGuidance(sb, category);
-
-        // ── Sample reference ────────────────────────────────────────────
-        if (sampleBody != null)
-        {
-            sb.AppendLine();
-            sb.AppendLine("SAMPLE TEMPLATE — match its visual style, layout, and structural patterns:");
-            sb.AppendLine(sampleBody);
-            sb.AppendLine("--- END SAMPLE ---");
-        }
-
-        // ── Liquid syntax & template parameters ─────────────────────────
-        AppendLiquidSyntax(sb);
-        sb.Append(TemplateParametersKnowledge);
-
-        // ── Sender signature ────────────────────────────────────────────
-        AppendSenderSignatureRules(sb, senderName, senderEmail);
-
-        // ── Output format ───────────────────────────────────────────────
-        AppendOutputFormat(sb, "HTML");
-
-        return sb.ToString();
-    }
 
     private static string BuildGenerateUserPrompt(
         string prompt,
@@ -293,39 +254,6 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
         return sb.ToString();
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    //  PROMPT BUILDING — EDIT
-    // ════════════════════════════════════════════════════════════════════
-
-    private static string BuildEditSystemPrompt(
-        EmailTemplateCategory category,
-        string senderName,
-        string senderEmail)
-    {
-        var sb = new StringBuilder(8192);
-
-        sb.AppendLine($"You are an email template editor assistant for an AI-powered CMS.");
-        sb.AppendLine($"Edit the provided HTML email template based on the user's request.");
-        sb.AppendLine();
-        sb.AppendLine("EDITING RULES:");
-        sb.AppendLine("1. PRESERVE STRUCTURE: keep the same logical structure and layout as the original");
-        sb.AppendLine("2. CONSERVATIVE EDITS: when ambiguous, make the minimum changes necessary");
-        sb.AppendLine("3. NO HALLUCINATION: only use variables listed in AVAILABLE TEMPLATE PARAMETERS or provided via REQUIRED TEMPLATE VARIABLES");
-        sb.AppendLine();
-
-        AppendFormatRules(sb);
-        AppendCategoryGuidance(sb, category);
-        AppendLiquidSyntax(sb);
-        sb.Append(TemplateParametersKnowledge);
-        AppendSenderSignatureRules(sb, senderName, senderEmail);
-        AppendOutputFormat(sb, "HTML");
-
-        sb.AppendLine();
-        sb.AppendLine("IMPORTANT: The 'name' field is a localisation key — NEVER translate it. Keep it exactly as-is.");
-
-        return sb.ToString();
-    }
-
     private static string BuildEditUserPrompt(
         string currentTemplateJson,
         string prompt,
@@ -355,6 +283,15 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
         }
 
         return sb.ToString();
+    }
+
+    private static void AddIfPresent(List<string> items, string label, List<Setting> settings, string key)
+    {
+        var setting = settings.FirstOrDefault(s => s.Key == key);
+        if (setting != null && !string.IsNullOrWhiteSpace(setting.Value))
+        {
+            items.Add($"{label}: {setting.Value.Trim()}");
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -917,6 +854,144 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
         }
 
         return cleaned;
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  PROMPT BUILDING — GENERATE (ASYNC)
+    // ════════════════════════════════════════════════════════════════════
+
+    private async Task<string> BuildGenerateSystemPromptAsync(
+        EmailTemplateCategory category,
+        string? sampleBody,
+        string senderName,
+        string senderEmail)
+    {
+        var sb = new StringBuilder(8192);
+
+        sb.AppendLine($"You are an AI assistant specialised in creating email templates for a CMS platform.");
+        sb.AppendLine($"Generate a new HTML email template.");
+        sb.AppendLine();
+
+        // ── Site profile ────────────────────────────────────────────────
+        await AppendSiteProfileSectionAsync(sb);
+
+        // ── Email template instructions ─────────────────────────────────
+        await AppendEmailTemplateInstructionsAsync(sb);
+
+        // ── Format rules ────────────────────────────────────────────────
+        AppendFormatRules(sb);
+
+        // ── Category guidance ───────────────────────────────────────────
+        AppendCategoryGuidance(sb, category);
+
+        // ── Sample reference ────────────────────────────────────────────
+        if (sampleBody != null)
+        {
+            sb.AppendLine();
+            sb.AppendLine("SAMPLE TEMPLATE — match its visual style, layout, and structural patterns:");
+            sb.AppendLine(sampleBody);
+            sb.AppendLine("--- END SAMPLE ---");
+        }
+
+        // ── Liquid syntax & template parameters ─────────────────────────
+        AppendLiquidSyntax(sb);
+        sb.Append(TemplateParametersKnowledge);
+
+        // ── Sender signature ────────────────────────────────────────────
+        AppendSenderSignatureRules(sb, senderName, senderEmail);
+
+        // ── Output format ───────────────────────────────────────────────
+        AppendOutputFormat(sb, "HTML");
+
+        return sb.ToString();
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  PROMPT BUILDING — EDIT (ASYNC)
+    // ════════════════════════════════════════════════════════════════════
+
+    private async Task<string> BuildEditSystemPromptAsync(
+        EmailTemplateCategory category,
+        string senderName,
+        string senderEmail)
+    {
+        var sb = new StringBuilder(8192);
+
+        sb.AppendLine($"You are an email template editor assistant for an AI-powered CMS.");
+        sb.AppendLine($"Edit the provided HTML email template based on the user's request.");
+        sb.AppendLine();
+        sb.AppendLine("EDITING RULES:");
+        sb.AppendLine("1. PRESERVE STRUCTURE: keep the same logical structure and layout as the original");
+        sb.AppendLine("2. CONSERVATIVE EDITS: when ambiguous, make the minimum changes necessary");
+        sb.AppendLine("3. NO HALLUCINATION: only use variables listed in AVAILABLE TEMPLATE PARAMETERS or provided via REQUIRED TEMPLATE VARIABLES");
+        sb.AppendLine();
+
+        // ── Site profile ────────────────────────────────────────────────
+        await AppendSiteProfileSectionAsync(sb);
+
+        // ── Email template instructions ─────────────────────────────────
+        await AppendEmailTemplateInstructionsAsync(sb);
+
+        AppendFormatRules(sb);
+        AppendCategoryGuidance(sb, category);
+        AppendLiquidSyntax(sb);
+        sb.Append(TemplateParametersKnowledge);
+        AppendSenderSignatureRules(sb, senderName, senderEmail);
+        AppendOutputFormat(sb, "HTML");
+
+        sb.AppendLine();
+        sb.AppendLine("IMPORTANT: The 'name' field is a localisation key — NEVER translate it. Keep it exactly as-is.");
+
+        return sb.ToString();
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  PROMPT BUILDING — SITE PROFILE & INSTRUCTIONS
+    // ════════════════════════════════════════════════════════════════════
+
+    private async Task AppendSiteProfileSectionAsync(StringBuilder sb)
+    {
+        var keys = new[]
+        {
+            AiSettingKeys.SiteTopic,
+            AiSettingKeys.SiteAudience,
+            AiSettingKeys.BrandVoice,
+            AiSettingKeys.PreferredTerms,
+            AiSettingKeys.AvoidTerms,
+            AiSettingKeys.StyleExamples,
+        };
+
+        var settings = await settingService.FindSettingsByKeysAsync(keys);
+
+        var items = new List<string>();
+        AddIfPresent(items, "Topic", settings, AiSettingKeys.SiteTopic);
+        AddIfPresent(items, "Audience", settings, AiSettingKeys.SiteAudience);
+        AddIfPresent(items, "Voice", settings, AiSettingKeys.BrandVoice);
+        AddIfPresent(items, "Preferred terms", settings, AiSettingKeys.PreferredTerms);
+        AddIfPresent(items, "Avoid", settings, AiSettingKeys.AvoidTerms);
+        AddIfPresent(items, "Style examples", settings, AiSettingKeys.StyleExamples);
+
+        if (items.Count > 0)
+        {
+            sb.AppendLine("SITE PROFILE (use this to understand site context and tailor the email template accordingly):");
+            foreach (var item in items)
+            {
+                sb.AppendLine($"- {item}");
+            }
+
+            sb.AppendLine();
+        }
+    }
+
+    private async Task AppendEmailTemplateInstructionsAsync(StringBuilder sb)
+    {
+        var instructions = await settingService.GetSystemSettingAsync(AiSettingKeys.EmailTemplateInstructions);
+        if (!string.IsNullOrWhiteSpace(instructions))
+        {
+            sb.AppendLine("EMAIL TEMPLATE INSTRUCTIONS (follow these requirements when generating the template):");
+            sb.AppendLine(instructions.Trim());
+            sb.AppendLine();
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════

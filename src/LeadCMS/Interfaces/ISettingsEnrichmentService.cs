@@ -63,8 +63,8 @@ public interface ISettingsEnrichmentService
     Task EnrichWithAllKnownSettingsAsync(List<Setting> settings, string? userId = null);
 
     /// <summary>
-    /// Gets all plugin-registered setting definitions merged into a flat collection.
+    /// Gets all registered setting definitions merged into a flat collection.
     /// </summary>
-    /// <returns>A collection of all plugin setting definitions.</returns>
-    IReadOnlyList<PluginSettingDefinition> GetPluginSettingDefinitions();
+    /// <returns>A collection of all setting definitions.</returns>
+    IReadOnlyList<SettingDefinition> GetSettingDefinitions();
 }

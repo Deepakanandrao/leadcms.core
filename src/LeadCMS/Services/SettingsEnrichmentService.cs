@@ -17,16 +17,16 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
 {
     private readonly ISettingService settingService;
     private readonly IConfiguration configuration;
-    private readonly IReadOnlyList<PluginSettingDefinition> pluginSettingDefinitions;
+    private readonly IReadOnlyList<SettingDefinition> settingDefinitions;
 
     public SettingsEnrichmentService(
         ISettingService settingService,
         IConfiguration configuration,
-        IEnumerable<IPluginSettingsProvider> pluginSettingsProviders)
+        IEnumerable<ISettingsProvider> settingsProviders)
     {
         this.settingService = settingService;
         this.configuration = configuration;
-        pluginSettingDefinitions = pluginSettingsProviders
+        settingDefinitions = settingsProviders
             .SelectMany(p => p.GetSettingDefinitions())
             .GroupBy(d => d.Key)
             .Select(g => g.First())
@@ -180,9 +180,9 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
     }
 
     /// <inheritdoc/>
-    public IReadOnlyList<PluginSettingDefinition> GetPluginSettingDefinitions()
+    public IReadOnlyList<SettingDefinition> GetSettingDefinitions()
     {
-        return pluginSettingDefinitions;
+        return settingDefinitions;
     }
 
     /// <summary>
@@ -252,7 +252,7 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
     /// <param name="settings">List of settings to enrich.</param>
     private void EnrichWithPluginSettings(List<Setting> settings)
     {
-        foreach (var definition in pluginSettingDefinitions)
+        foreach (var definition in settingDefinitions)
         {
             SetSettingIfNullOrEmpty(settings, definition.Key, definition.DefaultValue ?? string.Empty);
         }

@@ -15,7 +15,7 @@ namespace LeadCMS.Plugin.Site;
 /// <summary>
 /// Site plugin providing website functionality including contact forms, subscriptions, and lead capture.
 /// </summary>
-public class SitePlugin : IPlugin, ICapabilityProvider, IPluginSettingsProvider
+public class SitePlugin : IPlugin, ICapabilityProvider, ISettingsProvider
 {
     public static PluginSettings Settings { get; private set; } = new PluginSettings();
 
@@ -42,30 +42,30 @@ public class SitePlugin : IPlugin, ICapabilityProvider, IPluginSettingsProvider
     }
 
     /// <inheritdoc/>
-    public IEnumerable<PluginSettingDefinition> GetSettingDefinitions()
+    public IEnumerable<SettingDefinition> GetSettingDefinitions()
     {
-        yield return new PluginSettingDefinition
+        yield return new SettingDefinition
         {
             Key = LeadCaptureSettingKeys.EmailEnabled,
             DefaultValue = "false",
             Type = "bool",
             Description = "Whether email notifications are enabled for lead capture.",
         };
-        yield return new PluginSettingDefinition
+        yield return new SettingDefinition
         {
             Key = LeadCaptureSettingKeys.EmailRecipients,
             DefaultValue = "[]",
             Type = "json",
             Description = "JSON array of email addresses to send lead notifications to.",
         };
-        yield return new PluginSettingDefinition
+        yield return new SettingDefinition
         {
             Key = LeadCaptureSettingKeys.TelegramEnabled,
             DefaultValue = "false",
             Type = "bool",
             Description = "Whether Telegram notifications are enabled for lead capture.",
         };
-        yield return new PluginSettingDefinition
+        yield return new SettingDefinition
         {
             Key = LeadCaptureSettingKeys.TelegramBotId,
             DefaultValue = string.Empty,
@@ -73,7 +73,7 @@ public class SitePlugin : IPlugin, ICapabilityProvider, IPluginSettingsProvider
             Required = true,
             Description = "The Telegram bot ID for sending lead notifications.",
         };
-        yield return new PluginSettingDefinition
+        yield return new SettingDefinition
         {
             Key = LeadCaptureSettingKeys.TelegramChatId,
             DefaultValue = string.Empty,
@@ -81,14 +81,14 @@ public class SitePlugin : IPlugin, ICapabilityProvider, IPluginSettingsProvider
             Required = true,
             Description = "The Telegram chat ID to send lead notifications to.",
         };
-        yield return new PluginSettingDefinition
+        yield return new SettingDefinition
         {
             Key = LeadCaptureSettingKeys.SlackEnabled,
             DefaultValue = "false",
             Type = "bool",
             Description = "Whether Slack notifications are enabled for lead capture.",
         };
-        yield return new PluginSettingDefinition
+        yield return new SettingDefinition
         {
             Key = LeadCaptureSettingKeys.SlackWebhookUrl,
             DefaultValue = string.Empty,

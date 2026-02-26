@@ -82,6 +82,7 @@ public class Program
         builder.Services.AddScoped<IVariablesService, VariablesService>();
         builder.Services.AddScoped<ISettingService, SettingService>();
         builder.Services.AddScoped<ISettingsEnrichmentService, SettingsEnrichmentService>();
+        builder.Services.AddSingleton<ISettingsProvider, CoreSettingsProvider>();
         builder.Services.AddSingleton<IpDetailsService, IpDetailsService>();
         builder.Services.AddSingleton<ILockService, LockService>();
         builder.Services.AddScoped<IEmailVerifyService, EmailVerifyService>();
@@ -402,10 +403,10 @@ public class Program
                 builder.Services.AddSingleton<ICapabilityProvider>(capabilityProvider);
             }
 
-            // Register plugin settings definitions if the plugin implements IPluginSettingsProvider
-            if (plugin is IPluginSettingsProvider pluginSettingsProvider)
+            // Register settings definitions if the plugin implements ISettingsProvider
+            if (plugin is ISettingsProvider settingsProvider)
             {
-                builder.Services.AddSingleton<IPluginSettingsProvider>(pluginSettingsProvider);
+                builder.Services.AddSingleton<ISettingsProvider>(settingsProvider);
             }
         }
     }

@@ -27,7 +27,7 @@ public class PluginSettingsRegistrationTests : BaseTestAutoLogin
         Assert.NotNull(settings);
         var settingDict = settings.ToDictionary(s => s.Key, s => s.Value);
 
-        // The Site plugin registers LeadCapture.* settings via IPluginSettingsProvider
+        // The Site plugin registers LeadCapture.* settings via ISettingsProvider
         Assert.True(settingDict.ContainsKey("LeadCapture.Email.Enabled"));
         Assert.True(settingDict.ContainsKey("LeadCapture.Email.Recipients"));
         Assert.True(settingDict.ContainsKey("LeadCapture.Telegram.Enabled"));
@@ -96,14 +96,14 @@ public class PluginSettingsRegistrationTests : BaseTestAutoLogin
     }
 
     [Fact]
-    public void GetPluginSettingDefinitions_ReturnsRegisteredDefinitions()
+    public void GetSettingDefinitions_ReturnsRegisteredDefinitions()
     {
         // Arrange
         using var scope = App.Services.CreateScope();
         var enrichmentService = scope.ServiceProvider.GetRequiredService<ISettingsEnrichmentService>();
 
         // Act
-        var definitions = enrichmentService.GetPluginSettingDefinitions();
+        var definitions = enrichmentService.GetSettingDefinitions();
 
         // Assert
         Assert.NotEmpty(definitions);
