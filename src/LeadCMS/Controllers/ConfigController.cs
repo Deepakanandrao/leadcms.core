@@ -146,7 +146,7 @@ public class ConfigController : ControllerBase
             userId = await httpContextHelper.GetCurrentUserIdAsync();
         }
 
-        var settings = await settingService.GetSettingsByKeysAsync(publicSettingKeys, userId);
+        var settings = await settingService.FindSettingsByKeysAsync(publicSettingKeys, userId);
 
         var defaultLanguage = supportedLanguagesConfig.First();
 
@@ -158,6 +158,9 @@ public class ConfigController : ControllerBase
         await settingsEnrichmentService.EnrichWithContentValidationSettingsAsync(settings);
         await settingsEnrichmentService.EnrichWithIdentitySettingsAsync(settings);
         await settingsEnrichmentService.EnrichWithLeadCaptureSettingsAsync(settings);
+
+        // Project to dictionary for ConfigDto API response
+        var settingsDict = settings.ToDictionary(s => s.Key, s => s.Value);
 
         var primaryCurrency = CurrencyInfoHelper.GetPrimaryCurrencyInfo(configuration)
             ?? CurrencyInfoHelper.GetByCode("USD")
@@ -172,7 +175,7 @@ public class ConfigController : ControllerBase
             },
             Entities = availableEntities,
             Languages = languages,
-            Settings = settings,
+            Settings = settingsDict,
             DefaultLanguage = defaultLanguage,
             Modules = dynamicModules,
             Capabilities = capabilities,

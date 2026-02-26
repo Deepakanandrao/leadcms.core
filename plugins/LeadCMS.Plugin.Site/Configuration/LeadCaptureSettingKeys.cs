@@ -19,7 +19,7 @@ public static class LeadCaptureSettingKeys
     /// JSON array of email addresses to send lead notifications to.
     /// Falls back to ContactUs.To if not set.
     /// </summary>
-    public const string EmailTo = "LeadCapture.Email.To";
+    public const string EmailRecipients = "LeadCapture.Email.Recipients";
 
     /// <summary>
     /// Whether Telegram notifications are enabled for lead capture.
@@ -52,7 +52,7 @@ public static class LeadCaptureSettingKeys
     public static IEnumerable<string> All => new[]
     {
         EmailEnabled,
-        EmailTo,
+        EmailRecipients,
         TelegramEnabled,
         TelegramBotId,
         TelegramChatId,

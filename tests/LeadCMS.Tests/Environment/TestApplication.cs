@@ -156,6 +156,9 @@ public class TestApplication : WebApplicationFactory<Program>
             services.AddScoped<IEmailValidationExternalService, TestEmailValidationExternalService>();
             services.AddScoped<IAccountExternalService, TestAccountExternalService>();
             services.AddSingleton<IAIProviderService, TestAIProviderService>();
+
+            // Register a test plugin settings provider to validate the IPluginSettingsProvider pipeline
+            services.AddSingleton<IPluginSettingsProvider>(new TestPluginSettingsProvider());
         });
 
         return base.CreateHost(builder);

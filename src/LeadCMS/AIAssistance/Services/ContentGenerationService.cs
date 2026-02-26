@@ -677,11 +677,12 @@ You MUST include all REQUIRED MEDIA in the body. Do not omit any required image 
         return result.ToArray();
     }
 
-    private void AddIfPresent(List<string> items, string label, Dictionary<string, string?> settings, string key)
+    private void AddIfPresent(List<string> items, string label, List<Setting> settings, string key)
     {
-        if (settings.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
+        var setting = settings.FirstOrDefault(s => s.Key == key);
+        if (setting != null && !string.IsNullOrWhiteSpace(setting.Value))
         {
-            items.Add($"{label}: {value.Trim()}");
+            items.Add($"{label}: {setting.Value.Trim()}");
         }
     }
 
@@ -697,7 +698,7 @@ You MUST include all REQUIRED MEDIA in the body. Do not omit any required image 
             AiSettingKeys.StyleExamples,
         };
 
-        var settings = await settingService.GetSettingsByKeysAsync(keys);
+        var settings = await settingService.FindSettingsByKeysAsync(keys);
 
         var items = new List<string>();
         AddIfPresent(items, "Topic", settings, AiSettingKeys.SiteTopic);

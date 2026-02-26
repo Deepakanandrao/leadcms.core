@@ -41,8 +41,11 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
     }
 
     /// <summary>
-    /// Create or update a setting. Enforces uniqueness on (Key, UserId).
-    /// If a setting with the same Key and UserId already exists, it is updated instead.
+    /// Create or update a setting. Enforces uniqueness on (Key, UserId, Language).
+    /// If a setting with the same Key, UserId and Language already exists, it is updated instead.
+    /// Language-specific and user-specific settings are only saved if their value
+    /// differs from the global (language-neutral, system-level) setting.
+    /// Metadata (Required, Type, Description) is populated from plugin definitions and cannot be set by clients.
     /// </summary>
     /// <param name="value">Setting to create or update.</param>
     /// <returns>Created or updated setting.</returns>
@@ -55,7 +58,7 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
     {
         if (string.IsNullOrEmpty(value.UserId))
         {
-            await settingService.SetSystemSettingAsync(value.Key, value.Value);
+            await settingService.SetSystemSettingAsync(value.Key, value.Value, value.Language);
         }
         else
         {
@@ -63,8 +66,18 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
         }
 
         var setting = await dbContext.Settings!
-            .Where(s => s.Key == value.Key && s.UserId == (string.IsNullOrEmpty(value.UserId) ? null : value.UserId))
+            .Where(s => s.Key == value.Key
+                && s.UserId == (string.IsNullOrEmpty(value.UserId) ? null : value.UserId)
+                && s.Language == value.Language)
             .FirstOrDefaultAsync();
+
+        // If setting was not saved (value matches global), return the global setting
+        if (setting == null)
+        {
+            setting = await dbContext.Settings!
+                .Where(s => s.Key == value.Key && s.UserId == null && s.Language == null)
+                .FirstOrDefaultAsync();
+        }
 
         var settingDto = mapper.Map<SettingDetailsDto>(setting);
         return CreatedAtAction(nameof(GetOne), new { id = setting!.Id }, settingDto);
@@ -73,7 +86,10 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
     /// <summary>
     /// Get all system-level settings enriched with default values from appsettings (Admin only).
     /// Database settings take precedence over appsettings defaults.
+    /// Optionally pass a language code to include language-specific overrides.
+    /// Language matching is fuzzy: "ru" matches "ru-RU" and vice versa.
     /// </summary>
+    /// <param name="language">Optional language code (e.g. "en", "ru-RU"). When provided, general settings are returned with language-specific overrides merged on top using fuzzy matching.</param>
     /// <returns>List of system-level settings enriched with defaults.</returns>
     [HttpGet("system")]
     [Authorize(Roles = "Admin")]
@@ -81,50 +97,79 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<List<SettingDetailsDto>>> GetSystemSettings()
+    public async Task<ActionResult<List<SettingDetailsDto>>> GetSystemSettings([FromQuery] string? language = null)
     {
-        // Get database settings
-        var dbSettings = await dbContext.Settings!
-            .Where(s => s.UserId == null)
+        // Get all general (language-neutral) system settings
+        var generalSettings = await dbContext.Settings!
+            .Where(s => s.UserId == null && s.Language == null)
             .ToListAsync();
 
-        // Create a dictionary for easy lookup and manipulation
-        var settingsDict = dbSettings.ToDictionary(s => s.Key, s => s.Value);
+        // Enrich with default values using the enrichment service (adds missing keys from config/plugins)
+        await settingsEnrichmentService.EnrichWithAllKnownSettingsAsync(generalSettings);
 
-        // Enrich with default values using the new enrichment service
-        // This handles both missing keys and null values in the database
-        await settingsEnrichmentService.EnrichWithAllKnownSettingsAsync(settingsDict);
-
-        // Convert back to Setting entities for consistent response format
-        var enrichedSettings = settingsDict.Select(kvp =>
-        {
-            var existingDbSetting = dbSettings.FirstOrDefault(s => s.Key == kvp.Key);
-            return new Setting
+        // Build the result starting from enriched general settings
+        var resultByKey = generalSettings.ToDictionary(
+            s => s.Key,
+            s =>
             {
-                Id = existingDbSetting?.Id ?? 0,
-                Key = kvp.Key,
-                Value = kvp.Value, // Use the enriched value from the dictionary
-                UserId = null,
-                CreatedAt = existingDbSetting?.CreatedAt ?? DateTime.UtcNow,
-                CreatedById = existingDbSetting?.CreatedById,
-                CreatedByIp = existingDbSetting?.CreatedByIp,
-                CreatedByUserAgent = existingDbSetting?.CreatedByUserAgent,
-                UpdatedAt = existingDbSetting?.UpdatedAt,
-                UpdatedById = existingDbSetting?.UpdatedById,
-                UpdatedByIp = existingDbSetting?.UpdatedByIp,
-                UpdatedByUserAgent = existingDbSetting?.UpdatedByUserAgent,
-                Source = existingDbSetting?.Source,
-            };
-        }).ToList();
+                var pluginDef = settingsEnrichmentService.GetPluginSettingDefinitions()
+                    .FirstOrDefault(d => d.Key == s.Key);
 
-        var settingDtos = mapper.Map<List<SettingDetailsDto>>(enrichedSettings);
+                // For virtual settings (not from DB), use plugin metadata
+                if (s.Id == 0 && pluginDef != null)
+                {
+                    s.Required = pluginDef.Required;
+                    s.Type = pluginDef.Type;
+                    s.Description = pluginDef.Description;
+                }
+
+                return s;
+            });
+
+        // If a language was requested, overlay language-specific values using fuzzy matching
+        if (!string.IsNullOrWhiteSpace(language))
+        {
+            var langSettings = await dbContext.Settings!
+                .Where(s => s.UserId == null && s.Language != null)
+                .ToListAsync();
+
+            // Filter to only settings that match the requested language (exact or family match)
+            var matchingLangSettings = langSettings
+                .Where(s => SettingListHelper.LanguageFamilyMatches(s.Language, language) ||
+                            string.Equals(s.Language, language, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            // Group by key and pick best match per key
+            foreach (var group in matchingLangSettings.GroupBy(s => s.Key))
+            {
+                var best = SettingListHelper.PickBestLanguageMatch(group.ToList(), language);
+                if (best != null && resultByKey.TryGetValue(best.Key, out var existing))
+                {
+                    // Override value and metadata with language-specific version
+                    existing.Value = best.Value;
+                    existing.Language = best.Language;
+                    if (best.Id != 0)
+                    {
+                        existing.Id = best.Id;
+                    }
+                }
+                else if (best != null)
+                {
+                    resultByKey[best.Key] = best;
+                }
+            }
+        }
+
+        var settingDtos = mapper.Map<List<SettingDetailsDto>>(resultByKey.Values.ToList());
         return Ok(settingDtos);
     }
 
     /// <summary>
     /// Get a specific system-level setting by key (Admin only).
+    /// Optionally pass a language code for language-specific override resolution with fuzzy matching.
     /// </summary>
     /// <param name="key">Setting key.</param>
+    /// <param name="language">Optional language code for fuzzy language matching.</param>
     /// <returns>System-level setting details.</returns>
     [HttpGet("system/{key}")]
     [Authorize(Roles = "Admin")]
@@ -133,11 +178,9 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<SettingDetailsDto>> GetSystemSetting(string key)
+    public async Task<ActionResult<SettingDetailsDto>> GetSystemSetting(string key, [FromQuery] string? language = null)
     {
-        var setting = await dbContext.Settings!
-            .Where(s => s.Key == key && s.UserId == null)
-            .FirstOrDefaultAsync();
+        var setting = await settingService.FindSystemSettingAsync(key, language);
 
         if (setting == null)
         {
@@ -153,6 +196,7 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
     /// </summary>
     /// <param name="key">Setting key.</param>
     /// <param name="value">Setting value.</param>
+    /// <param name="language">Optional language code for language-specific override.</param>
     /// <returns>Updated setting details.</returns>
     [HttpPut("system/{key}")]
     [Authorize(Roles = "Admin")]
@@ -163,13 +207,22 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<SettingDetailsDto>> SetSystemSetting(
         string key,
-        [FromQuery] string? value)
+        [FromQuery] string? value,
+        [FromQuery] string? language = null)
     {
-        await settingService.SetSystemSettingAsync(key, value);
+        await settingService.SetSystemSettingAsync(key, value, language);
 
         var setting = await dbContext.Settings!
-            .Where(s => s.Key == key && s.UserId == null)
+            .Where(s => s.Key == key && s.UserId == null && s.Language == language)
             .FirstOrDefaultAsync();
+
+        // If setting was not saved (language value matches global), return the global setting
+        if (setting == null)
+        {
+            setting = await dbContext.Settings!
+                .Where(s => s.Key == key && s.UserId == null && s.Language == null)
+                .FirstOrDefaultAsync();
+        }
 
         var settingDto = mapper.Map<SettingDetailsDto>(setting);
         return Ok(settingDto);
@@ -179,6 +232,7 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
     /// Delete a system-level setting (Admin only).
     /// </summary>
     /// <param name="key">Setting key.</param>
+    /// <param name="language">Optional language code for language-specific override.</param>
     /// <returns>No content if successful.</returns>
     [HttpDelete("system/{key}")]
     [Authorize(Roles = "Admin")]
@@ -187,10 +241,10 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult> DeleteSystemSetting(string key)
+    public async Task<ActionResult> DeleteSystemSetting(string key, [FromQuery] string? language = null)
     {
         var setting = await dbContext.Settings!
-            .Where(s => s.Key == key && s.UserId == null)
+            .Where(s => s.Key == key && s.UserId == null && s.Language == language)
             .FirstOrDefaultAsync();
 
         if (setting == null)
@@ -198,102 +252,75 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
             return NotFound($"System setting with key '{key}' not found.");
         }
 
-        await settingService.DeleteSystemSettingAsync(key);
+        await settingService.DeleteSystemSettingAsync(key, language);
         return NoContent();
     }
 
     /// <summary>
     /// Get all effective settings for the current user (user-level settings override system-level).
+    /// Optionally pass a language code for language-specific override resolution with fuzzy matching.
     /// </summary>
+    /// <param name="language">Optional language code for fuzzy language matching.</param>
     /// <returns>Dictionary of effective settings for the current user.</returns>
     [HttpGet("user")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<Dictionary<string, SettingValueDto>>> GetUserSettings()
+    public async Task<ActionResult<Dictionary<string, SettingValueDto>>> GetUserSettings([FromQuery] string? language = null)
     {
         var user = await UserHelper.GetCurrentUserOrThrowAsync(userManager, User);
 
-        var systemSettings = await dbContext.Settings!
-            .Where(s => s.UserId == null)
-            .ToListAsync();
+        var effectiveSettings = await settingService.GetEffectiveUserSettingEntitiesAsync(user.Id, language);
 
-        var userSettings = await dbContext.Settings!
-            .Where(s => s.UserId == user.Id)
-            .ToListAsync();
-
-        var result = new Dictionary<string, SettingValueDto>();
-
-        // Add system settings first
-        foreach (var setting in systemSettings)
-        {
-            result[setting.Key] = new SettingValueDto
+        var result = effectiveSettings.ToDictionary(
+            s => s.Key,
+            s => new SettingValueDto
             {
-                Key = setting.Key,
-                Value = setting.Value,
-                IsUserLevel = false,
-            };
-        }
-
-        // Override with user settings
-        foreach (var setting in userSettings)
-        {
-            result[setting.Key] = new SettingValueDto
-            {
-                Key = setting.Key,
-                Value = setting.Value,
-                IsUserLevel = true,
-            };
-        }
+                Key = s.Key,
+                Value = s.Value,
+                UserId = s.UserId,
+                Required = s.Required,
+                Type = s.Type,
+                Description = s.Description,
+            });
 
         return Ok(result);
     }
 
     /// <summary>
     /// Get a specific setting value for the current user (with fallback to system-level).
+    /// Optionally pass a language code for language-specific override resolution with fuzzy matching.
     /// </summary>
     /// <param name="key">Setting key.</param>
+    /// <param name="language">Optional language code for fuzzy language matching.</param>
     /// <returns>Setting value.</returns>
     [HttpGet("user/{key}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<SettingValueDto>> GetUserSetting(string key)
+    public async Task<ActionResult<SettingValueDto>> GetUserSetting(string key, [FromQuery] string? language = null)
     {
         var user = await UserHelper.GetCurrentUserOrThrowAsync(userManager, User);
 
-        // First try user-level setting
-        var userSetting = await dbContext.Settings!
-            .Where(s => s.Key == key && s.UserId == user.Id)
-            .FirstOrDefaultAsync();
+        var result = await settingService.FindEffectiveUserSettingAsync(key, user.Id, language);
 
-        if (userSetting != null)
+        if (result == null)
         {
-            return Ok(new SettingValueDto
-            {
-                Key = userSetting.Key,
-                Value = userSetting.Value,
-                IsUserLevel = true,
-            });
+            return NotFound($"Setting with key '{key}' not found.");
         }
 
-        // Fall back to system-level setting
-        var systemSetting = await dbContext.Settings!
-            .Where(s => s.Key == key && s.UserId == null)
-            .FirstOrDefaultAsync();
-
-        if (systemSetting != null)
+        var dto = new SettingValueDto
         {
-            return Ok(new SettingValueDto
-            {
-                Key = systemSetting.Key,
-                Value = systemSetting.Value,
-                IsUserLevel = false,
-            });
-        }
+            Key = result.Key,
+            Value = result.Value,
+            UserId = result.UserId,
+            Required = result.Required,
+            Type = result.Type,
+            Description = result.Description,
+        };
 
-        return NotFound($"Setting with key '{key}' not found.");
+        return Ok(dto);
     }
 
     /// <summary>
@@ -318,6 +345,14 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
         var setting = await dbContext.Settings!
             .Where(s => s.Key == key && s.UserId == user.Id)
             .FirstOrDefaultAsync();
+
+        // If setting was not saved (value matches system-level), return the system setting
+        if (setting == null)
+        {
+            setting = await dbContext.Settings!
+                .Where(s => s.Key == key && s.UserId == null && s.Language == null)
+                .FirstOrDefaultAsync();
+        }
 
         var settingDto = mapper.Map<SettingDetailsDto>(setting);
         return Ok(settingDto);
@@ -367,6 +402,7 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
             .ToListAsync();
 
         var settingDtos = mapper.Map<List<SettingDetailsDto>>(settings);
+
         return Ok(settingDtos);
     }
 
@@ -380,5 +416,52 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
     public override Task<IActionResult> Sync([FromQuery] string? syncToken = null, [FromQuery] string? query = null)
     {
         return base.Sync(syncToken, query);
+    }
+
+    /// <inheritdoc/>
+    protected override async Task OnAfterImportAsync(List<Setting> importedEntities, List<SettingImportDto> importRecords)
+    {
+        var allImported = await dbContext.Settings!
+            .Where(s => importRecords.Select(r => r.Key).Contains(s.Key))
+            .ToListAsync();
+
+        var toRemove = new List<Setting>();
+
+        foreach (var setting in allImported)
+        {
+            // Enrich with plugin metadata only if not already set (i.e. first save)
+            if (setting.Type == null)
+            {
+                var pluginDef = settingsEnrichmentService.GetPluginSettingDefinitions()
+                    .FirstOrDefault(d => d.Key == setting.Key);
+
+                if (pluginDef != null)
+                {
+                    setting.Required = pluginDef.Required;
+                    setting.Type = pluginDef.Type;
+                    setting.Description = pluginDef.Description;
+                }
+            }
+
+            // Mark language/user-specific settings for removal if they match the global value
+            if (!string.IsNullOrEmpty(setting.Language) || !string.IsNullOrEmpty(setting.UserId))
+            {
+                var globalSetting = await dbContext.Settings!
+                    .Where(s => s.Key == setting.Key && s.UserId == null && s.Language == null)
+                    .FirstOrDefaultAsync();
+
+                if (globalSetting != null && globalSetting.Value == setting.Value)
+                {
+                    toRemove.Add(setting);
+                }
+            }
+        }
+
+        if (toRemove.Count > 0)
+        {
+            dbContext.Settings!.RemoveRange(toRemove);
+        }
+
+        await dbContext.SaveChangesAsync();
     }
 }

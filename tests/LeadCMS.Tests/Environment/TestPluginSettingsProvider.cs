@@ -1,73 +1,44 @@
-﻿// <copyright file="SitePlugin.cs" company="WavePoint Co. Ltd.">
+// <copyright file="TestPluginSettingsProvider.cs" company="WavePoint Co. Ltd.">
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
-using LeadCMS.Data;
 using LeadCMS.Interfaces;
-using LeadCMS.Plugin.Site.Configuration;
-using LeadCMS.Plugin.Site.Data;
-using LeadCMS.Plugin.Site.Services;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 
-namespace LeadCMS.Plugin.Site;
+namespace LeadCMS.Tests.Environment;
 
 /// <summary>
-/// Site plugin providing website functionality including contact forms, subscriptions, and lead capture.
+/// Test plugin settings provider that mimics what a real plugin (e.g., Site plugin) would register.
+/// Used to validate the IPluginSettingsProvider pipeline in integration tests.
 /// </summary>
-public class SitePlugin : IPlugin, ICapabilityProvider, IPluginSettingsProvider
+public class TestPluginSettingsProvider : IPluginSettingsProvider
 {
-    public static PluginSettings Settings { get; private set; } = new PluginSettings();
-
-    public void ConfigureServices(IServiceCollection services, IConfiguration configuration)
-    {
-        var pluginSettings = configuration.Get<PluginSettings>();
-
-        if (pluginSettings != null)
-        {
-            Settings = pluginSettings;
-        }
-
-        services.AddScoped<PluginDbContextBase, LeadCmsSiteDbContext>();
-        services.AddScoped<LeadCmsSiteDbContext, LeadCmsSiteDbContext>();
-        services.AddScoped<ILeadNotificationService, LeadNotificationService>();
-        services.AddSingleton<ISubscriptionTokenService>(_ =>
-            new SubscriptionTokenService(Settings.SubscriptionTokenSecret));
-    }
-
-    /// <inheritdoc/>
-    public IEnumerable<string> GetCapabilities()
-    {
-        yield return "Site";
-    }
-
     /// <inheritdoc/>
     public IEnumerable<PluginSettingDefinition> GetSettingDefinitions()
     {
         yield return new PluginSettingDefinition
         {
-            Key = LeadCaptureSettingKeys.EmailEnabled,
+            Key = "LeadCapture.Email.Enabled",
             DefaultValue = "false",
             Type = "bool",
             Description = "Whether email notifications are enabled for lead capture.",
         };
         yield return new PluginSettingDefinition
         {
-            Key = LeadCaptureSettingKeys.EmailRecipients,
+            Key = "LeadCapture.Email.Recipients",
             DefaultValue = "[]",
             Type = "json",
             Description = "JSON array of email addresses to send lead notifications to.",
         };
         yield return new PluginSettingDefinition
         {
-            Key = LeadCaptureSettingKeys.TelegramEnabled,
+            Key = "LeadCapture.Telegram.Enabled",
             DefaultValue = "false",
             Type = "bool",
             Description = "Whether Telegram notifications are enabled for lead capture.",
         };
         yield return new PluginSettingDefinition
         {
-            Key = LeadCaptureSettingKeys.TelegramBotId,
+            Key = "LeadCapture.Telegram.BotId",
             DefaultValue = string.Empty,
             Type = "string",
             Required = true,
@@ -75,7 +46,7 @@ public class SitePlugin : IPlugin, ICapabilityProvider, IPluginSettingsProvider
         };
         yield return new PluginSettingDefinition
         {
-            Key = LeadCaptureSettingKeys.TelegramChatId,
+            Key = "LeadCapture.Telegram.ChatId",
             DefaultValue = string.Empty,
             Type = "string",
             Required = true,
@@ -83,14 +54,14 @@ public class SitePlugin : IPlugin, ICapabilityProvider, IPluginSettingsProvider
         };
         yield return new PluginSettingDefinition
         {
-            Key = LeadCaptureSettingKeys.SlackEnabled,
+            Key = "LeadCapture.Slack.Enabled",
             DefaultValue = "false",
             Type = "bool",
             Description = "Whether Slack notifications are enabled for lead capture.",
         };
         yield return new PluginSettingDefinition
         {
-            Key = LeadCaptureSettingKeys.SlackWebhookUrl,
+            Key = "LeadCapture.Slack.WebhookUrl",
             DefaultValue = string.Empty,
             Type = "string",
             Required = true,

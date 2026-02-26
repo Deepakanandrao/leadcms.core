@@ -4,7 +4,8 @@
 
 using System.Net.Http.Json;
 using System.Text;
-using System.Text.Json;
+using LeadCMS.Entities;
+using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
 using LeadCMS.Plugin.Site.Configuration;
 using LeadCMS.Plugin.Site.DTOs;
@@ -99,26 +100,26 @@ public class LeadNotificationService : ILeadNotificationService
     public async Task SendLeadNotificationAsync(LeadNotificationInfo leadInfo, CancellationToken cancellationToken = default)
     {
         // Load all lead capture settings from the database
-        var settings = await settingService.GetSettingsByKeysAsync(LeadCaptureSettingKeys.All);
+        var settings = await settingService.FindSettingsByKeysAsync(LeadCaptureSettingKeys.All, language: leadInfo.Language);
 
         var tasks = new List<Task>();
 
         // Send email notification (default: enabled)
-        var emailEnabled = GetBoolSetting(settings, LeadCaptureSettingKeys.EmailEnabled, defaultValue: true);
+        var emailEnabled = SettingListHelper.GetBool(settings, LeadCaptureSettingKeys.EmailEnabled, defaultValue: true);
         if (emailEnabled)
         {
             tasks.Add(SendEmailNotificationAsync(leadInfo, settings));
         }
 
         // Send Telegram notification (default: disabled)
-        var telegramEnabled = GetBoolSetting(settings, LeadCaptureSettingKeys.TelegramEnabled, defaultValue: false);
+        var telegramEnabled = SettingListHelper.GetBool(settings, LeadCaptureSettingKeys.TelegramEnabled, defaultValue: false);
         if (telegramEnabled)
         {
             tasks.Add(SendTelegramNotificationAsync(leadInfo, settings, cancellationToken));
         }
 
         // Send Slack notification (default: disabled)
-        var slackEnabled = GetBoolSetting(settings, LeadCaptureSettingKeys.SlackEnabled, defaultValue: false);
+        var slackEnabled = SettingListHelper.GetBool(settings, LeadCaptureSettingKeys.SlackEnabled, defaultValue: false);
         if (slackEnabled)
         {
             tasks.Add(SendSlackNotificationAsync(leadInfo, settings, cancellationToken));
@@ -126,49 +127,6 @@ public class LeadNotificationService : ILeadNotificationService
 
         // Wait for all notifications to complete
         await Task.WhenAll(tasks);
-    }
-
-    private static bool GetBoolSetting(Dictionary<string, string?> settings, string key, bool defaultValue)
-    {
-        if (settings.TryGetValue(key, out var value) && !string.IsNullOrEmpty(value))
-        {
-            return bool.TryParse(value, out var result) ? result : defaultValue;
-        }
-
-        return defaultValue;
-    }
-
-    private static string? GetStringSetting(Dictionary<string, string?> settings, string key)
-    {
-        if (settings.TryGetValue(key, out var value) && !string.IsNullOrEmpty(value))
-        {
-            return value;
-        }
-
-        return null;
-    }
-
-    private static string[] GetEmailArraySetting(Dictionary<string, string?> settings, string key)
-    {
-        if (settings.TryGetValue(key, out var value) && !string.IsNullOrEmpty(value))
-        {
-            try
-            {
-                // Try to parse as JSON array
-                var emails = JsonSerializer.Deserialize<string[]>(value);
-                if (emails != null && emails.Length > 0)
-                {
-                    return emails.Where(e => !string.IsNullOrWhiteSpace(e)).ToArray();
-                }
-            }
-            catch (JsonException)
-            {
-                // If not valid JSON, treat as a single email or comma-separated list
-                return value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            }
-        }
-
-        return Array.Empty<string>();
     }
 
     private static bool IsValidEmail(string email)
@@ -282,12 +240,12 @@ public class LeadNotificationService : ILeadNotificationService
         return message.Substring(0, maxLength - 1) + "…";
     }
 
-    private async Task SendEmailNotificationAsync(LeadNotificationInfo leadInfo, Dictionary<string, string?> settings)
+    private async Task SendEmailNotificationAsync(LeadNotificationInfo leadInfo, List<Setting> settings)
     {
         try
         {
-            // Determine target emails: use LeadCapture.Email.To if set, otherwise fall back to ContactUs.To from plugin settings
-            var leadCaptureEmails = GetEmailArraySetting(settings, LeadCaptureSettingKeys.EmailTo);
+            // Determine target emails: use LeadCapture.Email.Recipients if set, otherwise fall back to ContactUs.To from plugin settings
+            var leadCaptureEmails = SettingListHelper.GetStringArray(settings, LeadCaptureSettingKeys.EmailRecipients);
             var contactUsEmails = pluginSettings.ContactUs.To
                 .Where(e => !string.IsNullOrEmpty(e) && !e.StartsWith('$'))
                 .ToArray();
@@ -324,10 +282,10 @@ public class LeadNotificationService : ILeadNotificationService
         }
     }
 
-    private async Task SendTelegramNotificationAsync(LeadNotificationInfo leadInfo, Dictionary<string, string?> settings, CancellationToken cancellationToken)
+    private async Task SendTelegramNotificationAsync(LeadNotificationInfo leadInfo, List<Setting> settings, CancellationToken cancellationToken)
     {
-        var botId = GetStringSetting(settings, LeadCaptureSettingKeys.TelegramBotId);
-        var chatId = GetStringSetting(settings, LeadCaptureSettingKeys.TelegramChatId);
+        var botId = SettingListHelper.GetString(settings, LeadCaptureSettingKeys.TelegramBotId);
+        var chatId = SettingListHelper.GetString(settings, LeadCaptureSettingKeys.TelegramChatId);
 
         if (string.IsNullOrEmpty(botId) || string.IsNullOrEmpty(chatId))
         {
@@ -397,9 +355,9 @@ public class LeadNotificationService : ILeadNotificationService
         }
     }
 
-    private async Task SendSlackNotificationAsync(LeadNotificationInfo leadInfo, Dictionary<string, string?> settings, CancellationToken cancellationToken)
+    private async Task SendSlackNotificationAsync(LeadNotificationInfo leadInfo, List<Setting> settings, CancellationToken cancellationToken)
     {
-        var webhookUrl = GetStringSetting(settings, LeadCaptureSettingKeys.SlackWebhookUrl);
+        var webhookUrl = SettingListHelper.GetString(settings, LeadCaptureSettingKeys.SlackWebhookUrl);
 
         if (string.IsNullOrEmpty(webhookUrl))
         {

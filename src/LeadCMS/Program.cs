@@ -401,6 +401,12 @@ public class Program
                 // We'll register this after the service provider is built
                 builder.Services.AddSingleton<ICapabilityProvider>(capabilityProvider);
             }
+
+            // Register plugin settings definitions if the plugin implements IPluginSettingsProvider
+            if (plugin is IPluginSettingsProvider pluginSettingsProvider)
+            {
+                builder.Services.AddSingleton<IPluginSettingsProvider>(pluginSettingsProvider);
+            }
         }
     }
 

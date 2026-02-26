@@ -3,6 +3,7 @@
 // </copyright>
 
 using LeadCMS.Constants;
+using LeadCMS.Entities;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace LeadCMS.Tests;
@@ -16,10 +17,10 @@ public class SettingsEnrichmentServiceTests : BaseTest
         using var scope = App.Services.CreateScope();
         var enrichmentService = scope.ServiceProvider.GetRequiredService<ISettingsEnrichmentService>();
 
-        var settings = new Dictionary<string, string?>
+        var settings = new List<Setting>
         {
-            { SettingKeys.MinTitleLength, null }, // Null value - should be replaced
-            { SettingKeys.MaxTitleLength, "50" },  // Non-null value - should be kept
+            new Setting { Key = SettingKeys.MinTitleLength, Value = null }, // Null value - should be replaced
+            new Setting { Key = SettingKeys.MaxTitleLength, Value = "50" },  // Non-null value - should be kept
             // MinDescriptionLength missing - should be added
             // MaxDescriptionLength missing - should be added
         };
@@ -28,10 +29,10 @@ public class SettingsEnrichmentServiceTests : BaseTest
         await enrichmentService.EnrichWithContentValidationSettingsAsync(settings);
 
         // Assert
-        Assert.Equal("10", settings[SettingKeys.MinTitleLength]); // Should use default since was null
-        Assert.Equal("50", settings[SettingKeys.MaxTitleLength]); // Should keep existing value
-        Assert.Equal("20", settings[SettingKeys.MinDescriptionLength]); // Should add default
-        Assert.Equal("155", settings[SettingKeys.MaxDescriptionLength]); // Should add default
+        Assert.Equal("10", settings.First(s => s.Key == SettingKeys.MinTitleLength).Value); // Should use default since was null
+        Assert.Equal("50", settings.First(s => s.Key == SettingKeys.MaxTitleLength).Value); // Should keep existing value
+        Assert.Equal("20", settings.First(s => s.Key == SettingKeys.MinDescriptionLength).Value); // Should add default
+        Assert.Equal("155", settings.First(s => s.Key == SettingKeys.MaxDescriptionLength).Value); // Should add default
     }
 
     [Fact]
@@ -41,10 +42,10 @@ public class SettingsEnrichmentServiceTests : BaseTest
         using var scope = App.Services.CreateScope();
         var enrichmentService = scope.ServiceProvider.GetRequiredService<ISettingsEnrichmentService>();
 
-        var settings = new Dictionary<string, string?>
+        var settings = new List<Setting>
         {
-            { SettingKeys.RequireDigit, null }, // Null value - should be replaced
-            { SettingKeys.RequireUppercase, "false" }, // Non-null value - should be kept
+            new Setting { Key = SettingKeys.RequireDigit, Value = null }, // Null value - should be replaced
+            new Setting { Key = SettingKeys.RequireUppercase, Value = "false" }, // Non-null value - should be kept
             // Other settings missing - should be added with defaults
         };
 
@@ -52,11 +53,11 @@ public class SettingsEnrichmentServiceTests : BaseTest
         await enrichmentService.EnrichWithIdentitySettingsAsync(settings);
 
         // Assert
-        Assert.Equal("true", settings[SettingKeys.RequireDigit]); // Should use default since was null
-        Assert.Equal("false", settings[SettingKeys.RequireUppercase]); // Should keep existing value
-        Assert.Equal("true", settings[SettingKeys.RequireLowercase]); // Should add default
-        Assert.Equal("true", settings[SettingKeys.RequireNonAlphanumeric]); // Should add default
-        Assert.Equal("6", settings[SettingKeys.RequiredLength]); // Should add default
-        Assert.Equal("1", settings[SettingKeys.RequiredUniqueChars]); // Should add default
+        Assert.Equal("true", settings.First(s => s.Key == SettingKeys.RequireDigit).Value); // Should use default since was null
+        Assert.Equal("false", settings.First(s => s.Key == SettingKeys.RequireUppercase).Value); // Should keep existing value
+        Assert.Equal("true", settings.First(s => s.Key == SettingKeys.RequireLowercase).Value); // Should add default
+        Assert.Equal("true", settings.First(s => s.Key == SettingKeys.RequireNonAlphanumeric).Value); // Should add default
+        Assert.Equal("6", settings.First(s => s.Key == SettingKeys.RequiredLength).Value); // Should add default
+        Assert.Equal("1", settings.First(s => s.Key == SettingKeys.RequiredUniqueChars).Value); // Should add default
     }
 }

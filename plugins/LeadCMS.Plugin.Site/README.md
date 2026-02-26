@@ -85,7 +85,7 @@ Lead Capture settings are stored in the database and can be configured via the S
 | Setting Key                    | Type       | Default | Description                                                                          |
 | ------------------------------ | ---------- | ------- | ------------------------------------------------------------------------------------ |
 | `LeadCapture.Email.Enabled`    | boolean    | `true`  | Enable/disable email notifications                                                   |
-| `LeadCapture.Email.To`         | JSON array | `[]`    | Email addresses to receive lead notifications. Falls back to `ContactUs.To` if empty |
+| `LeadCapture.Email.Recipients` | JSON array | `[]`    | Email addresses to receive lead notifications. Falls back to `ContactUs.To` if empty |
 | `LeadCapture.Telegram.Enabled` | boolean    | `false` | Enable/disable Telegram notifications                                                |
 | `LeadCapture.Telegram.BotId`   | string     | `""`    | Your Telegram bot ID (create via [@BotFather](https://t.me/botfather))               |
 | `LeadCapture.Telegram.ChatId`  | string     | `""`    | The Telegram chat ID to send notifications to                                        |
@@ -113,7 +113,7 @@ POST /api/settings
 Content-Type: application/json
 
 {
-  "key": "LeadCapture.Email.To",
+  "key": "LeadCapture.Email.Recipients",
   "value": "[\"leads@example.com\", \"sales@example.com\"]"
 }
 ```

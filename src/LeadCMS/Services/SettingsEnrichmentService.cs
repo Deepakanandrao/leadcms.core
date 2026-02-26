@@ -4,41 +4,50 @@
 
 using System.Text.Json;
 using LeadCMS.Constants;
+using LeadCMS.Entities;
 using LeadCMS.Interfaces;
 
 namespace LeadCMS.Services;
 
 /// <summary>
-/// Service for enriching settings dictionaries with default values from configuration.
+/// Service for enriching settings lists with default values from configuration.
 /// Handles null database values by falling back to configuration defaults.
 /// </summary>
 public class SettingsEnrichmentService : ISettingsEnrichmentService
 {
     private readonly ISettingService settingService;
     private readonly IConfiguration configuration;
+    private readonly IReadOnlyList<PluginSettingDefinition> pluginSettingDefinitions;
 
-    public SettingsEnrichmentService(ISettingService settingService, IConfiguration configuration)
+    public SettingsEnrichmentService(
+        ISettingService settingService,
+        IConfiguration configuration,
+        IEnumerable<IPluginSettingsProvider> pluginSettingsProviders)
     {
         this.settingService = settingService;
         this.configuration = configuration;
+        pluginSettingDefinitions = pluginSettingsProviders
+            .SelectMany(p => p.GetSettingDefinitions())
+            .GroupBy(d => d.Key)
+            .Select(g => g.First())
+            .ToList()
+            .AsReadOnly();
     }
 
     /// <summary>
-    /// Enriches settings dictionary with content validation defaults.
+    /// Enriches settings list with content validation defaults.
     /// Uses SettingService fallback methods to handle null database values.
     /// </summary>
-    /// <param name="settings">Dictionary of settings to enrich.</param>
+    /// <param name="settings">List of settings to enrich.</param>
     /// <param name="userId">Optional user ID for user-level settings.</param>
-    public async Task EnrichWithContentValidationSettingsAsync(Dictionary<string, string?> settings, string? userId = null)
+    public async Task EnrichWithContentValidationSettingsAsync(List<Setting> settings, string? userId = null)
     {
-        // Get content validation settings with fallback using existing service methods
         var minTitleLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.MinTitleLength, 10, userId);
         var maxTitleLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.MaxTitleLength, 60, userId);
         var minDescriptionLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.MinDescriptionLength, 20, userId);
         var maxDescriptionLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.MaxDescriptionLength, 155, userId);
         var enableRealtimeSyntaxValidation = await settingService.GetBoolSettingWithFallbackAsync(SettingKeys.EnableRealtimeSyntaxValidation, true, userId);
 
-        // Update settings dictionary with fallback values where needed (handles null values)
         SetSettingIfNullOrEmpty(settings, SettingKeys.MinTitleLength, minTitleLength.ToString());
         SetSettingIfNullOrEmpty(settings, SettingKeys.MaxTitleLength, maxTitleLength.ToString());
         SetSettingIfNullOrEmpty(settings, SettingKeys.MinDescriptionLength, minDescriptionLength.ToString());
@@ -47,15 +56,13 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
     }
 
     /// <summary>
-    /// Enriches settings dictionary with identity/password policy defaults.
+    /// Enriches settings list with identity/password policy defaults.
     /// Uses SettingService fallback methods to handle null database values.
     /// </summary>
-    /// <param name="settings">Dictionary of settings to enrich.</param>
+    /// <param name="settings">List of settings to enrich.</param>
     /// <param name="userId">Optional user ID for user-level settings.</param>
-    public async Task EnrichWithIdentitySettingsAsync(Dictionary<string, string?> settings, string? userId = null)
+    public async Task EnrichWithIdentitySettingsAsync(List<Setting> settings, string? userId = null)
     {
-        // Get identity settings with fallback using existing service methods
-        // Note: Using different defaults for system vs user level as seen in ConfigController
         var requireDigit = await settingService.GetBoolSettingWithFallbackAsync(SettingKeys.RequireDigit, userId == null, userId);
         var requireUppercase = await settingService.GetBoolSettingWithFallbackAsync(SettingKeys.RequireUppercase, userId == null, userId);
         var requireLowercase = await settingService.GetBoolSettingWithFallbackAsync(SettingKeys.RequireLowercase, true, userId);
@@ -63,8 +70,6 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
         var requiredLength = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.RequiredLength, 6, userId);
         var requiredUniqueChars = await settingService.GetIntSettingWithFallbackAsync(SettingKeys.RequiredUniqueChars, 1, userId);
 
-        // Update settings dictionary with fallback values where needed (handles null values)
-        // Use lowercase for boolean values to match ConfigController pattern
         SetSettingIfNullOrEmpty(settings, SettingKeys.RequireDigit, requireDigit.ToString().ToLower());
         SetSettingIfNullOrEmpty(settings, SettingKeys.RequireUppercase, requireUppercase.ToString().ToLower());
         SetSettingIfNullOrEmpty(settings, SettingKeys.RequireLowercase, requireLowercase.ToString().ToLower());
@@ -74,31 +79,29 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
     }
 
     /// <summary>
-    /// Enriches settings dictionary with API configuration defaults.
+    /// Enriches settings list with API configuration defaults.
     /// These settings are typically configuration-only and don't have database overrides.
     /// </summary>
-    /// <param name="settings">Dictionary of settings to enrich.</param>
-    public async Task EnrichWithApiSettingsAsync(Dictionary<string, string?> settings)
+    /// <param name="settings">List of settings to enrich.</param>
+    public async Task EnrichWithApiSettingsAsync(List<Setting> settings)
     {
-        // Get API settings directly from configuration since these don't typically have database overrides
         var maxListSize = configuration["ApiSettings:MaxListSize"] ?? "100";
         var defaultFromEmail = configuration["ApiSettings:DefaultFromEmail"] ?? "no-reply@leadcms.ai";
         var defaultFromName = configuration["ApiSettings:DefaultFromName"] ?? "LeadCMS";
 
-        // Update settings dictionary with fallback values where needed (handles null values)
         SetSettingIfNullOrEmpty(settings, "ApiSettings.MaxListSize", maxListSize);
         SetSettingIfNullOrEmpty(settings, "ApiSettings.DefaultFromEmail", defaultFromEmail);
         SetSettingIfNullOrEmpty(settings, "ApiSettings.DefaultFromName", defaultFromName);
 
-        await Task.CompletedTask; // Make async for consistency
+        await Task.CompletedTask;
     }
 
     /// <summary>
-    /// Enriches settings dictionary with media optimization defaults.
+    /// Enriches settings list with media optimization defaults.
     /// </summary>
-    /// <param name="settings">Dictionary of settings to enrich.</param>
+    /// <param name="settings">List of settings to enrich.</param>
     /// <param name="userId">Optional user ID for user-level settings.</param>
-    public async Task EnrichWithMediaSettingsAsync(Dictionary<string, string?> settings, string? userId = null)
+    public async Task EnrichWithMediaSettingsAsync(List<Setting> settings, string? userId = null)
     {
         var maxDimensions = await settingService.GetSettingWithFallbackAsync(
             SettingKeys.MediaMaxDimensions,
@@ -113,10 +116,8 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
             ConfigurationPaths.GetConfigurationPath(SettingKeys.MediaPreferredFormat),
             userId);
 
-        // MediaMaxFileSize: get from Media:MaxSize configuration with "default" extension, convert to kilobytes
         var maxFileSizeInKb = GetDefaultMediaMaxFileSize();
 
-        // MediaEnableOptimisation: defaults to false if not set
         var enableOptimisationConfig = configuration["Media:EnableOptimisation"] ?? "false";
         var enableOptimisation = bool.TryParse(enableOptimisationConfig, out var result) && result;
 
@@ -130,24 +131,32 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
     }
 
     /// <summary>
-    /// Enriches settings dictionary with lead capture defaults.
-    /// Falls back to ContactUs.To configuration when LeadCapture.Email.To is missing or empty.
+    /// Enriches settings list with lead capture defaults.
+    /// Falls back to ContactUs.To configuration when LeadCapture.Email.Recipients is missing or empty.
     /// </summary>
-    /// <param name="settings">Dictionary of settings to enrich.</param>
-    public async Task EnrichWithLeadCaptureSettingsAsync(Dictionary<string, string?> settings)
+    /// <param name="settings">List of settings to enrich.</param>
+    public async Task EnrichWithLeadCaptureSettingsAsync(List<Setting> settings)
     {
-        const string leadCaptureEmailToKey = "LeadCapture.Email.To";
+        const string leadCaptureEmailRecipientsKey = "LeadCapture.Email.Recipients";
 
-        var hasValue = settings.TryGetValue(leadCaptureEmailToKey, out var value)
-            && !string.IsNullOrWhiteSpace(value)
-            && !string.Equals(value, "[]", StringComparison.Ordinal);
+        var existing = settings.FirstOrDefault(s => s.Key == leadCaptureEmailRecipientsKey);
+        var hasValue = existing != null
+            && !string.IsNullOrWhiteSpace(existing.Value)
+            && !string.Equals(existing.Value, "[]", StringComparison.Ordinal);
 
         if (!hasValue)
         {
             var contactUsTo = configuration.GetSection("ContactUs:To").Get<string[]>();
             if (contactUsTo != null && contactUsTo.Length > 0)
             {
-                settings[leadCaptureEmailToKey] = JsonSerializer.Serialize(contactUsTo);
+                if (existing != null)
+                {
+                    existing.Value = JsonSerializer.Serialize(contactUsTo);
+                }
+                else
+                {
+                    settings.Add(new Setting { Key = leadCaptureEmailRecipientsKey, Value = JsonSerializer.Serialize(contactUsTo) });
+                }
             }
         }
 
@@ -155,33 +164,44 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
     }
 
     /// <summary>
-    /// Enriches settings dictionary with all known settings categories.
+    /// Enriches settings list with all known settings categories.
     /// This is a convenience method that calls all specific enrichment methods.
     /// </summary>
-    /// <param name="settings">Dictionary of settings to enrich.</param>
+    /// <param name="settings">List of settings to enrich.</param>
     /// <param name="userId">Optional user ID for user-level settings.</param>
-    public async Task EnrichWithAllKnownSettingsAsync(Dictionary<string, string?> settings, string? userId = null)
+    public async Task EnrichWithAllKnownSettingsAsync(List<Setting> settings, string? userId = null)
     {
         await EnrichWithContentValidationSettingsAsync(settings, userId);
         await EnrichWithIdentitySettingsAsync(settings, userId);
         await EnrichWithApiSettingsAsync(settings);
         await EnrichWithMediaSettingsAsync(settings, userId);
         await EnrichWithLeadCaptureSettingsAsync(settings);
+        EnrichWithPluginSettings(settings);
+    }
+
+    /// <inheritdoc/>
+    public IReadOnlyList<PluginSettingDefinition> GetPluginSettingDefinitions()
+    {
+        return pluginSettingDefinitions;
     }
 
     /// <summary>
-    /// Sets a setting value in the dictionary only if the key doesn't exist or the value is null/empty.
-    /// This method handles the null value checking pattern used throughout the codebase.
+    /// Sets a setting value in the list only if the key doesn't exist or the value is null/empty.
+    /// If the setting doesn't exist, a new Setting is added to the list.
     /// </summary>
-    /// <param name="settings">Settings dictionary to update.</param>
+    /// <param name="settings">Settings list to update.</param>
     /// <param name="key">Setting key.</param>
     /// <param name="value">Value to set if key is missing or null/empty.</param>
-    private static void SetSettingIfNullOrEmpty(Dictionary<string, string?> settings, string key, string value)
+    private static void SetSettingIfNullOrEmpty(List<Setting> settings, string key, string value)
     {
-        // Check if key doesn't exist OR if the value is null OR if the value is empty string
-        if (!settings.ContainsKey(key) || settings[key] == null || string.IsNullOrEmpty(settings[key]))
+        var existing = settings.FirstOrDefault(s => s.Key == key);
+        if (existing == null)
         {
-            settings[key] = value;
+            settings.Add(new Setting { Key = key, Value = value });
+        }
+        else if (string.IsNullOrEmpty(existing.Value))
+        {
+            existing.Value = value;
         }
     }
 
@@ -223,6 +243,19 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
             "GB" => (long)(number * 1024 * 1024),
             _ => (long)number, // Assume KB if unit is unknown
         };
+    }
+
+    /// <summary>
+    /// Enriches settings list with plugin-registered setting defaults.
+    /// Adds any plugin-declared keys that are missing or null in the list.
+    /// </summary>
+    /// <param name="settings">List of settings to enrich.</param>
+    private void EnrichWithPluginSettings(List<Setting> settings)
+    {
+        foreach (var definition in pluginSettingDefinitions)
+        {
+            SetSettingIfNullOrEmpty(settings, definition.Key, definition.DefaultValue ?? string.Empty);
+        }
     }
 
     /// <summary>

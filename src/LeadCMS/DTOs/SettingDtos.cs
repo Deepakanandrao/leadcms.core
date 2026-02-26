@@ -9,6 +9,17 @@ using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
 
+public interface ISettingMetadataDto
+{
+    string Key { get; }
+
+    bool Required { get; set; }
+
+    string? Type { get; set; }
+
+    string? Description { get; set; }
+}
+
 public class SettingCreateDto
 {
     [Required]
@@ -18,6 +29,9 @@ public class SettingCreateDto
     public string? Value { get; set; }
 
     public string? UserId { get; set; }
+
+    [MaxLength(10)]
+    public string? Language { get; set; }
 }
 
 public class SettingUpdateDto : IPatchDto
@@ -29,7 +43,7 @@ public class SettingUpdateDto : IPatchDto
     public string? Value { get; set; }
 }
 
-public class SettingDetailsDto
+public class SettingDetailsDto : ISettingMetadataDto
 {
     public int Id { get; set; }
 
@@ -39,6 +53,14 @@ public class SettingDetailsDto
 
     public string? UserId { get; set; }
 
+    public string? Language { get; set; }
+
+    public bool Required { get; set; }
+
+    public string? Type { get; set; }
+
+    public string? Description { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }
@@ -46,17 +68,23 @@ public class SettingDetailsDto
     public string? CreatedById { get; set; }
 
     public string? UpdatedById { get; set; }
-
-    public bool IsUserLevel => !string.IsNullOrEmpty(UserId);
 }
 
-public class SettingValueDto
+public class SettingValueDto : ISettingMetadataDto
 {
     public string Key { get; set; } = string.Empty;
 
     public string? Value { get; set; }
 
-    public bool IsUserLevel { get; set; }
+    public string? UserId { get; set; }
+
+    public string? Language { get; set; }
+
+    public bool Required { get; set; }
+
+    public string? Type { get; set; }
+
+    public string? Description { get; set; }
 }
 
 public class SettingImportDto : BaseImportDto
@@ -68,4 +96,7 @@ public class SettingImportDto : BaseImportDto
     public string? Value { get; set; }
 
     public string? UserId { get; set; }
+
+    [MaxLength(10)]
+    public string? Language { get; set; }
 }

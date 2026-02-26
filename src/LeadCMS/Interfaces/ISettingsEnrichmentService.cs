@@ -2,61 +2,69 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using LeadCMS.Entities;
+
 namespace LeadCMS.Interfaces;
 
 /// <summary>
-/// Service for enriching settings dictionaries with default values from configuration.
+/// Service for enriching settings lists with default values from configuration.
 /// Handles null database values by falling back to configuration defaults.
 /// </summary>
 public interface ISettingsEnrichmentService
 {
     /// <summary>
-    /// Enriches settings dictionary with content validation defaults.
+    /// Enriches settings list with content validation defaults.
     /// Uses SettingService fallback methods to handle null database values.
     /// </summary>
-    /// <param name="settings">Dictionary of settings to enrich.</param>
+    /// <param name="settings">List of settings to enrich.</param>
     /// <param name="userId">Optional user ID for user-level settings.</param>
     /// <returns>A task that represents the asynchronous enrichment operation.</returns>
-    Task EnrichWithContentValidationSettingsAsync(Dictionary<string, string?> settings, string? userId = null);
+    Task EnrichWithContentValidationSettingsAsync(List<Setting> settings, string? userId = null);
 
     /// <summary>
-    /// Enriches settings dictionary with identity/password policy defaults.
+    /// Enriches settings list with identity/password policy defaults.
     /// Uses SettingService fallback methods to handle null database values.
     /// </summary>
-    /// <param name="settings">Dictionary of settings to enrich.</param>
+    /// <param name="settings">List of settings to enrich.</param>
     /// <param name="userId">Optional user ID for user-level settings.</param>
     /// <returns>A task that represents the asynchronous enrichment operation.</returns>
-    Task EnrichWithIdentitySettingsAsync(Dictionary<string, string?> settings, string? userId = null);
+    Task EnrichWithIdentitySettingsAsync(List<Setting> settings, string? userId = null);
 
     /// <summary>
-    /// Enriches settings dictionary with API configuration defaults.
+    /// Enriches settings list with API configuration defaults.
     /// These settings are typically configuration-only and don't have database overrides.
     /// </summary>
-    /// <param name="settings">Dictionary of settings to enrich.</param>
+    /// <param name="settings">List of settings to enrich.</param>
     /// <returns>A task that represents the asynchronous enrichment operation.</returns>
-    Task EnrichWithApiSettingsAsync(Dictionary<string, string?> settings);
+    Task EnrichWithApiSettingsAsync(List<Setting> settings);
 
     /// <summary>
-    /// Enriches settings dictionary with media optimization defaults.
+    /// Enriches settings list with media optimization defaults.
     /// </summary>
-    /// <param name="settings">Dictionary of settings to enrich.</param>
+    /// <param name="settings">List of settings to enrich.</param>
     /// <param name="userId">Optional user ID for user-level settings.</param>
     /// <returns>A task that represents the asynchronous enrichment operation.</returns>
-    Task EnrichWithMediaSettingsAsync(Dictionary<string, string?> settings, string? userId = null);
+    Task EnrichWithMediaSettingsAsync(List<Setting> settings, string? userId = null);
 
     /// <summary>
-    /// Enriches settings dictionary with lead capture defaults.
+    /// Enriches settings list with lead capture defaults.
     /// </summary>
-    /// <param name="settings">Dictionary of settings to enrich.</param>
+    /// <param name="settings">List of settings to enrich.</param>
     /// <returns>A task that represents the asynchronous enrichment operation.</returns>
-    Task EnrichWithLeadCaptureSettingsAsync(Dictionary<string, string?> settings);
+    Task EnrichWithLeadCaptureSettingsAsync(List<Setting> settings);
 
     /// <summary>
-    /// Enriches settings dictionary with all known settings categories.
+    /// Enriches settings list with all known settings categories.
     /// This is a convenience method that calls all specific enrichment methods.
     /// </summary>
-    /// <param name="settings">Dictionary of settings to enrich.</param>
+    /// <param name="settings">List of settings to enrich.</param>
     /// <param name="userId">Optional user ID for user-level settings.</param>
     /// <returns>A task that represents the asynchronous enrichment operation.</returns>
-    Task EnrichWithAllKnownSettingsAsync(Dictionary<string, string?> settings, string? userId = null);
+    Task EnrichWithAllKnownSettingsAsync(List<Setting> settings, string? userId = null);
+
+    /// <summary>
+    /// Gets all plugin-registered setting definitions merged into a flat collection.
+    /// </summary>
+    /// <returns>A collection of all plugin setting definitions.</returns>
+    IReadOnlyList<PluginSettingDefinition> GetPluginSettingDefinitions();
 }
