@@ -62,6 +62,17 @@ jobs:
       - name: Build
         run: dotnet build --configuration $BUILD_CONFIG -p:Version=${{ steps.branch_name.outputs.value }} --no-restore
 
+      - name: Pack plugins for NuGet
+        run: |
+          while IFS= read -r project; do
+            dotnet pack "$project" \
+              --configuration $BUILD_CONFIG \
+              --no-build \
+              -p:Version=${{ steps.branch_name.outputs.value }} \
+              -p:PackageVersion=${{ steps.branch_name.outputs.value }} \
+              -p:IsPackable=true
+          done < <(find ./plugins -name "*.csproj" -not -path "*/obj/*")
+
       - name: Test
         run: dotnet test --no-build --configuration $BUILD_CONFIG --logger "trx" --verbosity d --results-directory "./"
 

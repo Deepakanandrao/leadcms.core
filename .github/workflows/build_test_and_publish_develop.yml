@@ -90,6 +90,17 @@ jobs:
       - name: Build
         run: dotnet build --configuration $BUILD_CONFIG -p:Version=${{ github.event.inputs.version }} --no-restore
 
+      - name: Pack plugins for NuGet
+        run: |
+          while IFS= read -r project; do
+            dotnet pack "$project" \
+              --configuration $BUILD_CONFIG \
+              --no-build \
+              -p:Version=${{ github.event.inputs.version }} \
+              -p:PackageVersion=${{ github.event.inputs.version }} \
+              -p:IsPackable=true
+          done < <(find ./plugins -name "*.csproj" -not -path "*/obj/*")
+
       - name: Test
         if: ${{ github.event.inputs.run_tests == 'true' }}
         run: dotnet test --no-build --configuration $BUILD_CONFIG --logger "trx" --verbosity normal --results-directory "./"

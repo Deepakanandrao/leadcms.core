@@ -8,7 +8,6 @@ using LeadCMS.DTOs;
 using LeadCMS.Helpers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Controllers
