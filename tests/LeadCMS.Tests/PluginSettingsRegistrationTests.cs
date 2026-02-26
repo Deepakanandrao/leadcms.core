@@ -63,7 +63,7 @@ public class PluginSettingsRegistrationTests : BaseTestAutoLogin
 
         var telegramBotId = settings.FirstOrDefault(s => s.Key == "LeadCapture.Telegram.BotId");
         Assert.NotNull(telegramBotId);
-        Assert.Equal("string", telegramBotId.Type);
+        Assert.Equal("text", telegramBotId.Type);
         Assert.True(telegramBotId.Required);
         Assert.False(string.IsNullOrEmpty(telegramBotId.Description));
 
@@ -109,7 +109,7 @@ public class PluginSettingsRegistrationTests : BaseTestAutoLogin
         Assert.NotEmpty(definitions);
         Assert.Contains(definitions, d => d.Key == "LeadCapture.Email.Enabled");
         Assert.Contains(definitions, d => d.Key == "LeadCapture.Telegram.BotId" && d.Required);
-        Assert.Contains(definitions, d => d.Key == "LeadCapture.Slack.WebhookUrl" && d.Type == "string");
+        Assert.Contains(definitions, d => d.Key == "LeadCapture.Slack.WebhookUrl" && d.Type == "text");
     }
 
     [Fact]

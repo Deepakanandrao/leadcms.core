@@ -268,7 +268,7 @@ public class SettingsMetadataAndSkipTests : BaseTestAutoLogin
 
         Assert.NotNull(setting);
         Assert.True(setting!.Required);
-        Assert.Equal("string", setting.Type);
+        Assert.Equal("text", setting.Type);
         Assert.False(string.IsNullOrEmpty(setting.Description));
     }
 
@@ -308,7 +308,7 @@ public class SettingsMetadataAndSkipTests : BaseTestAutoLogin
         Assert.Equal("LeadCapture.Slack.WebhookUrl", result!.Key);
         Assert.Equal(string.Empty, result.Value);
         Assert.True(result.Required);
-        Assert.Equal("string", result.Type);
+        Assert.Equal("text", result.Type);
         Assert.False(string.IsNullOrEmpty(result.Description));
     }
 
@@ -426,7 +426,7 @@ public class SettingsMetadataAndSkipTests : BaseTestAutoLogin
 
         Assert.NotNull(setting);
         Assert.True(setting!.Required);
-        Assert.Equal("string", setting.Type);
+        Assert.Equal("text", setting.Type);
         Assert.False(string.IsNullOrEmpty(setting.Description));
     }
 

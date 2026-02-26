@@ -256,7 +256,7 @@ public class LanguageSpecificSettingsTests : BaseTestAutoLogin
         // Assert - metadata should come from plugin definition, not from client input
         Assert.NotNull(result);
         Assert.True(result.Required);
-        Assert.Equal("string", result.Type);
+        Assert.Equal("text", result.Type);
         Assert.False(string.IsNullOrEmpty(result.Description));
     }
 }
