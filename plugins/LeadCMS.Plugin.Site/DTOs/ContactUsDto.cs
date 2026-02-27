@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Http;
 
 namespace LeadCMS.Plugin.Site.DTOs
 {
-    public class ContactUsDto
+    public class ContactUsDto : ClientLocaleAwareDto
     {
         private string email = string.Empty;
 
@@ -64,11 +64,7 @@ namespace LeadCMS.Plugin.Site.DTOs
             }
         }
 
-        [Required]
-        public int TimeZoneOffset { get; set; }
-
-        [Required]
-        public string Language { get; set; } = string.Empty;
+        public string? Phone { get; set; }
 
         public string RecaptchaToken { get; set; } = string.Empty;
     }

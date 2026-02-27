@@ -55,7 +55,7 @@ public class LeadNotificationService : ILeadNotificationService
     }
 
     /// <inheritdoc/>
-    public async Task SendLeadNotificationAsync(LeadNotificationInfo leadInfo, CancellationToken cancellationToken = default)
+    public async Task SendLeadNotificationsAsync(LeadNotificationInfo leadInfo)
     {
         // Load all lead capture settings from the database
         var settings = await settingService.FindSettingsByKeysAsync(LeadCaptureSettingKeys.All, language: leadInfo.Language);
@@ -73,18 +73,188 @@ public class LeadNotificationService : ILeadNotificationService
         var telegramEnabled = SettingListHelper.GetBool(settings, LeadCaptureSettingKeys.TelegramEnabled, defaultValue: false);
         if (telegramEnabled)
         {
-            tasks.Add(SendTelegramNotificationAsync(leadInfo, settings, cancellationToken));
+            tasks.Add(SendTelegramNotificationAsync(leadInfo, settings));
         }
 
         // Send Slack notification (default: disabled)
         var slackEnabled = SettingListHelper.GetBool(settings, LeadCaptureSettingKeys.SlackEnabled, defaultValue: false);
         if (slackEnabled)
         {
-            tasks.Add(SendSlackNotificationAsync(leadInfo, settings, cancellationToken));
+            tasks.Add(SendSlackNotificationAsync(leadInfo, settings));
         }
 
         // Wait for all notifications to complete
         await Task.WhenAll(tasks);
+    }
+
+    /// <inheritdoc/>
+    public async Task SendEmailNotificationAsync(LeadNotificationInfo leadInfo, List<Setting> settings)
+    {
+        try
+        {
+            // Determine target emails: use LeadCapture.Email.Recipients if set, otherwise fall back to ContactUs.To from plugin settings
+            var leadCaptureEmails = SettingListHelper.GetStringArray(settings, LeadCaptureSettingKeys.EmailRecipients);
+            var contactUsEmails = pluginSettings.ContactUs.To
+                .Where(e => !string.IsNullOrEmpty(e) && !e.StartsWith('$'))
+                .ToArray();
+
+            var targetEmails = leadCaptureEmails.Length > 0 ? leadCaptureEmails : contactUsEmails;
+            targetEmails = targetEmails.Where(IsValidEmail).ToArray();
+
+            if (targetEmails.Length == 0)
+            {
+                var error = new InvalidOperationException("No valid email addresses configured for lead capture notifications.");
+                logger.LogError(error, "Failed to send lead notification email");
+                throw error;
+            }
+
+            var templateArgs = leadNotificationMessageBuilder.BuildEmailTemplateArguments(leadInfo);
+
+            var templateName = string.IsNullOrWhiteSpace(leadInfo.NotificationType)
+                ? "Contact_Us"
+                : leadInfo.NotificationType;
+
+            await emailService.SendAsync(
+                templateName,
+                leadInfo.Language ?? "en",
+                targetEmails,
+                templateArgs,
+                leadInfo.Attachments,
+                leadInfo.ContactId ?? 0);
+
+            logger.LogInformation("Lead notification email sent successfully to {Recipients}", string.Join(", ", targetEmails));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send lead notification email");
+            throw;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task SendTelegramNotificationAsync(LeadNotificationInfo leadInfo, List<Setting> settings)
+    {
+        var telegramEnabled = SettingListHelper.GetBool(settings, LeadCaptureSettingKeys.TelegramEnabled, defaultValue: false);
+        if (!telegramEnabled)
+        {
+            logger.LogInformation("Telegram notifications are disabled. Lead notification will not be sent to Telegram.");
+            return;
+        }
+
+        var botId = SettingListHelper.GetString(settings, LeadCaptureSettingKeys.TelegramBotId);
+        var chatId = SettingListHelper.GetString(settings, LeadCaptureSettingKeys.TelegramChatId);
+
+        if (string.IsNullOrEmpty(botId) || string.IsNullOrEmpty(chatId))
+        {
+            var error = new InvalidOperationException("Telegram bot ID or chat ID is not configured for lead capture notifications.");
+            logger.LogError(error, "Failed to send lead notification to Telegram");
+            throw error;
+        }
+
+        try
+        {
+            var message = leadNotificationMessageBuilder.BuildTextMessage(leadInfo);
+            message = TruncateMessage(message, TelegramMessageMaxLength);
+
+            using var httpClient = new HttpClient();
+
+            var sendMessageUrl = $"https://api.telegram.org/bot{botId}/sendMessage";
+            using var messageContent = new FormUrlEncodedContent(
+            [
+                new KeyValuePair<string, string>("chat_id", chatId),
+                new KeyValuePair<string, string>("text", message),
+            ]);
+
+            var response = await httpClient.PostAsync(sendMessageUrl, messageContent);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                throw new TelegramException($"Failed to send message to Telegram chat. Status Code: {response.StatusCode}. Response: {content}");
+            }
+
+            if (leadInfo.Attachments is { Count: > 0 })
+            {
+                var sendDocumentUrl = $"https://api.telegram.org/bot{botId}/sendDocument";
+
+                foreach (var attachment in leadInfo.Attachments)
+                {
+                    if (attachment?.File == null || attachment.File.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    using var multipart = new MultipartFormDataContent();
+                    multipart.Add(new StringContent(chatId), "chat_id");
+
+                    var fileContent = new ByteArrayContent(attachment.File);
+                    fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+                    multipart.Add(fileContent, "document", attachment.FileName);
+
+                    var docResponse = await httpClient.PostAsync(sendDocumentUrl, multipart);
+                    if (!docResponse.IsSuccessStatusCode)
+                    {
+                        var docContent = await docResponse.Content.ReadAsStringAsync();
+                        throw new TelegramException($"Failed to send document to Telegram chat. Status Code: {docResponse.StatusCode}. Response: {docContent}");
+                    }
+                }
+            }
+
+            logger.LogInformation("Lead notification sent to Telegram successfully");
+        }
+        catch (TelegramException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send lead notification to Telegram");
+            throw new TelegramException("Failed to send message to Telegram", ex);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task SendSlackNotificationAsync(LeadNotificationInfo leadInfo, List<Setting> settings)
+    {
+        var webhookUrl = SettingListHelper.GetString(settings, LeadCaptureSettingKeys.SlackWebhookUrl);
+
+        if (string.IsNullOrEmpty(webhookUrl))
+        {
+            var error = new InvalidOperationException("Slack webhook URL is not configured for lead capture notifications.");
+            logger.LogError(error, "Failed to send lead notification to Slack");
+            throw error;
+        }
+
+        try
+        {
+            var message = leadNotificationMessageBuilder.BuildTextMessage(leadInfo);
+            message = TruncateMessage(message, SlackMessageMaxLength);
+
+            var payload = new SlackMessagePayload
+            {
+                Text = message,
+            };
+
+            using var httpClient = new HttpClient();
+            var response = await httpClient.PostAsJsonAsync(webhookUrl, payload);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                throw new SlackException($"Failed to send message to Slack. Status Code: {response.StatusCode}. Response: {content}");
+            }
+
+            logger.LogInformation("Lead notification sent to Slack successfully");
+        }
+        catch (SlackException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send lead notification to Slack");
+            throw new SlackException("Failed to send message to Slack", ex);
+        }
     }
 
     private static bool IsValidEmail(string email)
@@ -115,163 +285,6 @@ public class LeadNotificationService : ILeadNotificationService
         }
 
         return message.Substring(0, maxLength - 1) + "…";
-    }
-
-    private async Task SendEmailNotificationAsync(LeadNotificationInfo leadInfo, List<Setting> settings)
-    {
-        try
-        {
-            // Determine target emails: use LeadCapture.Email.Recipients if set, otherwise fall back to ContactUs.To from plugin settings
-            var leadCaptureEmails = SettingListHelper.GetStringArray(settings, LeadCaptureSettingKeys.EmailRecipients);
-            var contactUsEmails = pluginSettings.ContactUs.To
-                .Where(e => !string.IsNullOrEmpty(e) && !e.StartsWith('$'))
-                .ToArray();
-
-            var targetEmails = leadCaptureEmails.Length > 0 ? leadCaptureEmails : contactUsEmails;
-            targetEmails = targetEmails.Where(IsValidEmail).ToArray();
-
-            if (targetEmails.Length == 0)
-            {
-                logger.LogWarning("No valid email addresses configured for lead capture notifications");
-                return;
-            }
-
-            var templateArgs = leadNotificationMessageBuilder.BuildEmailTemplateArguments(leadInfo);
-
-            var templateName = string.IsNullOrWhiteSpace(leadInfo.NotificationType)
-                ? "Contact_Us"
-                : leadInfo.NotificationType;
-
-            await emailService.SendAsync(
-                templateName,
-                leadInfo.Language ?? "en",
-                targetEmails,
-                templateArgs,
-                leadInfo.Attachments,
-                leadInfo.ContactId ?? 0);
-
-            logger.LogInformation("Lead notification email sent successfully to {Recipients}", string.Join(", ", targetEmails));
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to send lead notification email");
-            throw;
-        }
-    }
-
-    private async Task SendTelegramNotificationAsync(LeadNotificationInfo leadInfo, List<Setting> settings, CancellationToken cancellationToken)
-    {
-        var botId = SettingListHelper.GetString(settings, LeadCaptureSettingKeys.TelegramBotId);
-        var chatId = SettingListHelper.GetString(settings, LeadCaptureSettingKeys.TelegramChatId);
-
-        if (string.IsNullOrEmpty(botId) || string.IsNullOrEmpty(chatId))
-        {
-            logger.LogWarning("Telegram bot ID or chat ID is not configured for lead capture notifications");
-            return;
-        }
-
-        try
-        {
-            var message = leadNotificationMessageBuilder.BuildTextMessage(leadInfo);
-            message = TruncateMessage(message, TelegramMessageMaxLength);
-
-            using var httpClient = new HttpClient();
-
-            var sendMessageUrl = $"https://api.telegram.org/bot{botId}/sendMessage";
-            using var messageContent = new FormUrlEncodedContent(
-            [
-                new KeyValuePair<string, string>("chat_id", chatId),
-                new KeyValuePair<string, string>("text", message),
-            ]);
-
-            var response = await httpClient.PostAsync(sendMessageUrl, messageContent, cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var content = await response.Content.ReadAsStringAsync(cancellationToken);
-                throw new TelegramException($"Failed to send message to Telegram chat. Status Code: {response.StatusCode}. Response: {content}");
-            }
-
-            if (leadInfo.Attachments is { Count: > 0 })
-            {
-                var sendDocumentUrl = $"https://api.telegram.org/bot{botId}/sendDocument";
-
-                foreach (var attachment in leadInfo.Attachments)
-                {
-                    if (attachment?.File == null || attachment.File.Length == 0)
-                    {
-                        continue;
-                    }
-
-                    using var multipart = new MultipartFormDataContent();
-                    multipart.Add(new StringContent(chatId), "chat_id");
-
-                    var fileContent = new ByteArrayContent(attachment.File);
-                    fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
-                    multipart.Add(fileContent, "document", attachment.FileName);
-
-                    var docResponse = await httpClient.PostAsync(sendDocumentUrl, multipart, cancellationToken);
-                    if (!docResponse.IsSuccessStatusCode)
-                    {
-                        var docContent = await docResponse.Content.ReadAsStringAsync(cancellationToken);
-                        throw new TelegramException($"Failed to send document to Telegram chat. Status Code: {docResponse.StatusCode}. Response: {docContent}");
-                    }
-                }
-            }
-
-            logger.LogInformation("Lead notification sent to Telegram successfully");
-        }
-        catch (TelegramException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to send lead notification to Telegram");
-            throw new TelegramException("Failed to send message to Telegram", ex);
-        }
-    }
-
-    private async Task SendSlackNotificationAsync(LeadNotificationInfo leadInfo, List<Setting> settings, CancellationToken cancellationToken)
-    {
-        var webhookUrl = SettingListHelper.GetString(settings, LeadCaptureSettingKeys.SlackWebhookUrl);
-
-        if (string.IsNullOrEmpty(webhookUrl))
-        {
-            logger.LogWarning("Slack webhook URL is not configured for lead capture notifications");
-            return;
-        }
-
-        try
-        {
-            var message = leadNotificationMessageBuilder.BuildTextMessage(leadInfo);
-            message = TruncateMessage(message, SlackMessageMaxLength);
-
-            var payload = new SlackMessagePayload
-            {
-                Text = message,
-            };
-
-            using var httpClient = new HttpClient();
-            var response = await httpClient.PostAsJsonAsync(webhookUrl, payload, cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var content = await response.Content.ReadAsStringAsync(cancellationToken);
-                throw new SlackException($"Failed to send message to Slack. Status Code: {response.StatusCode}. Response: {content}");
-            }
-
-            logger.LogInformation("Lead notification sent to Slack successfully");
-        }
-        catch (SlackException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to send lead notification to Slack");
-            throw new SlackException("Failed to send message to Slack", ex);
-        }
     }
 
     private sealed class SlackMessagePayload

@@ -145,7 +145,7 @@ public class ContactUsController : Controller
         var leadInfo = BuildLeadNotificationInfo(contactUsDto, attachmentFiles, contact.Id);
 
         // Send lead notifications to all enabled channels (email, Telegram, Slack)
-        await leadNotificationService.SendLeadNotificationAsync(leadInfo);
+        await leadNotificationService.SendLeadNotificationsAsync(leadInfo);
 
         // Send acknowledgment to the user only if the email is present and valid
         if (!string.IsNullOrWhiteSpace(contactUsDto.Email) && MailboxAddress.TryParse(contactUsDto.Email, out _))
