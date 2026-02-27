@@ -24,6 +24,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.AspNetCore.Mvc.Formatters;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.OpenApi.Models;
 using Quartz;
 using Serilog.Exceptions;
@@ -121,6 +122,7 @@ public class Program
         builder.Services.AddScoped<IEnrichmentAuditService, EnrichmentAuditService>();
 
         // Register AI services
+        builder.Services.TryAddSingleton<IAIProviderService, NullAIProviderService>();
         builder.Services.AddSingleton<ITextGenerationService, TextGenerationService>();
         builder.Services.AddSingleton<IImageGenerationService, ImageGenerationService>();
         builder.Services.AddScoped<IContentAITranslationService, ContentAITranslationService>();
