@@ -4,6 +4,7 @@
 
 using System.Text;
 using LeadCMS.Plugin.Site.DTOs;
+using UAParser;
 
 namespace LeadCMS.Plugin.Site.Services;
 
@@ -41,6 +42,7 @@ public class DefaultLeadNotificationMessageBuilder : ILeadNotificationMessageBui
         if (!string.IsNullOrWhiteSpace(timeZoneText))
         {
             templateArgs.Add("timezone", timeZoneText);
+            templateArgs.Add("timeZoneOffset", timeZoneText);
         }
 
         if (!string.IsNullOrWhiteSpace(leadInfo.IpAddress))
@@ -51,6 +53,107 @@ public class DefaultLeadNotificationMessageBuilder : ILeadNotificationMessageBui
         if (!string.IsNullOrWhiteSpace(leadInfo.UserAgent))
         {
             templateArgs.Add("userAgent", leadInfo.UserAgent);
+
+            try
+            {
+                var clientInfo = Parser.GetDefault().Parse(leadInfo.UserAgent);
+
+                if (!string.IsNullOrWhiteSpace(clientInfo.UA.Family))
+                {
+                    templateArgs["userAgentFamily"] = clientInfo.UA.Family;
+                }
+
+                if (!string.IsNullOrWhiteSpace(clientInfo.UA.Major))
+                {
+                    templateArgs["userAgentMajor"] = clientInfo.UA.Major;
+                }
+
+                if (!string.IsNullOrWhiteSpace(clientInfo.UA.Minor))
+                {
+                    templateArgs["userAgentMinor"] = clientInfo.UA.Minor;
+                }
+
+                if (!string.IsNullOrWhiteSpace(clientInfo.UA.Patch))
+                {
+                    templateArgs["userAgentPatch"] = clientInfo.UA.Patch;
+                }
+
+                var userAgentVersion = ComposeVersion(clientInfo.UA.Major, clientInfo.UA.Minor, clientInfo.UA.Patch);
+                if (!string.IsNullOrWhiteSpace(userAgentVersion))
+                {
+                    templateArgs["userAgentVersion"] = userAgentVersion;
+                }
+
+                if (!string.IsNullOrWhiteSpace(clientInfo.OS.Family))
+                {
+                    templateArgs["osFamily"] = clientInfo.OS.Family;
+                }
+
+                if (!string.IsNullOrWhiteSpace(clientInfo.OS.Major))
+                {
+                    templateArgs["osMajor"] = clientInfo.OS.Major;
+                }
+
+                if (!string.IsNullOrWhiteSpace(clientInfo.OS.Minor))
+                {
+                    templateArgs["osMinor"] = clientInfo.OS.Minor;
+                }
+
+                if (!string.IsNullOrWhiteSpace(clientInfo.OS.Patch))
+                {
+                    templateArgs["osPatch"] = clientInfo.OS.Patch;
+                }
+
+                if (!string.IsNullOrWhiteSpace(clientInfo.OS.PatchMinor))
+                {
+                    templateArgs["osPatchMinor"] = clientInfo.OS.PatchMinor;
+                }
+
+                var osVersion = ComposeVersion(clientInfo.OS.Major, clientInfo.OS.Minor, clientInfo.OS.Patch, clientInfo.OS.PatchMinor);
+                if (!string.IsNullOrWhiteSpace(osVersion))
+                {
+                    templateArgs["osVersion"] = osVersion;
+                }
+
+                if (!string.IsNullOrWhiteSpace(clientInfo.Device.Family))
+                {
+                    templateArgs["deviceFamily"] = clientInfo.Device.Family;
+                }
+
+                if (!string.IsNullOrWhiteSpace(clientInfo.Device.Brand))
+                {
+                    templateArgs["deviceBrand"] = clientInfo.Device.Brand;
+                }
+
+                if (!string.IsNullOrWhiteSpace(clientInfo.Device.Model))
+                {
+                    templateArgs["deviceModel"] = clientInfo.Device.Model;
+                }
+
+                var userDeviceSummary = BuildUserDeviceSummary(
+                    clientInfo.Device.Brand,
+                    clientInfo.Device.Model,
+                    clientInfo.Device.Family,
+                    clientInfo.OS.Family,
+                    osVersion,
+                    clientInfo.UA.Family,
+                    userAgentVersion);
+
+                if (!string.IsNullOrWhiteSpace(userDeviceSummary))
+                {
+                    templateArgs["userDeviceSummary"] = userDeviceSummary;
+                }
+            }
+            catch (Exception)
+            {
+                templateArgs["userAgentParseFailed"] = true;
+                templateArgs["userDeviceSummary"] = leadInfo.UserAgent;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(leadInfo.Language))
+        {
+            templateArgs.Add("language", leadInfo.Language);
         }
 
         foreach (var item in leadInfo.ExtraData)
@@ -136,5 +239,58 @@ public class DefaultLeadNotificationMessageBuilder : ILeadNotificationMessageBui
         var sign = offset >= TimeSpan.Zero ? "+" : "-";
         var absolute = offset.Duration();
         return $"UTC{sign}{absolute:hh\\:mm}";
+    }
+
+    protected static string? ComposeVersion(params string?[] versionParts)
+    {
+        var parts = versionParts
+            .Where(part => !string.IsNullOrWhiteSpace(part))
+            .ToArray();
+
+        return parts.Length == 0 ? null : string.Join('.', parts);
+    }
+
+    protected static string BuildUserDeviceSummary(
+        string? deviceBrand,
+        string? deviceModel,
+        string? deviceFamily,
+        string? osFamily,
+        string? osVersion,
+        string? browserFamily,
+        string? browserVersion)
+    {
+        var deviceName = string.Join(
+            ' ',
+            new[] { deviceBrand, deviceModel }
+                .Where(part => !string.IsNullOrWhiteSpace(part))
+                .Select(part => part!.Trim()));
+
+        if (string.IsNullOrWhiteSpace(deviceName))
+        {
+            deviceName = deviceFamily?.Trim();
+        }
+
+        var osName = string.Join(
+            ' ',
+            new[] { osFamily, osVersion }
+                .Where(part => !string.IsNullOrWhiteSpace(part))
+                .Select(part => part!.Trim()));
+
+        var browserName = string.Join(
+            ' ',
+            new[] { browserFamily, browserVersion }
+                .Where(part => !string.IsNullOrWhiteSpace(part))
+                .Select(part => part!.Trim()));
+
+        var segments = new[]
+        {
+            string.IsNullOrWhiteSpace(deviceName) ? null : deviceName,
+            string.IsNullOrWhiteSpace(osName) ? null : osName,
+            string.IsNullOrWhiteSpace(browserName) ? null : browserName,
+        }
+        .Where(part => !string.IsNullOrWhiteSpace(part))
+        .ToArray();
+
+        return segments.Length == 0 ? string.Empty : string.Join(" • ", segments);
     }
 }
