@@ -2,12 +2,14 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Text.RegularExpressions;
 using LeadCMS.Exceptions;
 using LeadCMS.Exceptions.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace LeadCMS.Controllers;
 
@@ -82,12 +84,11 @@ public class ErrorsController : Controller
                 break;
 
             case DbUpdateException dbUpdateException:
-                var dbError = dbUpdateException.InnerException ?? dbUpdateException;
+                problemDetails = BuildDbUpdateProblemDetails(dbUpdateException);
 
-                problemDetails = ProblemDetailsFactory.CreateProblemDetails(
-                    HttpContext,
-                    StatusCodes.Status422UnprocessableEntity,
-                    dbError.Message);
+                break;
+            case PostgresException postgresException:
+                problemDetails = BuildPostgresProblemDetails(postgresException);
 
                 break;
             case IdentityException identityException:
@@ -163,5 +164,97 @@ public class ErrorsController : Controller
         }
 
         return new ObjectResult(problemDetails);
+    }
+
+    private ProblemDetails BuildDbUpdateProblemDetails(DbUpdateException dbUpdateException)
+    {
+        if (TryGetUniqueConstraintName(dbUpdateException, out var uniqueConstraintName))
+        {
+            return ProblemDetailsFactory.CreateProblemDetails(
+                HttpContext,
+                StatusCodes.Status422UnprocessableEntity,
+                GetUniqueViolationMessage(uniqueConstraintName));
+        }
+
+        if (TryGetPostgresException(dbUpdateException, out var postgresException))
+        {
+            return BuildPostgresProblemDetails(postgresException);
+        }
+
+        return ProblemDetailsFactory.CreateProblemDetails(
+            HttpContext,
+            StatusCodes.Status422UnprocessableEntity,
+            "The request could not be completed because of invalid or conflicting data.");
+    }
+
+    private ProblemDetails BuildPostgresProblemDetails(PostgresException postgresException)
+    {
+        if (postgresException.SqlState == PostgresErrorCodes.UniqueViolation)
+        {
+            return ProblemDetailsFactory.CreateProblemDetails(
+                HttpContext,
+                StatusCodes.Status422UnprocessableEntity,
+                GetUniqueViolationMessage(postgresException.ConstraintName));
+        }
+
+        return ProblemDetailsFactory.CreateProblemDetails(
+            HttpContext,
+            StatusCodes.Status422UnprocessableEntity,
+            "The request could not be completed because of invalid or conflicting data.");
+    }
+
+    private string GetUniqueViolationMessage(string? constraintName)
+    {
+        return constraintName?.ToLowerInvariant() switch
+        {
+            "ix_content_slug_language" => "A content item with this slug already exists for the selected language.",
+            _ => "A record with the same unique value already exists.",
+        };
+    }
+
+    private bool TryGetPostgresException(Exception exception, out PostgresException postgresException)
+    {
+        if (exception is PostgresException exceptionAsPostgres)
+        {
+            postgresException = exceptionAsPostgres;
+            return true;
+        }
+
+        if (exception.InnerException == null)
+        {
+            postgresException = null!;
+            return false;
+        }
+
+        return TryGetPostgresException(exception.InnerException, out postgresException);
+    }
+
+    private bool TryGetUniqueConstraintName(Exception exception, out string? constraintName)
+    {
+        constraintName = null;
+
+        if (exception is PostgresException postgresException && postgresException.SqlState == PostgresErrorCodes.UniqueViolation)
+        {
+            constraintName = postgresException.ConstraintName;
+            return true;
+        }
+
+        if (exception.Message.Contains("duplicate key value violates unique constraint", StringComparison.OrdinalIgnoreCase))
+        {
+            var match = Regex.Match(exception.Message, "\"(?<constraint>[^\"]+)\"");
+            if (match.Success)
+            {
+                constraintName = match.Groups["constraint"].Value;
+            }
+
+            return true;
+        }
+
+        if (exception.InnerException == null)
+        {
+            return false;
+        }
+
+        return TryGetUniqueConstraintName(exception.InnerException, out constraintName);
     }
 }

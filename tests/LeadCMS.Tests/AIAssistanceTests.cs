@@ -573,6 +573,69 @@ public class AIAssistanceTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task ContentDraftEndpoint_ShouldNormalizeYamlFrontMatterInlineValuesWithColon()
+    {
+        TestAIProviderService.EnqueueTextResponse(@"{
+  ""title"": ""AI Title"",
+  ""description"": ""This is a long enough description for testing content generation."",
+  ""body"": ""---\nSeoTitle: A: B\nSeoDescription: >-\n  Sample description\n---\nBody"",
+  ""slug"": ""ai-title"",
+  ""author"": ""Test Author"",
+  ""category"": ""Product"",
+  ""tags"": [""Tag1""],
+  ""coverImageAlt"": ""Cover alt""
+}");
+
+        TrackEntityType<Content>();
+        await PostTest("/api/content", new TestContent("-ai-frontmatter"));
+
+        var request = new ContentGenerationRequest
+        {
+            Language = "en",
+            ContentType = "blog-post",
+            Prompt = "Write about automated testing",
+            WordCount = 50,
+        };
+
+        var response = await PostTest<ContentCreateDto>("/api/content/ai-draft", request, HttpStatusCode.OK);
+
+        response.Should().NotBeNull();
+        response!.Body.Should().Contain("SeoTitle: \"A: B\"");
+    }
+
+    [Fact]
+    public async Task ContentDraftEndpoint_ShouldNotDoubleQuoteAlreadyQuotedYamlFrontMatterValue()
+    {
+        TestAIProviderService.EnqueueTextResponse(@"{
+  ""title"": ""AI Title"",
+  ""description"": ""This is a long enough description for testing content generation."",
+  ""body"": ""---\nSeoTitle: \""A: B\""\nSeoDescription: >-\n  Sample description\n---\nBody"",
+  ""slug"": ""ai-title"",
+  ""author"": ""Test Author"",
+  ""category"": ""Product"",
+  ""tags"": [""Tag1""],
+  ""coverImageAlt"": ""Cover alt""
+}");
+
+        TrackEntityType<Content>();
+        await PostTest("/api/content", new TestContent("-ai-frontmatter-quoted"));
+
+        var request = new ContentGenerationRequest
+        {
+            Language = "en",
+            ContentType = "blog-post",
+            Prompt = "Write about automated testing",
+            WordCount = 50,
+        };
+
+        var response = await PostTest<ContentCreateDto>("/api/content/ai-draft", request, HttpStatusCode.OK);
+
+        response.Should().NotBeNull();
+        response!.Body.Should().Contain("SeoTitle: \"A: B\"");
+        response.Body.Should().NotContain("SeoTitle: \"\"A: B\"\"");
+    }
+
+    [Fact]
     public async Task ContentEditEndpoint_ShouldUseProviderAndReturnEdits()
     {
         TestAIProviderService.EnqueueTextResponse(@"{

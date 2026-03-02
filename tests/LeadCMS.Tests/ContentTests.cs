@@ -3,6 +3,7 @@
 // </copyright>
 
 using LeadCMS.Helpers;
+using Microsoft.AspNetCore.Mvc;
 
 namespace LeadCMS.Tests;
 
@@ -56,6 +57,38 @@ public class ContentTests : SimpleTableTests<Content, TestContent, ContentUpdate
         var data = JsonHelper.Deserialize<string[]>(content);
         data.Should().NotBeNull();
         data.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateContent_WithDuplicateSlugAndLanguage_ShouldReturnMeaningfulConflictError()
+    {
+        var uid = Guid.NewGuid().ToString("N");
+        var slug = $"duplicate-slug-{uid}";
+
+        var firstContent = new TestContent(uid)
+        {
+            Slug = slug,
+            Language = "ru",
+        };
+
+        await PostTest(itemsUrl, firstContent, HttpStatusCode.Created);
+
+        var duplicateContent = new TestContent(uid + "-dup")
+        {
+            Slug = slug,
+            Language = "ru",
+        };
+
+        var response = await Request(HttpMethod.Post, itemsUrl, duplicateContent);
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var problemDetails = JsonHelper.Deserialize<ProblemDetails>(responseContent);
+
+        problemDetails.Should().NotBeNull();
+        problemDetails!.Status.Should().Be((int)HttpStatusCode.UnprocessableEntity);
+        problemDetails.Title.Should().NotBeNullOrWhiteSpace();
+        problemDetails.Title.Should().NotContain("duplicate key value violates unique constraint");
+        problemDetails.Title.Should().NotContain("ix_content_slug_language");
     }
 
     [Fact]

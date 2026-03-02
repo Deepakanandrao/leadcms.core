@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Text;
 using System.Text.Json;
 using AutoMapper;
 using LeadCMS.Constants;
@@ -104,6 +105,11 @@ public class ContentGenerationService : IContentGenerationService
             // Parse the generated JSON content
             var generatedContent = ParseGeneratedContent(response.GeneratedText);
 
+            if (contentType.Format == ContentFormat.MDX || contentType.Format == ContentFormat.MD)
+            {
+                generatedContent.Body = NormalizeYamlFrontMatter(generatedContent.Body);
+            }
+
             // Validate content length constraints
             var isValidLength = await ValidateContentLengthAsync(generatedContent.Title, generatedContent.Description);
             if (!isValidLength)
@@ -203,6 +209,12 @@ public class ContentGenerationService : IContentGenerationService
 
             var title = contentData.TryGetProperty("title", out var titleProp) ? (titleProp.GetString() ?? request.Title ?? string.Empty) : (request.Title ?? string.Empty);
             var description = contentData.TryGetProperty("description", out var descProp) ? (descProp.GetString() ?? request.Description ?? string.Empty) : (request.Description ?? string.Empty);
+            var body = contentData.TryGetProperty("body", out var bodyProp) ? (bodyProp.GetString() ?? request.Body ?? string.Empty) : (request.Body ?? string.Empty);
+
+            if (contentFormat == ContentFormat.MDX || contentFormat == ContentFormat.MD)
+            {
+                body = NormalizeYamlFrontMatter(body);
+            }
 
             // Validate content length constraints
             var isValidLength = await ValidateContentLengthAsync(title, description);
@@ -216,7 +228,7 @@ public class ContentGenerationService : IContentGenerationService
                 Title = title,
                 Slug = contentData.TryGetProperty("slug", out var slugProp) ? (slugProp.GetString() ?? request.Slug ?? string.Empty) : (request.Slug ?? string.Empty),
                 Description = description,
-                Body = contentData.TryGetProperty("body", out var bodyProp) ? (bodyProp.GetString() ?? request.Body ?? string.Empty) : (request.Body ?? string.Empty),
+                Body = body,
                 Tags = contentData.TryGetProperty("tags", out var tagsProp) ? GetStringArrayProperty(contentData, "tags") : (request.Tags ?? Array.Empty<string>()),
                 Category = contentData.TryGetProperty("category", out var categoryProp) ? (categoryProp.GetString() ?? request.Category ?? string.Empty) : (request.Category ?? string.Empty),
                 Author = request.Author ?? string.Empty,
@@ -388,8 +400,8 @@ BODY LENGTH REQUIREMENT:
 
 CRITICAL RULES - READ CAREFULLY:
 1. DO NOT HALLUCINATE OR INVENT: Never create new structures, components, or attributes that are not present in the sample content or the provided component list.
-2. MATCH EXACT FORMAT: The generated content must match the exact format ({contentType.Format}) and structure of the sample content.
-3. REUSE PATTERNS: Only use patterns, structures, and conventions demonstrated in the sample content.
+2. MATCH FORMAT CONVENTIONS: The generated content must match the format ({contentType.Format}) and syntax conventions of the sample content.
+3. REUSE PATTERNS WITH FLEXIBILITY: You may reorder, mix, or repeat supported sections/components and you may use only a subset of them, as long as the result is coherent and useful.
 4. When the user's prompt is ambiguous, use the SITE PROFILE and SAMPLE CONTENT to infer the most appropriate interpretation.
 
 SAMPLE CONTENT (use this as your template - match its structure exactly):
@@ -402,7 +414,7 @@ Language: {sampleContent.Language}
 Cover Image Alt: {sampleContent.CoverImageAlt}
 Body Format: {contentType.Format}
 
-SAMPLE BODY CONTENT (replicate this structure and style):
+SAMPLE BODY CONTENT (use this as a style/pattern reference, not a fixed component order):
 {bodySample}";
 
         if (!string.IsNullOrEmpty(siteProfileSection))
@@ -417,7 +429,7 @@ SITE PROFILE (use this to understand site context and resolve any ambiguity in u
         {
             prompt += $@"
 
-AVAILABLE MEDIA (recent, described — prioritized for {contentType.Uid} content type):
+AVAILABLE MEDIA (recent — prioritized for {contentType.Uid} content type):
 Each line is scopeUid|fileName|description (optionally |widthxheight)
 If any item fits the new article, reuse it in the body where it makes sense.
 Build URLs as: /api/media/{{scopeUid}}/{{fileName}}
@@ -449,7 +461,11 @@ IMPORTANT MDX RULES:
 - ONLY use components from the list above - do not invent new components
 - Follow the exact prop structure shown in the examples
 - If the sample content uses HTML elements, you may use the SAME HTML patterns - do not invent new HTML structures
-- Match the exact indentation and formatting style from the sample body";
+- Match the exact indentation and formatting style from the sample body
+- Component order is flexible: you may reorder, mix, and reuse allowed components when it improves the narrative
+- Using a subset of allowed components is acceptable if the page remains complete and coherent
+- If you include YAML frontmatter (between --- lines), it MUST be valid YAML
+- Quote any single-line YAML value containing ':' with double quotes (example: SeoTitle: ""A: B"")";
             }
             else
             {
@@ -458,7 +474,10 @@ IMPORTANT MDX RULES:
 MDX/MARKDOWN RULES:
 - Use ONLY standard Markdown syntax and patterns present in the sample content
 - DO NOT use custom MDX components unless they appear in the sample content
-- If the sample uses any HTML, replicate only the EXACT same HTML patterns - do not invent new HTML structures";
+- If the sample uses any HTML, replicate only the EXACT same HTML patterns - do not invent new HTML structures
+- The overall section order does not need to mirror the sample exactly; prioritize a logical flow and a meaningful story
+- If you include YAML frontmatter (between --- lines), it MUST be valid YAML
+- Quote any single-line YAML value containing ':' with double quotes (example: SeoTitle: ""A: B"")";
             }
         }
         else if (contentType.Format == ContentFormat.JSON)
@@ -512,34 +531,18 @@ If the user's request is unclear or could be interpreted multiple ways:
 
     private async Task<string> BuildRecentMediaSectionAsync(string? contentTypeUid = null)
     {
+        const int maxPromptMediaItems = 200;
+        const int prefetchMediaItems = 2000;
+
         var contentTypeTag = !string.IsNullOrWhiteSpace(contentTypeUid)
             ? contentTypeUid.Trim().ToLowerInvariant()
             : null;
 
-        IQueryable<Media> query = dbContext.Media!
-            .Where(m => m.Description != null && m.Description != string.Empty);
-
-        // Sort at the database level: tag-matched + used first, then tag-matched only,
-        // then used but unmatched, then the rest.
-        // Weight = (tag match ? 1 : 0) + (tag match AND used ? 1 : 0) → 0, 1, or 2
-        if (contentTypeTag != null)
-        {
-            query = query
-                .OrderByDescending(m =>
-                    (m.Tags.Contains(contentTypeTag) ? 1 : 0) +
-                    (m.Tags.Contains(contentTypeTag) && m.UsageCount > 0 ? 1 : 0))
-                .ThenByDescending(m => m.UsageCount)
-                .ThenByDescending(m => m.UpdatedAt ?? m.CreatedAt);
-        }
-        else
-        {
-            query = query
-                .OrderByDescending(m => m.UsageCount)
-                .ThenByDescending(m => m.UpdatedAt ?? m.CreatedAt);
-        }
-
-        var mediaItems = await query
-            .Take(50)
+        var mediaItems = await dbContext.Media!
+            .AsNoTracking()
+            .OrderByDescending(m => m.UsageCount)
+            .ThenByDescending(m => m.UpdatedAt ?? m.CreatedAt)
+            .Take(prefetchMediaItems)
             .Select(m => new
             {
                 m.ScopeUid,
@@ -547,6 +550,10 @@ If the user's request is unclear or could be interpreted multiple ways:
                 m.Description,
                 m.Width,
                 m.Height,
+                m.Tags,
+                m.UsageCount,
+                m.UpdatedAt,
+                m.CreatedAt,
             })
             .ToListAsync();
 
@@ -555,16 +562,38 @@ If the user's request is unclear or could be interpreted multiple ways:
             return string.Empty;
         }
 
-        var lines = mediaItems
-            .Where(m => !string.IsNullOrWhiteSpace(m.Description))
+        static bool HasTag(string[] tags, string? tag)
+        {
+            if (string.IsNullOrWhiteSpace(tag) || tags.Length == 0)
+            {
+                return false;
+            }
+
+            return Array.Exists(tags, t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var orderedItems = mediaItems
+            .OrderByDescending(m => HasTag(m.Tags, contentTypeTag) && m.UsageCount > 0)
+            .ThenByDescending(m => HasTag(m.Tags, contentTypeTag))
+            .ThenByDescending(m => m.UsageCount)
+            .ThenByDescending(m => m.UpdatedAt ?? m.CreatedAt)
+            .Take(maxPromptMediaItems)
+            .ToList();
+
+        var lines = orderedItems
             .Select(m =>
             {
+                var description = string.IsNullOrWhiteSpace(m.Description)
+                    ? m.Name
+                    : m.Description.Trim();
+
                 var dimensions = m.Width.HasValue && m.Height.HasValue
                     ? $"{m.Width}x{m.Height}"
                     : string.Empty;
+
                 return string.IsNullOrEmpty(dimensions)
-                    ? $"{m.ScopeUid}|{m.Name}|{m.Description!.Trim()}"
-                    : $"{m.ScopeUid}|{m.Name}|{m.Description!.Trim()}|{dimensions}";
+                    ? $"{m.ScopeUid}|{m.Name}|{description}"
+                    : $"{m.ScopeUid}|{m.Name}|{description}|{dimensions}";
             })
             .ToList();
 
@@ -791,7 +820,7 @@ SITE PROFILE (use this to understand context and resolve ambiguity):
             var contentTypeLabel = !string.IsNullOrWhiteSpace(contentTypeUid) ? $" \u2014 prioritized for {contentTypeUid} content type" : string.Empty;
             prompt += $@"
 
-AVAILABLE MEDIA (recent, described{contentTypeLabel}):
+AVAILABLE MEDIA (recent{contentTypeLabel}):
 Each line is scopeUid|fileName|description (optionally |widthxheight)
 If any item fits the edit request, reuse it in the body where it makes sense.
 Build URLs as: /api/media/{{scopeUid}}/{{fileName}}
@@ -824,7 +853,9 @@ IMPORTANT MDX RULES:
 - Follow the exact prop structure shown in the examples (do not add, remove, or rename props)
 - If the user asks to add or change a component, only use components and props from this allowlist
 - If the content uses HTML elements, preserve only the exact same HTML patterns
-- Match the exact indentation and formatting style from the original body";
+- Match the exact indentation and formatting style from the original body
+- If the body includes YAML frontmatter (between --- lines), keep it valid YAML
+- Quote any single-line YAML value containing ':' with double quotes (example: SeoTitle: ""A: B"")";
             }
             else
             {
@@ -833,7 +864,9 @@ IMPORTANT MDX RULES:
 MDX/MARKDOWN RULES:
 - Use ONLY standard Markdown syntax and patterns present in the original content
 - DO NOT use custom MDX components unless they appear in the original content
-- If the content uses any HTML, preserve only the exact same HTML patterns";
+- If the content uses any HTML, preserve only the exact same HTML patterns
+- If the body includes YAML frontmatter (between --- lines), keep it valid YAML
+- Quote any single-line YAML value containing ':' with double quotes (example: SeoTitle: ""A: B"")";
             }
         }
 
@@ -895,6 +928,111 @@ You MUST include all REQUIRED MEDIA in the body. Do not omit any required image 
         }
 
         return prompt;
+    }
+
+    private string NormalizeYamlFrontMatter(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return body;
+        }
+
+        var hasCrLf = body.Contains("\r\n", StringComparison.Ordinal);
+        var normalized = body.Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        if (!normalized.StartsWith("---\n", StringComparison.Ordinal))
+        {
+            return body;
+        }
+
+        var closingIndex = normalized.IndexOf("\n---\n", 4, StringComparison.Ordinal);
+        if (closingIndex < 0)
+        {
+            return body;
+        }
+
+        var frontMatter = normalized.Substring(4, closingIndex - 4);
+        var fixedFrontMatter = FixFrontMatterInlineScalars(frontMatter);
+
+        if (string.Equals(frontMatter, fixedFrontMatter, StringComparison.Ordinal))
+        {
+            return body;
+        }
+
+        var result = string.Concat("---\n", fixedFrontMatter, "\n---\n", normalized.AsSpan(closingIndex + 5));
+        return hasCrLf ? result.Replace("\n", "\r\n", StringComparison.Ordinal) : result;
+    }
+
+    private string FixFrontMatterInlineScalars(string frontMatter)
+    {
+        var lines = frontMatter.Split('\n');
+        var output = new StringBuilder(frontMatter.Length + 64);
+        var inBlockScalar = false;
+
+        foreach (var line in lines)
+        {
+            var trimmed = line.TrimStart();
+
+            if (inBlockScalar)
+            {
+                if (trimmed.Length == 0 || (line.Length > 0 && char.IsWhiteSpace(line[0])))
+                {
+                    output.AppendLine(line);
+                    continue;
+                }
+
+                inBlockScalar = false;
+            }
+
+            if (trimmed.Length == 0 || trimmed.StartsWith('#'))
+            {
+                output.AppendLine(line);
+                continue;
+            }
+
+            var separatorIndex = trimmed.IndexOf(':');
+            if (separatorIndex <= 0)
+            {
+                output.AppendLine(line);
+                continue;
+            }
+
+            var key = trimmed.Substring(0, separatorIndex).Trim();
+            var value = trimmed.Substring(separatorIndex + 1).TrimStart();
+
+            if (value.StartsWith('|') || value.StartsWith('>'))
+            {
+                inBlockScalar = true;
+                output.AppendLine(line);
+                continue;
+            }
+
+            if (value.Length == 0 || value.StartsWith('"') || value.StartsWith('\''))
+            {
+                output.AppendLine(line);
+                continue;
+            }
+
+            if (!value.Contains(':', StringComparison.Ordinal))
+            {
+                output.AppendLine(line);
+                continue;
+            }
+
+            var indentationLength = line.Length - trimmed.Length;
+            var indentation = indentationLength > 0 ? line.Substring(0, indentationLength) : string.Empty;
+            var escaped = value
+                .Replace("\\", "\\\\", StringComparison.Ordinal)
+                .Replace("\"", "\\\"", StringComparison.Ordinal);
+
+            output.Append(indentation)
+                .Append(key)
+                .Append(": \"")
+                .Append(escaped)
+                .AppendLine("\"");
+        }
+
+        return output.ToString().TrimEnd('\n');
     }
 
     private async Task<string> BuildRequiredMediaSectionAsync(List<string>? mediaPaths)
