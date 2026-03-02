@@ -76,7 +76,7 @@ public class SegmentService : ISegmentService
             {
                 var lowerQuery = query.ToLower();
                 contactsQuery = contactsQuery.Where(c =>
-                    c.Email.ToLower().Contains(lowerQuery) ||
+                    (c.Email != null && c.Email.ToLower().Contains(lowerQuery)) ||
                     (c.FirstName != null && c.FirstName.ToLower().Contains(lowerQuery)) ||
                     (c.LastName != null && c.LastName.ToLower().Contains(lowerQuery)));
             }
@@ -96,7 +96,7 @@ public class SegmentService : ISegmentService
             {
                 var lowerQuery = query.ToLower();
                 contacts = contacts.Where(c =>
-                    c.Email.ToLower().Contains(lowerQuery) ||
+                    (c.Email != null && c.Email.ToLower().Contains(lowerQuery)) ||
                     (c.FirstName != null && c.FirstName.ToLower().Contains(lowerQuery)) ||
                     (c.LastName != null && c.LastName.ToLower().Contains(lowerQuery))).ToList();
             }

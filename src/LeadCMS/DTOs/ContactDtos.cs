@@ -46,6 +46,8 @@ public abstract class BaseContactDto
 
     public string? Phone { get; set; }
 
+    public string? PhoneRaw { get; set; }
+
     public int? Timezone { get; set; }
 
     public string? Language { get; set; }
@@ -64,11 +66,10 @@ public abstract class BaseContactDto
 
 public class ContactCreateDto : BaseContactDto
 {
-    private string email = string.Empty;
+    private string? email;
 
-    [Required]
     [EmailAddress]
-    public string Email
+    public string? Email
     {
         get
         {
@@ -77,7 +78,7 @@ public class ContactCreateDto : BaseContactDto
 
         set
         {
-            email = value.ToLower();
+            email = value?.ToLower();
         }
     }
 }
@@ -117,7 +118,7 @@ public class ContactDetailsDto : ContactCreateDto
 
     public DateTime? UpdatedAt { get; set; }
 
-    public int DomainId { get; set; }
+    public int? DomainId { get; set; }
 
     public int DealsCount { get; set; }
 
@@ -126,6 +127,9 @@ public class ContactDetailsDto : ContactCreateDto
     public DateTime? LastOrderDate { get; set; }
 
     public decimal TotalRevenue { get; set; }
+
+    [Ignore]
+    public List<PendingContactUpdate>? PendingUpdates { get; set; }
 
     [Ignore]
     public DomainDetailsDto? Domain { get; set; }
@@ -204,6 +208,9 @@ public class ContactImportDto : BaseImportDto
 
     [Optional]
     public string? Phone { get; set; }
+
+    [Optional]
+    public string? PhoneRaw { get; set; }
 
     [Optional]
     public int? Timezone { get; set; }

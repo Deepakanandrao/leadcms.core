@@ -153,6 +153,11 @@ namespace LeadCMS.Services
 
         private async Task EnrichWithDomainId(Contact contact)
         {
+            if (string.IsNullOrWhiteSpace(contact.Email))
+            {
+                return;
+            }
+
             var domainName = domainService.GetDomainNameByEmail(contact.Email);
 
             var domainsQueryResult = await pgDbContext!.Domains!.FirstOrDefaultAsync(domain => domain.Name == domainName);
@@ -179,10 +184,11 @@ namespace LeadCMS.Services
             var newDomains = new Dictionary<string, Domain>();
 
             var contactsWithDomain = from contact in contacts
+                                     where !string.IsNullOrWhiteSpace(contact.Email)
                                      select new
                                      {
                                          Contact = contact,
-                                         DomainName = domainService.GetDomainNameByEmail(contact.Email),
+                                         DomainName = domainService.GetDomainNameByEmail(contact.Email!),
                                      };
 
             try

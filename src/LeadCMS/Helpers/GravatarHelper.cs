@@ -9,8 +9,13 @@ namespace LeadCMS.Helpers;
 
 public class GravatarHelper
 {
-    public static string EmailToGravatarUrl(string email)
+    public static string EmailToGravatarUrl(string? email)
     {
+        if (string.IsNullOrEmpty(email))
+        {
+            return "https://www.gravatar.com/avatar/?size=48&d=mp";
+        }
+
         var emailBytes = Encoding.ASCII.GetBytes(email);
         var emailHashCode = MD5.Create().ComputeHash(emailBytes);
 

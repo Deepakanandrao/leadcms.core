@@ -30,7 +30,7 @@ public class ContactEmailCommunicationsTests : BaseTestAutoLogin
         {
             ContactId = contact1.Id,
             Subject = "Follow up",
-            Recipients = contact1.Email,
+            Recipients = contact1.Email!,
             FromEmail = "sales@leadcms.ai",
             TextBody = "Hi Peter,\nCan we sync this afternoon?\n\nOn Mon, Feb 10, 2026 at 9:00 AM Alice <alice@test.net> wrote:\n> Previous thread",
             MessageId = "scope-1",
@@ -42,7 +42,7 @@ public class ContactEmailCommunicationsTests : BaseTestAutoLogin
             ContactId = contact1.Id,
             Subject = "Re: Follow up",
             Recipients = "sales@leadcms.ai",
-            FromEmail = contact1.Email,
+            FromEmail = contact1.Email!,
             HtmlBody = "<p>Sure, let's do 4 PM.</p>",
             MessageId = "scope-2",
             Status = EmailStatus.Received,
@@ -52,7 +52,7 @@ public class ContactEmailCommunicationsTests : BaseTestAutoLogin
         {
             ContactId = contact2.Id,
             Subject = "Other contact email",
-            Recipients = contact2.Email,
+            Recipients = contact2.Email!,
             FromEmail = "sales@leadcms.ai",
             TextBody = "This should not be in the list",
             MessageId = "scope-3",
@@ -100,7 +100,7 @@ public class ContactEmailCommunicationsTests : BaseTestAutoLogin
         {
             ContactId = contact.Id,
             Subject = "Outlook thread",
-            Recipients = contact.Email,
+            Recipients = contact.Email!,
             FromEmail = "support@example.com",
             HtmlBody = htmlBody,
             MessageId = "outlook-sep-1",
@@ -129,7 +129,7 @@ public class ContactEmailCommunicationsTests : BaseTestAutoLogin
         {
             ContactId = contact2.Id,
             Subject = "Scoped detail",
-            Recipients = contact2.Email,
+            Recipients = contact2.Email!,
             FromEmail = "hello@leadcms.ai",
             HtmlBody = "<p>Body</p>",
             MessageId = "detail-1",
@@ -160,7 +160,7 @@ public class ContactEmailCommunicationsTests : BaseTestAutoLogin
         {
             ContactId = contact.Id,
             Subject = "S1",
-            Recipients = contact.Email,
+            Recipients = contact.Email!,
             FromEmail = "s@leadcms.ai",
             MessageId = "stats-1",
             Status = EmailStatus.Sent,
@@ -171,7 +171,7 @@ public class ContactEmailCommunicationsTests : BaseTestAutoLogin
             ContactId = contact.Id,
             Subject = "R1",
             Recipients = "s@leadcms.ai",
-            FromEmail = contact.Email,
+            FromEmail = contact.Email!,
             MessageId = "stats-2",
             Status = EmailStatus.Received,
             CreatedAt = new DateTime(2026, 2, 1, 15, 0, 0, DateTimeKind.Utc),
@@ -180,7 +180,7 @@ public class ContactEmailCommunicationsTests : BaseTestAutoLogin
         {
             ContactId = contact.Id,
             Subject = "N1",
-            Recipients = contact.Email,
+            Recipients = contact.Email!,
             FromEmail = "s@leadcms.ai",
             MessageId = "stats-3",
             Status = EmailStatus.NotSent,

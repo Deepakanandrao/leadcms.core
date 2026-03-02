@@ -62,11 +62,11 @@ public class ContactAccountTask : BaseTask
                 successfulAccounts += successful;
                 failedAccounts += failed;
                 var domainIdDictionary = batch.ToDictionary(d => d.Id, d => d);
-                var contacts = dbContext.Contacts!.Where(c => domainIdDictionary.Keys.Contains(c.DomainId));
+                var contacts = dbContext.Contacts!.Where(c => c.DomainId != null && domainIdDictionary.Keys.Contains(c.DomainId.Value));
                 foreach (var c in contacts)
                 {
                     c.AccountId = null;
-                    c.Account = domainIdDictionary[c.DomainId].Account;
+                    c.Account = domainIdDictionary[c.DomainId!.Value].Account;
                     totalContacts++;
                 }
 

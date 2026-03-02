@@ -320,7 +320,7 @@ public class CampaignService : ICampaignService
                 await emailFromTemplateService.SendAsync(
                     template.Name,
                     template.Language,
-                    new[] { recipient.Contact!.Email },
+                    new[] { recipient.Contact!.Email! },
                     templateArgs,
                     attachments: null,
                     contactId: recipient.ContactId,

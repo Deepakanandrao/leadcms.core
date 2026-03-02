@@ -140,7 +140,7 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
     {
         var testCreateItem = await CreateItem();
 
-        var returnedDomain = DomainChecker(testCreateItem.Item1.Email);
+        var returnedDomain = DomainChecker(testCreateItem.Item1.Email!);
         returnedDomain.Should().NotBeNull();
     }
 
@@ -153,7 +153,7 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
         var newContact = await GetTest<Contact>($"{itemsUrl}/2");
         newContact.Should().NotBeNull();
 
-        var returnedDomain = DomainChecker(newContact!.Email);
+        var returnedDomain = DomainChecker(newContact!.Email!);
         returnedDomain.Should().NotBeNull();
     }
 
@@ -217,7 +217,7 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
         {
             ContactId = contactId,
             Subject = "Delete behavior test",
-            Recipients = contact!.Email,
+            Recipients = contact!.Email!,
             FromEmail = "sender@test.net",
             TextBody = "Body",
             MessageId = "delete-contact-email-log",

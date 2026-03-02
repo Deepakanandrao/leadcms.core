@@ -100,8 +100,8 @@ public class SubscribesController : Controller
         await emailService.SendAsync(
             "Subscription_Confirmation",
             payload.Language,
-            new[] { contact.Email },
-            new Dictionary<string, object> { { "email", contact.Email } },
+            new[] { contact.Email! },
+            new Dictionary<string, object> { { "email", contact.Email! } },
             null);
 
         return Ok();
@@ -116,7 +116,7 @@ public class SubscribesController : Controller
     {
         var contact = await FindOrThrowNotFound(subscribeDto.Email);
 
-        await contactService.Unsubscribe(contact.Email, "Unsubscribed from email or site", "Site", DateTime.UtcNow, httpContextHelper.IpAddress);
+        await contactService.Unsubscribe(contact.Email!, "Unsubscribed from email or site", "Site", DateTime.UtcNow, httpContextHelper.IpAddress);
 
         await dbContext.SaveChangesAsync();
 

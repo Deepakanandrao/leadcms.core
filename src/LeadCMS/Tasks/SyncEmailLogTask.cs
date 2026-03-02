@@ -54,7 +54,9 @@ namespace LeadCMS.Tasks
                     totalEmailsSynced = batch.Count;
 
                     var batchContacts = batch.Select(b => b.Recipients).ToArray();
-                    var existingContacts = await dbContext.Contacts!.Where(contact => batchContacts.Contains(contact.Email)).ToDictionaryAsync(k => k.Email);
+                    var existingContacts = await dbContext.Contacts!
+                        .Where(contact => contact.Email != null && batchContacts.Contains(contact.Email))
+                        .ToDictionaryAsync(k => k.Email!);
 
                     var converted = batch.Select(log =>
                     {

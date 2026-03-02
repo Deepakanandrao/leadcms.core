@@ -227,8 +227,8 @@ namespace LeadCMS.EmailSync.Tasks
                 .ToList();
 
             var existingContacts = await dbContext.Contacts!
-                                    .Where(contact => emails.Contains(contact.Email))
-                                    .ToDictionaryAsync(contact => contact.Email, contact => contact);
+                                    .Where(contact => contact.Email != null && emails.Contains(contact.Email))
+                                    .ToDictionaryAsync(contact => contact.Email!, contact => contact);
 
             var newContacts = new List<Contact>();
 
@@ -254,7 +254,7 @@ namespace LeadCMS.EmailSync.Tasks
                 {
                     contact = new Contact { Email = contactEmail };
                     newContacts.Add(contact);
-                    existingContacts[contact.Email] = contact;
+                    existingContacts[contact.Email!] = contact;
                 }
 
                 emailLog.Contact = contact;

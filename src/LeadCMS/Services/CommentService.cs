@@ -82,8 +82,8 @@ public class CommentService : ICommentService
                       select comment.AuthorEmail).Distinct();
 
         var existingContacts = await pgDbContext.Contacts!
-                                .Where(contact => emails.Contains(contact.Email))
-                                .ToDictionaryAsync(contact => contact.Email, contact => contact);
+                                .Where(contact => contact.Email != null && emails.Contains(contact.Email))
+                                .ToDictionaryAsync(contact => contact.Email!, contact => contact);
 
         var newContacts = new List<Contact>();
 
@@ -100,7 +100,7 @@ public class CommentService : ICommentService
             {
                 contact = new Contact { Email = comment.AuthorEmail, FirstName = comment.AuthorName };
                 newContacts.Add(contact);
-                existingContacts[contact.Email] = contact;
+                existingContacts[contact.Email!] = contact;
             }
 
             comment.Contact = contact;

@@ -285,6 +285,23 @@ public class PgDbContext : IdentityDbContext<User>
         // Add unique index on NormalizedEmail to prevent duplicate emails
         builder.Entity<User>().HasIndex(u => u.NormalizedEmail).IsUnique();
 
+        // Contact: partial unique index on Email (only when non-null)
+        builder.Entity<Contact>()
+            .HasIndex(c => c.Email)
+            .IsUnique()
+            .HasFilter("\"email\" IS NOT NULL");
+
+        // Contact: partial unique index on Phone (only when non-null, E.164 normalized)
+        builder.Entity<Contact>()
+            .HasIndex(c => c.Phone)
+            .IsUnique()
+            .HasFilter("\"phone\" IS NOT NULL");
+
+        // Contact: PendingUpdates stored as JSONB
+        builder.Entity<Contact>()
+            .Property(c => c.PendingUpdates)
+            .HasColumnType("jsonb");
+
         // Configure Contact FullName as computed column
         // Use CASE statements for conditional concatenation - all functions used are IMMUTABLE
         builder.Entity<Contact>()

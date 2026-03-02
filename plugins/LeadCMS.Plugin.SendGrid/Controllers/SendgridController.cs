@@ -88,7 +88,7 @@ public class SendgridController : ControllerBase
 
             var emailsList = batch.Select(b => b.Key.ToLower()).ToList<string>();
 
-            var existedContacts = dbContext.Contacts!.Where(c => emailsList.Contains(c.Email)).ToDictionary(c => c.Email, c => c);
+            var existedContacts = dbContext.Contacts!.Where(c => c.Email != null && emailsList.Contains(c.Email)).ToDictionary(c => c.Email!, c => c);
 
             foreach (var b in batch)
             {

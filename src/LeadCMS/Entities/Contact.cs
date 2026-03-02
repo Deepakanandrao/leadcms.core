@@ -2,7 +2,6 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
-using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 using LeadCMS.DataAnnotations;
@@ -14,10 +13,10 @@ namespace LeadCMS.Entities;
 [Table("contact")]
 [SupportsElastic]
 [SupportsChangeLog]
-[Index(nameof(Email), IsUnique = true)]
+[SurrogateIdentity(nameof(Email))]
 public class Contact : BaseEntity, ICommentable
 {
-    private string email = string.Empty;
+    private string? email;
 
     [Searchable]
     public string? Prefix { get; set; }
@@ -37,9 +36,8 @@ public class Contact : BaseEntity, ICommentable
     [Searchable]
     public DateTime? Birthday { get; set; }
 
-    [Required]
     [Searchable]
-    public string Email
+    public string? Email
     {
         get
         {
@@ -48,7 +46,7 @@ public class Contact : BaseEntity, ICommentable
 
         set
         {
-            email = value.ToLower();
+            email = value?.ToLower();
         }
     }
 
@@ -85,6 +83,8 @@ public class Contact : BaseEntity, ICommentable
     [Searchable]
     public string? Phone { get; set; }
 
+    public string? PhoneRaw { get; set; }
+
     public int? Timezone { get; set; }
 
     [Searchable]
@@ -110,8 +110,10 @@ public class Contact : BaseEntity, ICommentable
     [Column(TypeName = "numeric(18,2)")]
     public decimal TotalRevenue { get; set; }
 
-    [Required]
-    public int DomainId { get; set; }
+    [Column(TypeName = "jsonb")]
+    public List<PendingContactUpdate>? PendingUpdates { get; set; }
+
+    public int? DomainId { get; set; }
 
     [JsonIgnore]
     [ForeignKey("DomainId")]

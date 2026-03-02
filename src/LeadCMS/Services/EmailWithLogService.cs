@@ -123,7 +123,12 @@ namespace LeadCMS.Services
         {
             var contact = await pgDbContext.Contacts!.FirstOrDefaultAsync(x => x.Id == contactId);
 
-            return contact!.Email;
+            if (contact == null || string.IsNullOrWhiteSpace(contact.Email))
+            {
+                throw new InvalidOperationException($"Contact with id {contactId} does not have an email address.");
+            }
+
+            return contact.Email;
         }
     }
 }
