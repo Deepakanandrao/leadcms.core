@@ -37,9 +37,10 @@ public class MediaTests : BaseTestAutoLogin
     }
 
     [Theory]
-    [InlineData("HelloWorld-ThisIs---     ...DotNet.png", "helloworld-thisis---...dotnet.png", 1024)]
+    [InlineData("HelloWorld-ThisIs---     ...DotNet.png", "helloworld-thisis----...dotnet.png", 1024)]
     [InlineData("my_photo_file.png", "my-photo-file.png", 1024)]
     [InlineData("UPPER_CASE_File.png", "upper-case-file.png", 1024)]
+    [InlineData("Стратегия цифровизации.png", "strategiia-tsifrovizatsii.png", 1024)]
     public async Task TransliterationAndSlugifyTest(string fileName, string expectedTransliteratedName, int fileSize)
     {
         var testImage = new TestMedia(fileName, fileSize);

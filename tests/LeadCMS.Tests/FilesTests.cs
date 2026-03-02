@@ -23,7 +23,7 @@ public class FilesTests : BaseTestAutoLogin
     }
 
     [Theory]
-    [InlineData("HelloWorld-ThisIs---     ...DotNet.txt", "helloworld-thisis---...dotnet.txt", 1024)]
+    [InlineData("HelloWorld-ThisIs---     ...DotNet.txt", "helloworld-thisis----...dotnet.txt", 1024)]
     [InlineData("my_document_file.txt", "my-document-file.txt", 1024)]
     public async Task TransliterationAndSlugifyTest(string fileName, string expectedTransliteratedName, int fileSize)
     {

@@ -13,6 +13,7 @@ using LeadCMS.Entities;
 using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
+using LeadCMS.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -31,6 +32,7 @@ public class MediaController : ControllerBase
     private readonly IMediaOptimizationService mediaOptimizationService;
     private readonly ISettingService settingService;
     private readonly IMediaChangeLogService mediaChangeLogService;
+    private readonly IMediaUsageService mediaUsageService;
 
     public MediaController(
         PgDbContext pgDbContext,
@@ -40,7 +42,8 @@ public class MediaController : ControllerBase
         IMediaResolver mediaResolver,
         IMediaOptimizationService mediaOptimizationService,
         ISettingService settingService,
-        IMediaChangeLogService mediaChangeLogService)
+        IMediaChangeLogService mediaChangeLogService,
+        IMediaUsageService mediaUsageService)
     {
         this.pgDbContext = pgDbContext;
         this.queryProviderFactory = queryProviderFactory;
@@ -50,6 +53,7 @@ public class MediaController : ControllerBase
         this.mediaOptimizationService = mediaOptimizationService;
         this.settingService = settingService;
         this.mediaChangeLogService = mediaChangeLogService;
+        this.mediaUsageService = mediaUsageService;
     }
 
     /// <summary>
@@ -1361,6 +1365,25 @@ public class MediaController : ControllerBase
             .ToArray();
 
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Triggers a full re-index of media usage counts, descriptions and content-type tags
+    /// by scanning all content items.
+    /// </summary>
+    [HttpPost("reindex-usage")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult> ReindexUsage()
+    {
+        var result = await mediaUsageService.UpdateMediaUsageFromAllContentAsync();
+
+        return Ok(new
+        {
+            result.ContentsProcessed,
+            result.MediaUpdated,
+        });
     }
 
     private static byte[] ResizeToCover(byte[] data, int targetWidth, int targetHeight)

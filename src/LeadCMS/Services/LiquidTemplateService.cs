@@ -57,6 +57,11 @@ public class LiquidTemplateService : ILiquidTemplateService
             {
                 if (kv.Value is string strValue)
                 {
+                    if (string.IsNullOrEmpty(strValue))
+                    {
+                        continue;
+                    }
+
                     var htmlSafeValue = strValue.Replace("\n", "<br />");
                     context.SetValue(kv.Key, new StringValue(htmlSafeValue));
                 }

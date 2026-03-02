@@ -21,7 +21,8 @@ public static class ContactPublicUpdateHelper
     /// to the contact using the anti-abuse merge policy.
     /// </summary>
     /// <param name="contact">The contact entity to update.</param>
-    /// <param name="firstName">First name from the form (may contain full name).</param>
+    /// <param name="firstName">First name from the form.</param>
+    /// <param name="middleName">Middle name from the form.</param>
     /// <param name="lastName">Last name from the form.</param>
     /// <param name="company">Company name from the form.</param>
     /// <param name="phone">Phone number from the form.</param>
@@ -33,6 +34,7 @@ public static class ContactPublicUpdateHelper
     public static void ApplyFormFields(
         Contact contact,
         string? firstName,
+        string? middleName,
         string? lastName,
         string? company,
         string? phone,
@@ -42,43 +44,41 @@ public static class ContactPublicUpdateHelper
         string? userAgent,
         IPhoneNormalizationService phoneNormalizationService)
     {
-        ApplyName(contact, firstName, lastName, submissionSource, ip, userAgent);
+        ApplyName(contact, firstName, middleName, lastName, submissionSource, ip, userAgent);
         ApplyCompany(contact, company, submissionSource, ip, userAgent);
         ApplyPhone(contact, phone, submissionSource, ip, userAgent, phoneNormalizationService);
         ApplySource(contact, sourceName, submissionSource, ip, userAgent);
     }
 
     /// <summary>
-    /// Splits a full name when FirstName contains spaces and LastName is not provided,
-    /// then applies both via the merge policy.
+    /// Applies first, middle and last name values to the contact via the merge
+    /// policy. Names are stored as-is without any post-processing.
     /// </summary>
     public static void ApplyName(
         Contact contact,
         string? firstName,
+        string? middleName,
         string? lastName,
         string submissionSource,
         string? ip,
         string? userAgent)
     {
-        var resolvedFirst = firstName;
-        var resolvedLast = lastName;
-
-        if (!string.IsNullOrWhiteSpace(resolvedFirst) && string.IsNullOrWhiteSpace(resolvedLast))
-        {
-            var nameParts = resolvedFirst.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (nameParts.Length > 1)
-            {
-                resolvedFirst = nameParts[0];
-                resolvedLast = string.Join(' ', nameParts.Skip(1));
-            }
-        }
-
         ContactMergeHelper.ApplyPublicUpdate(
             contact,
             nameof(contact.FirstName),
             contact.FirstName,
-            resolvedFirst,
+            firstName,
             v => contact.FirstName = v,
+            submissionSource,
+            ip,
+            userAgent);
+
+        ContactMergeHelper.ApplyPublicUpdate(
+            contact,
+            nameof(contact.MiddleName),
+            contact.MiddleName,
+            middleName,
+            v => contact.MiddleName = v,
             submissionSource,
             ip,
             userAgent);
@@ -87,7 +87,7 @@ public static class ContactPublicUpdateHelper
             contact,
             nameof(contact.LastName),
             contact.LastName,
-            resolvedLast,
+            lastName,
             v => contact.LastName = v,
             submissionSource,
             ip,

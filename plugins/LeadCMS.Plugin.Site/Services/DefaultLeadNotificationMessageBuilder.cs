@@ -16,17 +16,48 @@ public class DefaultLeadNotificationMessageBuilder : ILeadNotificationMessageBui
     /// <inheritdoc/>
     public virtual Dictionary<string, object> BuildEmailTemplateArguments(LeadNotificationInfo leadInfo)
     {
-        var templateArgs = new Dictionary<string, object>
+        var templateArgs = new Dictionary<string, object>();
+
+        if (!string.IsNullOrWhiteSpace(leadInfo.Email))
         {
-            { "email", leadInfo.Email ?? string.Empty },
-            { "fromEmail", leadInfo.Email ?? string.Empty },
-            { "firstName", leadInfo.FirstName ?? string.Empty },
-            { "lastName", leadInfo.LastName ?? string.Empty },
-            { "company", leadInfo.Company ?? string.Empty },
-            { "subject", leadInfo.Subject ?? string.Empty },
-            { "message", leadInfo.Message ?? string.Empty },
-            { "title", leadInfo.Title ?? string.Empty },
-        };
+            templateArgs.Add("email", leadInfo.Email);
+            templateArgs.Add("fromEmail", leadInfo.Email);
+        }
+
+        if (!string.IsNullOrWhiteSpace(leadInfo.FirstName))
+        {
+            templateArgs.Add("firstName", leadInfo.FirstName);
+        }
+
+        if (!string.IsNullOrWhiteSpace(leadInfo.LastName))
+        {
+            templateArgs.Add("lastName", leadInfo.LastName);
+        }
+
+        if (!string.IsNullOrWhiteSpace(leadInfo.FullName))
+        {
+            templateArgs.Add("fullName", leadInfo.FullName);
+        }
+
+        if (!string.IsNullOrWhiteSpace(leadInfo.Company))
+        {
+            templateArgs.Add("company", leadInfo.Company);
+        }
+
+        if (!string.IsNullOrWhiteSpace(leadInfo.Subject))
+        {
+            templateArgs.Add("subject", leadInfo.Subject);
+        }
+
+        if (!string.IsNullOrWhiteSpace(leadInfo.Message))
+        {
+            templateArgs.Add("message", leadInfo.Message);
+        }
+
+        if (!string.IsNullOrWhiteSpace(leadInfo.Title))
+        {
+            templateArgs.Add("title", leadInfo.Title);
+        }
 
         if (!string.IsNullOrWhiteSpace(leadInfo.Phone))
         {

@@ -3,6 +3,7 @@
 // </copyright>
 
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 
 namespace LeadCMS.Plugin.Site.DTOs
@@ -35,8 +36,27 @@ namespace LeadCMS.Plugin.Site.DTOs
         /// </summary>
         public string? PageUrl { get; set; }
 
-        [Required]
-        public string FirstName { get; set; } = string.Empty;
+        /// <summary>
+        /// Gets or sets the full name. When set and FirstName/LastName are not
+        /// explicitly provided, the value is split into FirstName, MiddleName
+        /// and LastName:
+        /// <list type="bullet">
+        ///   <item>"Alice" → FirstName = Alice</item>
+        ///   <item>"Alice Smith" → FirstName = Alice, LastName = Smith</item>
+        ///   <item>"Alice B. Smith" → FirstName = Alice, MiddleName = B., LastName = Smith</item>
+        ///   <item>"Alice B. C. Smith" → FirstName = Alice, MiddleName = B., LastName = C. Smith</item>
+        /// </list>
+        /// </summary>
+        [JsonPropertyName("name")]
+        public string? Name
+        {
+            get => null; // write-only: reading always returns null
+            set => ParseName(value);
+        }
+
+        public string? FirstName { get; set; }
+
+        public string? MiddleName { get; set; }
 
         public string? LastName { get; set; }
 
@@ -66,5 +86,41 @@ namespace LeadCMS.Plugin.Site.DTOs
         public string? Phone { get; set; }
 
         public string RecaptchaToken { get; set; } = string.Empty;
+
+        private void ParseName(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return;
+            }
+
+            var parts = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(FirstName))
+            {
+                FirstName = parts[0];
+            }
+
+            if (parts.Length == 2 && string.IsNullOrWhiteSpace(LastName))
+            {
+                LastName = parts[1];
+            }
+            else if (parts.Length >= 3)
+            {
+                if (string.IsNullOrWhiteSpace(MiddleName))
+                {
+                    MiddleName = parts[1];
+                }
+
+                if (string.IsNullOrWhiteSpace(LastName))
+                {
+                    LastName = string.Join(' ', parts.Skip(2));
+                }
+            }
+        }
     }
 }

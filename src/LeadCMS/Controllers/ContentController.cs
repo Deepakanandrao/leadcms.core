@@ -738,7 +738,7 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
             await ClearCacheIfMdxType(entity.Type);
         }
 
-        await mediaUsageService.UpdateMediaDescriptionsFromContentAsync(entity.Body);
+        await mediaUsageService.UpdateMediaDescriptionsFromContentAsync(entity.Body, entity.Type);
         await UpdateCoverImageMetadataAsync(entity);
     }
 

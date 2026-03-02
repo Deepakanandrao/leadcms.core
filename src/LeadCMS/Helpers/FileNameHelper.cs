@@ -23,7 +23,7 @@ public static class FileNameHelper
 
     private static string RemoveWhitespace(this string input)
     {
-        return Regex.Replace(input, @"\s", " ");
+        return Regex.Replace(input, @"\s+", "-");
     }
 
     private static string RemoveDeniedCharacters(this string input)

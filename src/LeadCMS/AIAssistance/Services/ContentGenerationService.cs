@@ -183,7 +183,7 @@ public class ContentGenerationService : IContentGenerationService
             }
         }
 
-        var systemPrompt = await BuildEditSystemPromptAsync(requiredMediaSection, contentFormat, componentAnalysis);
+        var systemPrompt = await BuildEditSystemPromptAsync(requiredMediaSection, contentFormat, componentAnalysis, request.Type);
         var userPrompt = BuildEditUserPrompt(request, request.Prompt, request.CharacterCount, request.WordCount, requiredMediaSection);
 
         var requiredMediaInputs = await BuildRequiredMediaInputsAsync(request.RequiredMediaPaths);
@@ -376,7 +376,7 @@ BODY LENGTH REQUIREMENT:
         var existingSlugPatterns = await AnalyzeSlugPatternsAsync(contentType.Uid);
 
         var siteProfileSection = await BuildSiteProfileSectionAsync();
-        var recentMediaSection = await BuildRecentMediaSectionAsync();
+        var recentMediaSection = await BuildRecentMediaSectionAsync(contentType.Uid);
 
         // Truncate body sample to reasonable size while preserving structure
         var bodySampleLength = Math.Min(50000, sampleContent.Body.Length);
@@ -417,8 +417,8 @@ SITE PROFILE (use this to understand site context and resolve any ambiguity in u
         {
             prompt += $@"
 
-AVAILABLE MEDIA (recent, described):
-Each line is scopeUid|fileName|description
+AVAILABLE MEDIA (recent, described — prioritized for {contentType.Uid} content type):
+Each line is scopeUid|fileName|description (optionally |widthxheight)
 If any item fits the new article, reuse it in the body where it makes sense.
 Build URLs as: /api/media/{{scopeUid}}/{{fileName}}
 {recentMediaSection}";
@@ -510,29 +510,67 @@ If the user's request is unclear or could be interpreted multiple ways:
         return prompt;
     }
 
-    private async Task<string> BuildRecentMediaSectionAsync()
+    private async Task<string> BuildRecentMediaSectionAsync(string? contentTypeUid = null)
     {
-        var mediaItems = await dbContext.Media!
-            .Where(m => m.Description != null && m.Description != string.Empty)
-            .OrderByDescending(m => m.UsageCount)
-            .ThenByDescending(m => m.UpdatedAt ?? m.CreatedAt)
+        var contentTypeTag = !string.IsNullOrWhiteSpace(contentTypeUid)
+            ? contentTypeUid.Trim().ToLowerInvariant()
+            : null;
+
+        IQueryable<Media> query = dbContext.Media!
+            .Where(m => m.Description != null && m.Description != string.Empty);
+
+        // Sort at the database level: tag-matched + used first, then tag-matched only,
+        // then used but unmatched, then the rest.
+        // Weight = (tag match ? 1 : 0) + (tag match AND used ? 1 : 0) → 0, 1, or 2
+        if (contentTypeTag != null)
+        {
+            query = query
+                .OrderByDescending(m =>
+                    (m.Tags.Contains(contentTypeTag) ? 1 : 0) +
+                    (m.Tags.Contains(contentTypeTag) && m.UsageCount > 0 ? 1 : 0))
+                .ThenByDescending(m => m.UsageCount)
+                .ThenByDescending(m => m.UpdatedAt ?? m.CreatedAt);
+        }
+        else
+        {
+            query = query
+                .OrderByDescending(m => m.UsageCount)
+                .ThenByDescending(m => m.UpdatedAt ?? m.CreatedAt);
+        }
+
+        var mediaItems = await query
             .Take(50)
             .Select(m => new
             {
                 m.ScopeUid,
                 m.Name,
                 m.Description,
+                m.Width,
+                m.Height,
             })
             .ToListAsync();
 
-        var itemsWithDescriptions = mediaItems
+        if (mediaItems.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var lines = mediaItems
             .Where(m => !string.IsNullOrWhiteSpace(m.Description))
-            .Select(m => $"{m.ScopeUid}|{m.Name}|{m.Description!.Trim()}")
+            .Select(m =>
+            {
+                var dimensions = m.Width.HasValue && m.Height.HasValue
+                    ? $"{m.Width}x{m.Height}"
+                    : string.Empty;
+                return string.IsNullOrEmpty(dimensions)
+                    ? $"{m.ScopeUid}|{m.Name}|{m.Description!.Trim()}"
+                    : $"{m.ScopeUid}|{m.Name}|{m.Description!.Trim()}|{dimensions}";
+            })
             .ToList();
 
-        return itemsWithDescriptions.Count == 0
+        return lines.Count == 0
             ? string.Empty
-            : string.Join("\n", itemsWithDescriptions);
+            : string.Join("\n", lines);
     }
 
     private async Task<(int minTitleLength, int maxTitleLength, int minDescriptionLength, int maxDescriptionLength)> GetContentLengthConstraintsAsync()
@@ -716,13 +754,13 @@ You MUST include all REQUIRED MEDIA in the body. Do not omit any required image 
         return string.Join("\n", items.Select(i => $"- {i}"));
     }
 
-    private async Task<string> BuildEditSystemPromptAsync(string requiredMediaSection, ContentFormat? contentFormat, MdxComponentAnalysisDto? componentAnalysis)
+    private async Task<string> BuildEditSystemPromptAsync(string requiredMediaSection, ContentFormat? contentFormat, MdxComponentAnalysisDto? componentAnalysis, string? contentTypeUid = null)
     {
         // Get content length constraints from settings/configuration
         var (minTitleLength, maxTitleLength, minDescriptionLength, maxDescriptionLength) = await GetContentLengthConstraintsAsync();
 
         var siteProfileSection = await BuildSiteProfileSectionAsync();
-        var recentMediaSection = await BuildRecentMediaSectionAsync();
+        var recentMediaSection = await BuildRecentMediaSectionAsync(contentTypeUid);
 
         var prompt = $@"You are a content editor assistant for an AI-powered CMS. Your task is to edit existing content based on user prompts while strictly preserving the original format and structure.
 
@@ -750,10 +788,11 @@ SITE PROFILE (use this to understand context and resolve ambiguity):
 
         if (!string.IsNullOrEmpty(recentMediaSection))
         {
+            var contentTypeLabel = !string.IsNullOrWhiteSpace(contentTypeUid) ? $" \u2014 prioritized for {contentTypeUid} content type" : string.Empty;
             prompt += $@"
 
-AVAILABLE MEDIA (recent, described):
-Each line is scopeUid|fileName|description
+AVAILABLE MEDIA (recent, described{contentTypeLabel}):
+Each line is scopeUid|fileName|description (optionally |widthxheight)
 If any item fits the edit request, reuse it in the body where it makes sense.
 Build URLs as: /api/media/{{scopeUid}}/{{fileName}}
 {recentMediaSection}";

@@ -84,7 +84,7 @@ public class ContactUsController : Controller
         {
             if (string.IsNullOrWhiteSpace(contactUsDto.RecaptchaToken))
             {
-                return BadRequest("Missing reCAPTCHA token.");
+                return BadRequest();
             }
 
             using var client = new HttpClient();
@@ -97,7 +97,7 @@ public class ContactUsController : Controller
             var response = await client.PostAsync("https://www.google.com/recaptcha/api/siteverify", postData);
             if (!response.IsSuccessStatusCode)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, "Error verifying reCAPTCHA.");
+                return StatusCode(StatusCodes.Status500InternalServerError);
             }
 
             var json = await response.Content.ReadAsStringAsync();
@@ -105,7 +105,7 @@ public class ContactUsController : Controller
             var recaptchaResult = JsonSerializer.Deserialize<RecaptchaVerifyResponse>(json);
             if (recaptchaResult == null || !recaptchaResult.Success)
             {
-                return BadRequest("Failed reCAPTCHA validation.");
+                return BadRequest();
             }
         }
 
@@ -122,7 +122,7 @@ public class ContactUsController : Controller
         }
         else
         {
-            return BadRequest("Either email or phone is required.");
+            return BadRequest();
         }
 
         // Apply anti-abuse merge policy: fill only if null, otherwise store in PendingUpdates
@@ -137,6 +137,7 @@ public class ContactUsController : Controller
         ContactPublicUpdateHelper.ApplyFormFields(
             contact,
             contactUsDto.FirstName,
+            contactUsDto.MiddleName,
             contactUsDto.LastName,
             contactUsDto.Company,
             contactUsDto.Phone,
@@ -182,7 +183,7 @@ public class ContactUsController : Controller
                 null);
         }
 
-        return Ok(contactUsDto);
+        return Ok();
     }
 
     protected virtual LeadNotificationInfo BuildLeadNotificationInfo(ContactUsDto contactUsDto, List<AttachmentDto> attachmentFiles, int contactId)

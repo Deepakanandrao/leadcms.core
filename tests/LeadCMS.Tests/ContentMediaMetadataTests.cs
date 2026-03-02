@@ -135,6 +135,80 @@ public class ContentMediaMetadataTests : BaseTestAutoLogin
         refreshedUnused.UsageCount.Should().Be(0);
     }
 
+    [Fact]
+    public async Task CreateContent_WithHtmlImage_ShouldTagMediaWithContentType()
+    {
+        var createdMedia = await CreateMediaAsync("ct-tag-html.png");
+
+        var body = $"<img src=\"/api/media/{createdMedia.ScopeUid}/{createdMedia.Name}\" alt=\"Tagged image\" />";
+        await CreateContentWithBodyAsync(body, "-ct-tag-html", "blog-post");
+
+        var media = await GetMediaByNameAsync(createdMedia.ScopeUid, createdMedia.Name);
+        media.Tags.Should().Contain("blog-post");
+    }
+
+    [Fact]
+    public async Task CreateContent_WithDifferentTypes_ShouldAccumulateTags()
+    {
+        await CreateContentTypeAsync("landing");
+        var createdMedia = await CreateMediaAsync("ct-multi-tag.png");
+
+        var body = $"<img src=\"/api/media/{createdMedia.ScopeUid}/{createdMedia.Name}\" alt=\"Multi-tagged\" />";
+        await CreateContentWithBodyAsync(body, "-ct-multi-1", "blog-post");
+        await CreateContentWithBodyAsync(body, "-ct-multi-2", "landing");
+
+        var media = await GetMediaByNameAsync(createdMedia.ScopeUid, createdMedia.Name);
+        media.Tags.Should().Contain("blog-post");
+        media.Tags.Should().Contain("landing");
+    }
+
+    [Fact]
+    public async Task CreateContent_ShouldPreserveExistingTags()
+    {
+        var createdMedia = await CreateMediaAsync("ct-preserve.png");
+
+        // First, create content with cover image to get the "cover" tag added
+        await CreateContentWithCoverImageAsync(
+            "Body text",
+            $"/api/media/{createdMedia.ScopeUid}/{createdMedia.Name}",
+            "-ct-preserve");
+
+        var mediaAfterCover = await GetMediaByNameAsync(createdMedia.ScopeUid, createdMedia.Name);
+        mediaAfterCover.Tags.Should().Contain(tag => string.Equals(tag, "cover", StringComparison.OrdinalIgnoreCase));
+
+        // Now create another content using this media in body
+        var body = $"<img src=\"/api/media/{createdMedia.ScopeUid}/{createdMedia.Name}\" alt=\"Preserve test\" />";
+        await CreateContentWithBodyAsync(body, "-ct-preserve-2", "blog-post");
+
+        var media = await GetMediaByNameAsync(createdMedia.ScopeUid, createdMedia.Name);
+        media.Tags.Should().Contain(tag => string.Equals(tag, "cover", StringComparison.OrdinalIgnoreCase));
+        media.Tags.Should().Contain("blog-post");
+    }
+
+    [Fact]
+    public async Task ExecuteMediaMetaUpdateTask_ShouldAddContentTypeTags()
+    {
+        await CreateContentTypeAsync("landing");
+        var mediaOne = await CreateMediaAsync("ct-task-one.png");
+        var mediaTwo = await CreateMediaAsync("ct-task-two.png");
+
+        var bodyOne = $"<img src=\"/api/media/{mediaOne.ScopeUid}/{mediaOne.Name}\" alt=\"Task test one\" />";
+        await CreateContentWithBodyAsync(bodyOne, "-ct-task-1", "blog-post");
+
+        var bodyTwo = $"<img src=\"/api/media/{mediaTwo.ScopeUid}/{mediaTwo.Name}\" alt=\"Task test two\" />" +
+                      $"<img src=\"/api/media/{mediaOne.ScopeUid}/{mediaOne.Name}\" alt=\"Task test one again\" />";
+        await CreateContentWithBodyAsync(bodyTwo, "-ct-task-2", "landing");
+
+        await ExecuteMediaMetaUpdateTaskAsync();
+
+        var refreshedOne = await GetMediaByNameAsync(mediaOne.ScopeUid, mediaOne.Name);
+        var refreshedTwo = await GetMediaByNameAsync(mediaTwo.ScopeUid, mediaTwo.Name);
+
+        refreshedOne.Tags.Should().Contain("blog-post");
+        refreshedOne.Tags.Should().Contain("landing");
+        refreshedTwo.Tags.Should().Contain("landing");
+    }
+
     protected override Task<HttpResponseMessage> Request(HttpMethod method, string url, object? payload)
     {
         if (payload is not TestMedia)
@@ -165,11 +239,12 @@ public class ContentMediaMetadataTests : BaseTestAutoLogin
         return createdMedia;
     }
 
-    private async Task CreateContentWithBodyAsync(string body, string suffix)
+    private async Task CreateContentWithBodyAsync(string body, string suffix, string contentType = "blog-post")
     {
         var content = new TestContent(suffix)
         {
             Body = body,
+            Type = contentType,
         };
 
         var createdContent = await PostTest<ContentDetailsDto>("/api/content", content);
@@ -200,5 +275,26 @@ public class ContentMediaMetadataTests : BaseTestAutoLogin
     {
         var response = await GetRequest("/api/tasks/execute/MediaMetaUpdateTask");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    private async Task CreateContentTypeAsync(string uid)
+    {
+        // Check if content type already exists
+        var existing = await GetTest<List<ContentTypeDetailsDto>>($"/api/content-types?filter[where][uid][eq]={uid}");
+        if (existing != null && existing.Count > 0)
+        {
+            return;
+        }
+
+        var contentType = new ContentTypeCreateDto
+        {
+            Uid = uid,
+            Format = ContentFormat.MD,
+            SupportsComments = true,
+            SupportsCoverImage = true,
+        };
+
+        var result = await PostTest<ContentTypeDetailsDto>("/api/content-types", contentType);
+        result.Should().NotBeNull();
     }
 }

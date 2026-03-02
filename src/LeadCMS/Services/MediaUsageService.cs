@@ -20,11 +20,12 @@ public interface IMediaUsageService
     Task<(int ContentsProcessed, int MediaUpdated)> UpdateMediaUsageFromAllContentAsync();
 
     /// <summary>
-    /// Updates media descriptions from a specific content body.
+    /// Updates media descriptions and content-type tags from a specific content body.
     /// </summary>
     /// <param name="contentBody">The content body to extract image references from.</param>
+    /// <param name="contentType">The content type identifier (e.g. "landing", "blog-article") to tag media with.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    Task UpdateMediaDescriptionsFromContentAsync(string? contentBody);
+    Task UpdateMediaDescriptionsFromContentAsync(string? contentBody, string? contentType = null);
 }
 
 /// <summary>
@@ -52,17 +53,22 @@ public class MediaUsageService : IMediaUsageService
     {
         var contentItems = await dbContext.Content!
             .AsNoTracking()
-            .Select(c => new { c.Body, c.CoverImageUrl })
+            .Select(c => new { c.Body, c.CoverImageUrl, c.Type })
             .ToListAsync();
 
         var contentsProcessed = 0;
         var mediaUpdated = 0;
         var mediaUsageCounts = new Dictionary<(string ScopeUid, string FileName), int>();
         var descriptionCandidates = new Dictionary<(string ScopeUid, string FileName), string>();
+        var mediaContentTypeTags = new Dictionary<(string ScopeUid, string FileName), HashSet<string>>();
 
         foreach (var content in contentItems)
         {
             contentsProcessed++;
+
+            var contentTypeTag = !string.IsNullOrWhiteSpace(content.Type)
+                ? content.Type.Trim().ToLowerInvariant()
+                : null;
 
             // Count cover image usage
             if (!string.IsNullOrWhiteSpace(content.CoverImageUrl) &&
@@ -70,6 +76,17 @@ public class MediaUsageService : IMediaUsageService
             {
                 var coverKey = NormalizeMediaKey(coverScopeUid, coverFileName);
                 mediaUsageCounts[coverKey] = mediaUsageCounts.TryGetValue(coverKey, out var coverCount) ? coverCount + 1 : 1;
+
+                if (contentTypeTag != null)
+                {
+                    if (!mediaContentTypeTags.TryGetValue(coverKey, out var coverTags))
+                    {
+                        coverTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        mediaContentTypeTags[coverKey] = coverTags;
+                    }
+
+                    coverTags.Add(contentTypeTag);
+                }
             }
 
             // Count body image usages
@@ -88,6 +105,17 @@ public class MediaUsageService : IMediaUsageService
 
                 var key = NormalizeMediaKey(scopeUid, fileName);
                 mediaUsageCounts[key] = mediaUsageCounts.TryGetValue(key, out var count) ? count + 1 : 1;
+
+                if (contentTypeTag != null)
+                {
+                    if (!mediaContentTypeTags.TryGetValue(key, out var tags))
+                    {
+                        tags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        mediaContentTypeTags[key] = tags;
+                    }
+
+                    tags.Add(contentTypeTag);
+                }
             }
 
             var references = ExtractImageReferences(content.Body);
@@ -130,6 +158,22 @@ public class MediaUsageService : IMediaUsageService
                 media.Description = description;
                 mediaUpdated++;
             }
+
+            // Update content-type tags
+            if (mediaContentTypeTags.TryGetValue(key, out var contentTypeTags) && contentTypeTags.Count > 0)
+            {
+                var existingTags = media.Tags ?? Array.Empty<string>();
+                var mergedTags = existingTags
+                    .Concat(contentTypeTags)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+                if (mergedTags.Length != existingTags.Length)
+                {
+                    media.Tags = mergedTags;
+                    mediaUpdated++;
+                }
+            }
         }
 
         if (mediaUpdated > 0)
@@ -141,7 +185,7 @@ public class MediaUsageService : IMediaUsageService
     }
 
     /// <inheritdoc/>
-    public async Task UpdateMediaDescriptionsFromContentAsync(string? contentBody)
+    public async Task UpdateMediaDescriptionsFromContentAsync(string? contentBody, string? contentType = null)
     {
         if (string.IsNullOrWhiteSpace(contentBody))
         {
@@ -150,30 +194,91 @@ public class MediaUsageService : IMediaUsageService
 
         try
         {
+            var contentTypeTag = !string.IsNullOrWhiteSpace(contentType)
+                ? contentType.Trim().ToLowerInvariant()
+                : null;
+
+            // Collect all media URLs from the body (for content-type tagging)
+            var allUrls = ExtractImageUrls(contentBody);
             var references = ExtractImageReferences(contentBody);
-            if (references.Count == 0)
+
+            // Build a set of all media keys referenced in this content
+            var referencedKeys = new HashSet<(string ScopeUid, string FileName)>();
+            foreach (var url in allUrls)
+            {
+                if (TryParseMediaPath(url, out var scopeUid, out var fileName))
+                {
+                    referencedKeys.Add(NormalizeMediaKey(scopeUid, fileName));
+                }
+            }
+
+            foreach (var reference in references)
+            {
+                if (TryParseMediaPath(reference.Url, out var scopeUid, out var fileName))
+                {
+                    referencedKeys.Add(NormalizeMediaKey(scopeUid, fileName));
+                }
+            }
+
+            if (referencedKeys.Count == 0 && references.Count == 0)
             {
                 return;
             }
 
-            var updated = false;
+            // Build a lookup of descriptions from references
+            var descriptionsByKey = new Dictionary<(string ScopeUid, string FileName), string>();
             foreach (var reference in references)
             {
-                if (!TryParseMediaPath(reference.Url, out var scopeUid, out var fileName))
+                if (TryParseMediaPath(reference.Url, out var scopeUid, out var fileName))
                 {
-                    continue;
+                    var key = NormalizeMediaKey(scopeUid, fileName);
+                    if (!descriptionsByKey.ContainsKey(key) && !string.IsNullOrWhiteSpace(reference.Description))
+                    {
+                        descriptionsByKey[key] = reference.Description;
+                    }
                 }
+            }
 
+            var updated = false;
+            foreach (var key in referencedKeys)
+            {
                 var media = await dbContext.Media!
-                    .FirstOrDefaultAsync(m => m.ScopeUid == scopeUid && m.Name == fileName);
+                    .FirstOrDefaultAsync(m => m.ScopeUid == key.ScopeUid && m.Name == key.FileName);
 
-                if (media == null || !string.IsNullOrWhiteSpace(media.Description))
+                if (media == null)
+                {
+                    // Try case-insensitive match
+                    var allMedia = await dbContext.Media!
+                        .Where(m => m.ScopeUid.ToUpper() == key.ScopeUid && m.Name.ToUpper() == key.FileName)
+                        .FirstOrDefaultAsync();
+                    media = allMedia;
+                }
+
+                if (media == null)
                 {
                     continue;
                 }
 
-                media.Description = reference.Description;
-                updated = true;
+                // Update description if empty and we have a candidate
+                var normalizedKey = NormalizeMediaKey(media.ScopeUid, media.Name);
+                if (string.IsNullOrWhiteSpace(media.Description) && descriptionsByKey.TryGetValue(normalizedKey, out var description))
+                {
+                    media.Description = description;
+                    updated = true;
+                }
+
+                // Add content-type tag if provided
+                if (contentTypeTag != null)
+                {
+                    var tags = media.Tags ?? Array.Empty<string>();
+                    if (!Array.Exists(tags, tag => string.Equals(tag, contentTypeTag, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        media.Tags = tags.Concat(new[] { contentTypeTag })
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToArray();
+                        updated = true;
+                    }
+                }
             }
 
             if (updated)
