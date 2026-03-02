@@ -4,6 +4,7 @@
 
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
+using LeadCMS.Plugin.Site.Serialization;
 using Microsoft.AspNetCore.Http;
 
 namespace LeadCMS.Plugin.Site.DTOs
@@ -64,6 +65,7 @@ namespace LeadCMS.Plugin.Site.DTOs
 
         public string? Subject { get; set; }
 
+        [JsonConverter(typeof(FlexibleStringDictionaryJsonConverter))]
         public Dictionary<string, string> ExtraData { get; set; } = new();
 
         [Required]

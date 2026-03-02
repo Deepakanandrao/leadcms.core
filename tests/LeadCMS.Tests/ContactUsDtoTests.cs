@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Text.Json;
 using LeadCMS.Plugin.Site.DTOs;
 
 namespace LeadCMS.Tests;
@@ -103,5 +104,19 @@ public class ContactUsDtoTests
     {
         var dto = new ContactUsDto { Message = "msg" };
         dto.FirstName.Should().BeNull();
+    }
+
+    [Fact]
+    public void ExtraData_Deserialization_AcceptsMixedPrimitiveTypes()
+    {
+        var payload = "{\"Message\":\"msg\",\"ExtraData\":{\"pd_processing\":true,\"attempt\":3,\"ratio\":1.25,\"page\":\"tko-2\"}}";
+
+        var dto = JsonSerializer.Deserialize<ContactUsDto>(payload);
+
+        dto.Should().NotBeNull();
+        dto!.ExtraData["pd_processing"].Should().Be("true");
+        dto.ExtraData["attempt"].Should().Be("3");
+        dto.ExtraData["ratio"].Should().Be("1.25");
+        dto.ExtraData["page"].Should().Be("tko-2");
     }
 }

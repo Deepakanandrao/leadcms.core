@@ -9,6 +9,7 @@ using LeadCMS.Interfaces;
 using LeadCMS.Plugin.Site.Configuration;
 using LeadCMS.Plugin.Site.Data;
 using LeadCMS.Plugin.Site.DTOs;
+using LeadCMS.Plugin.Site.Serialization;
 using LeadCMS.Plugin.Site.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -30,6 +31,11 @@ public class ContactUsController : Controller
     protected readonly ILeadNotificationMessageBuilder leadNotificationMessageBuilder;
     protected readonly IHttpContextHelper? httpContextHelper;
     protected readonly IPhoneNormalizationService phoneNormalizationService;
+
+    private static readonly JsonSerializerOptions ExtraDataJsonOptions = new()
+    {
+        Converters = { new FlexibleStringDictionaryJsonConverter() },
+    };
 
     public ContactUsController(
         IEmailFromTemplateService emailService,
@@ -68,7 +74,7 @@ public class ContactUsController : Controller
         {
             try
             {
-                var parsed = JsonSerializer.Deserialize<Dictionary<string, string>>(extraDataValue.ToString());
+                var parsed = JsonSerializer.Deserialize<Dictionary<string, string>>(extraDataValue.ToString(), ExtraDataJsonOptions);
                 if (parsed != null)
                 {
                     contactUsDto.ExtraData = parsed;
