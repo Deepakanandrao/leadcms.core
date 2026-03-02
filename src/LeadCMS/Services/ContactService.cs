@@ -14,19 +14,22 @@ namespace LeadCMS.Services
     {
         private readonly IDomainService domainService;
         private readonly IEmailSchedulingService emailSchedulingService;
+        private readonly IPhoneNormalizationService phoneNormalizationService;
         private readonly IConfiguration configuration;
         private PgDbContext pgDbContext;
 
-        public ContactService(PgDbContext pgDbContext, IDomainService domainService, IEmailSchedulingService emailSchedulingService, IConfiguration configuration)
+        public ContactService(PgDbContext pgDbContext, IDomainService domainService, IEmailSchedulingService emailSchedulingService, IPhoneNormalizationService phoneNormalizationService, IConfiguration configuration)
         {
             this.pgDbContext = pgDbContext;
             this.domainService = domainService;
             this.emailSchedulingService = emailSchedulingService;
+            this.phoneNormalizationService = phoneNormalizationService;
             this.configuration = configuration;
         }
 
         public async Task SaveAsync(Contact contact)
         {
+            NormalizePhone(contact);
             await EnrichWithDomainId(contact);
 
             // Only enrich AccountId for new contacts (not updates)
@@ -47,6 +50,11 @@ namespace LeadCMS.Services
 
         public async Task SaveRangeAsync(List<Contact> contacts)
         {
+            foreach (var contact in contacts)
+            {
+                NormalizePhone(contact);
+            }
+
             await EnrichWithDomainIdAsync(contacts);
 
             // Only enrich AccountId for new contacts (not updates)
@@ -149,6 +157,49 @@ namespace LeadCMS.Services
             this.pgDbContext = pgDbContext;
             domainService.SetDBContext(pgDbContext);
             emailSchedulingService.SetDBContext(pgDbContext);
+        }
+
+        public async Task<Contact> FindOrCreateByPhone(string phone, string? language, int timezone)
+        {
+            var normalized = phoneNormalizationService.Normalize(phone);
+
+            Contact? contact = null;
+
+            if (normalized != null)
+            {
+                contact = pgDbContext.Contacts!.FirstOrDefault(c => c.Phone == normalized);
+            }
+
+            // Fall back to raw phone search if normalization failed or no match found
+            if (contact == null && normalized == null)
+            {
+                contact = pgDbContext.Contacts!.FirstOrDefault(c => c.PhoneRaw == phone);
+            }
+
+            if (contact == null)
+            {
+                contact = new Contact();
+
+                if (normalized != null)
+                {
+                    contact.Phone = normalized;
+                }
+                else
+                {
+                    contact.PhoneRaw = phone;
+                }
+            }
+
+            contact.Timezone = timezone;
+
+            if (!string.IsNullOrWhiteSpace(language))
+            {
+                contact.Language = language;
+            }
+
+            await SaveAsync(contact);
+
+            return contact;
         }
 
         private async Task EnrichWithDomainId(Contact contact)
@@ -262,6 +313,35 @@ namespace LeadCMS.Services
             if (domain != null && contact.AccountId == null)
             {
                 contact.AccountId = domain.AccountId;
+            }
+        }
+
+        private void NormalizePhone(Contact contact)
+        {
+            // Only normalize when Phone has a value that hasn't been normalized yet
+            var rawPhone = contact.Phone;
+            if (string.IsNullOrWhiteSpace(rawPhone))
+            {
+                return;
+            }
+
+            // Already in E.164 format — skip
+            if (rawPhone.StartsWith('+') && rawPhone.Length >= 8)
+            {
+                return;
+            }
+
+            var normalized = phoneNormalizationService.Normalize(rawPhone, contact.CountryCode, contact.Language);
+
+            if (normalized != null)
+            {
+                contact.Phone = normalized;
+            }
+            else
+            {
+                // Could not normalize — move original value to PhoneRaw, clear Phone
+                contact.PhoneRaw = rawPhone;
+                contact.Phone = null;
             }
         }
     }

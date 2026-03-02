@@ -44,6 +44,7 @@
     <PackageReference Include="EntityFrameworkCore.JamieEncryptColumn" Version="8.0.69" />
     <PackageReference Include="Fluid.Core" Version="2.31.0" />
     <PackageReference Include="HtmlAgilityPack" Version="1.11.60" />
+    <PackageReference Include="libphonenumber-csharp" Version="9.0.25" />
     <PackageReference Include="MailKit" Version="4.9.0" />
     <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.10.3" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />

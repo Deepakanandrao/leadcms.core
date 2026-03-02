@@ -77,6 +77,7 @@ public class Program
         builder.Services.AddTransient<IDomainService, DomainService>();
         builder.Services.AddTransient<IOrderItemService, OrderItemService>();
         builder.Services.AddTransient<IContactService, ContactService>();
+        builder.Services.AddSingleton<IPhoneNormalizationService, PhoneNormalizationService>();
         builder.Services.AddScoped<IContactEmailCommunicationService, ContactEmailCommunicationService>();
         builder.Services.AddTransient<ICommentService, CommentService>();
         builder.Services.AddTransient<ICommentAnswerService, CommentAnswerService>();
