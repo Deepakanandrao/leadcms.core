@@ -130,7 +130,7 @@ public class SendgridController : ControllerBase
                 foreach (var record in contactAndRecords.Value)
                 {
                     var sendGridEvent = Convert(record, contactAndRecords.Key);
-                    var existingRecord = existingRecords.FirstOrDefault(e => e.Contact!.Email == sendGridEvent.Contact!.Email && e.Event == sendGridEvent.Event && e.CreatedAt == sendGridEvent.CreatedAt);
+                    var existingRecord = existingRecords.FirstOrDefault(e => e.ContactId == sendGridEvent.ContactId && e.Event == sendGridEvent.Event && e.CreatedAt == sendGridEvent.CreatedAt);
 
                     if (existingRecord == null)
                     {

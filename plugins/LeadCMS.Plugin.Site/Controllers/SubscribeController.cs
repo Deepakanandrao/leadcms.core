@@ -97,11 +97,16 @@ public class SubscribesController : Controller
 
         await dbContext.SaveChangesAsync();
 
+        if (string.IsNullOrWhiteSpace(contact.Email))
+        {
+            return BadRequest("Contact has no email address for subscription confirmation.");
+        }
+
         await emailService.SendAsync(
             "Subscription_Confirmation",
             payload.Language,
-            new[] { contact.Email! },
-            new Dictionary<string, object> { { "email", contact.Email! } },
+            new[] { contact.Email },
+            new Dictionary<string, object> { { "email", contact.Email } },
             null);
 
         return Ok();
@@ -116,7 +121,12 @@ public class SubscribesController : Controller
     {
         var contact = await FindOrThrowNotFound(subscribeDto.Email);
 
-        await contactService.Unsubscribe(contact.Email!, "Unsubscribed from email or site", "Site", DateTime.UtcNow, httpContextHelper.IpAddress);
+        if (string.IsNullOrWhiteSpace(contact.Email))
+        {
+            return BadRequest("Contact has no email address for unsubscription.");
+        }
+
+        await contactService.Unsubscribe(contact.Email, "Unsubscribed from email or site", "Site", DateTime.UtcNow, httpContextHelper.IpAddress);
 
         await dbContext.SaveChangesAsync();
 

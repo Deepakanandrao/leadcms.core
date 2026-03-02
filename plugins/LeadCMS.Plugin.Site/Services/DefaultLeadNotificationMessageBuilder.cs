@@ -18,8 +18,8 @@ public class DefaultLeadNotificationMessageBuilder : ILeadNotificationMessageBui
     {
         var templateArgs = new Dictionary<string, object>
         {
-            { "email", leadInfo.Email },
-            { "fromEmail", leadInfo.Email },
+            { "email", leadInfo.Email ?? string.Empty },
+            { "fromEmail", leadInfo.Email ?? string.Empty },
             { "firstName", leadInfo.FirstName ?? string.Empty },
             { "lastName", leadInfo.LastName ?? string.Empty },
             { "company", leadInfo.Company ?? string.Empty },
@@ -187,7 +187,10 @@ public class DefaultLeadNotificationMessageBuilder : ILeadNotificationMessageBui
             sb.AppendLine($"✔️ Company: {leadInfo.Company}");
         }
 
-        sb.AppendLine($"✔️ Email: {leadInfo.Email}");
+        if (!string.IsNullOrWhiteSpace(leadInfo.Email))
+        {
+            sb.AppendLine($"✔️ Email: {leadInfo.Email}");
+        }
 
         if (!string.IsNullOrWhiteSpace(leadInfo.PageUrl))
         {
