@@ -17,7 +17,7 @@ public class GravatarHelper
         }
 
         var emailBytes = Encoding.ASCII.GetBytes(email);
-        var emailHashCode = MD5.Create().ComputeHash(emailBytes);
+        var emailHashCode = MD5.HashData(emailBytes);
 
         return "https://www.gravatar.com/avatar/" + Convert.ToHexString(emailHashCode).ToLower() + "?size=48&d=mp";
     }

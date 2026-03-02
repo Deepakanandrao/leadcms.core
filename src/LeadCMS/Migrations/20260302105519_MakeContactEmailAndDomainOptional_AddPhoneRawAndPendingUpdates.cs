@@ -59,8 +59,13 @@ namespace LeadCMS.Migrations
                 name: "ix_contact_phone",
                 table: "contact",
                 column: "phone",
-                unique: true,
                 filter: "\"phone\" IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_contact_phone_raw",
+                table: "contact",
+                column: "phone_raw",
+                filter: "\"phone_raw\" IS NOT NULL");
         }
 
         /// <inheritdoc />
@@ -72,6 +77,10 @@ namespace LeadCMS.Migrations
 
             migrationBuilder.DropIndex(
                 name: "ix_contact_phone",
+                table: "contact");
+
+            migrationBuilder.DropIndex(
+                name: "ix_contact_phone_raw",
                 table: "contact");
 
             migrationBuilder.DropColumn(

@@ -21,7 +21,7 @@ public class SubscribeDto
 
         set
         {
-            email = value.ToLower();
+            email = value?.ToLower() ?? string.Empty;
         }
     }
 

@@ -9,7 +9,7 @@ namespace LeadCMS.Plugin.Site.DTOs
 {
     public class ContactUsDto : ClientLocaleAwareDto
     {
-        private string email = string.Empty;
+        private string? email;
 
         public IFormFile? Attachment { get; set; }
 
@@ -49,9 +49,8 @@ namespace LeadCMS.Plugin.Site.DTOs
         [Required]
         public string Message { get; set; } = string.Empty;
 
-        [Required]
         [EmailAddress]
-        public string Email
+        public string? Email
         {
             get
             {
@@ -60,7 +59,7 @@ namespace LeadCMS.Plugin.Site.DTOs
 
             set
             {
-                email = value.ToLower();
+                email = value?.ToLower();
             }
         }
 

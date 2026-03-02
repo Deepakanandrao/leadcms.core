@@ -15,7 +15,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LeadCMS.Migrations
 {
     [DbContext(typeof(PgDbContext))]
-    [Migration("20260302072721_MakeContactEmailAndDomainOptional_AddPhoneRawAndPendingUpdates")]
+    [Migration("20260302105519_MakeContactEmailAndDomainOptional_AddPhoneRawAndPendingUpdates")]
     partial class MakeContactEmailAndDomainOptional_AddPhoneRawAndPendingUpdates
     {
         /// <inheritdoc />
@@ -764,9 +764,12 @@ namespace LeadCMS.Migrations
                         .HasFilter("\"email\" IS NOT NULL");
 
                     b.HasIndex("Phone")
-                        .IsUnique()
                         .HasDatabaseName("ix_contact_phone")
                         .HasFilter("\"phone\" IS NOT NULL");
+
+                    b.HasIndex("PhoneRaw")
+                        .HasDatabaseName("ix_contact_phone_raw")
+                        .HasFilter("\"phone_raw\" IS NOT NULL");
 
                     b.HasIndex("UnsubscribeId")
                         .HasDatabaseName("ix_contact_unsubscribe_id");

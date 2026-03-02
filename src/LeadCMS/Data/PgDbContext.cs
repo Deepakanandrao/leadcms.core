@@ -291,11 +291,15 @@ public class PgDbContext : IdentityDbContext<User>
             .IsUnique()
             .HasFilter("\"email\" IS NOT NULL");
 
-        // Contact: partial unique index on Phone (only when non-null, E.164 normalized)
+        // Contact: partial index on Phone (only when non-null, E.164 normalized)
         builder.Entity<Contact>()
             .HasIndex(c => c.Phone)
-            .IsUnique()
             .HasFilter("\"phone\" IS NOT NULL");
+
+        // Contact: partial index on PhoneRaw (only when non-null)
+        builder.Entity<Contact>()
+            .HasIndex(c => c.PhoneRaw)
+            .HasFilter("\"phone_raw\" IS NOT NULL");
 
         // Contact: PendingUpdates stored as JSONB
         builder.Entity<Contact>()

@@ -761,9 +761,12 @@ namespace LeadCMS.Migrations
                         .HasFilter("\"email\" IS NOT NULL");
 
                     b.HasIndex("Phone")
-                        .IsUnique()
                         .HasDatabaseName("ix_contact_phone")
                         .HasFilter("\"phone\" IS NOT NULL");
+
+                    b.HasIndex("PhoneRaw")
+                        .HasDatabaseName("ix_contact_phone_raw")
+                        .HasFilter("\"phone_raw\" IS NOT NULL");
 
                     b.HasIndex("UnsubscribeId")
                         .HasDatabaseName("ix_contact_unsubscribe_id");

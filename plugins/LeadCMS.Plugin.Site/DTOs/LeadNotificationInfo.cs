@@ -34,9 +34,9 @@ public class LeadNotificationInfo
     public string? LastName { get; set; }
 
     /// <summary>
-    /// Gets or sets the email address of the lead.
+    /// Gets or sets the email address of the lead. May be null for phone-only contacts.
     /// </summary>
-    public string Email { get; set; } = string.Empty;
+    public string? Email { get; set; }
 
     /// <summary>
     /// Gets or sets the phone number of the lead.

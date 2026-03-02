@@ -4,6 +4,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using LeadCMS.DTOs;
+using LeadCMS.Entities;
 using LeadCMS.Interfaces;
 using LeadCMS.Plugin.Site.Configuration;
 using LeadCMS.Plugin.Site.Data;
@@ -28,6 +29,7 @@ public class ContactUsController : Controller
     protected readonly ILeadNotificationService leadNotificationService;
     protected readonly ILeadNotificationMessageBuilder leadNotificationMessageBuilder;
     protected readonly IHttpContextHelper? httpContextHelper;
+    protected readonly IPhoneNormalizationService phoneNormalizationService;
 
     public ContactUsController(
         IEmailFromTemplateService emailService,
@@ -36,7 +38,8 @@ public class ContactUsController : Controller
         IContactService contactService,
         ILeadNotificationService leadNotificationService,
         ILeadNotificationMessageBuilder leadNotificationMessageBuilder,
-        IHttpContextHelper httpContextHelper)
+        IHttpContextHelper httpContextHelper,
+        IPhoneNormalizationService phoneNormalizationService)
     {
         this.emailService = emailService;
         this.dbContext = dbContext;
@@ -45,6 +48,7 @@ public class ContactUsController : Controller
         this.leadNotificationService = leadNotificationService;
         this.leadNotificationMessageBuilder = leadNotificationMessageBuilder;
         this.httpContextHelper = httpContextHelper;
+        this.phoneNormalizationService = phoneNormalizationService;
         var settings = configuration.Get<PluginSettings>();
 
         if (settings != null)
@@ -106,27 +110,41 @@ public class ContactUsController : Controller
         }
 
         // Create or find contact record
-        var contact = await contactService.FindOrCreate(contactUsDto.Email, contactUsDto.Language, contactUsDto.TimeZoneOffset);
+        Contact contact;
 
-        // Populate contact attributes from the request
-        if (!string.IsNullOrWhiteSpace(contactUsDto.FirstName))
+        if (!string.IsNullOrWhiteSpace(contactUsDto.Email))
         {
-            contact.FirstName = contactUsDto.FirstName;
+            contact = await contactService.FindOrCreate(contactUsDto.Email, contactUsDto.Language, contactUsDto.TimeZoneOffset);
+        }
+        else if (!string.IsNullOrWhiteSpace(contactUsDto.Phone))
+        {
+            contact = await contactService.FindOrCreateByPhone(contactUsDto.Phone, contactUsDto.Language, contactUsDto.TimeZoneOffset);
+        }
+        else
+        {
+            return BadRequest("Either email or phone is required.");
         }
 
-        if (!string.IsNullOrWhiteSpace(contactUsDto.LastName))
-        {
-            contact.LastName = contactUsDto.LastName;
-        }
+        // Apply anti-abuse merge policy: fill only if null, otherwise store in PendingUpdates
+        var ip = httpContextHelper?.IpAddress;
+        var ua = httpContextHelper?.UserAgent;
+        const string source = "ContactForm";
 
-        if (!string.IsNullOrWhiteSpace(contactUsDto.Company))
-        {
-            contact.CompanyName = contactUsDto.Company;
-        }
-
-        contact.Source = string.IsNullOrWhiteSpace(contactUsDto.Title)
+        var proposedSource = string.IsNullOrWhiteSpace(contactUsDto.Title)
                 ? "Contact Us"
                 : contactUsDto.Title;
+
+        ContactPublicUpdateHelper.ApplyFormFields(
+            contact,
+            contactUsDto.FirstName,
+            contactUsDto.LastName,
+            contactUsDto.Company,
+            contactUsDto.Phone,
+            proposedSource,
+            source,
+            ip,
+            ua,
+            phoneNormalizationService);
 
         var attachmentFiles = new List<AttachmentDto>();
 

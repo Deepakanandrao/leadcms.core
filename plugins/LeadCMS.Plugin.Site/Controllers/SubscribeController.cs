@@ -4,6 +4,7 @@
 
 using LeadCMS.Entities;
 using LeadCMS.Exceptions;
+using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
 using LeadCMS.Plugin.Site.Configuration;
 using LeadCMS.Plugin.Site.Data;
@@ -91,7 +92,15 @@ public class SubscribesController : Controller
 
         var contact = await contactService.FindOrCreate(payload.Email, payload.Language, payload.TimeZoneOffset);
 
-        contact.Source = "Subscribed";
+        ContactMergeHelper.ApplyPublicUpdate(
+            contact,
+            nameof(contact.Source),
+            contact.Source,
+            "Subscribed",
+            v => contact.Source = v,
+            "Subscribe",
+            httpContextHelper?.IpAddress,
+            httpContextHelper?.UserAgent);
 
         await contactService.Subscribe(contact, payload.Group);
 

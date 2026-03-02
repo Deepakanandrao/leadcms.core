@@ -100,7 +100,11 @@ public class CommentService : ICommentService
             {
                 contact = new Contact { Email = comment.AuthorEmail, FirstName = comment.AuthorName };
                 newContacts.Add(contact);
-                existingContacts[contact.Email!] = contact;
+
+                if (!string.IsNullOrWhiteSpace(contact.Email))
+                {
+                    existingContacts[contact.Email] = contact;
+                }
             }
 
             comment.Contact = contact;

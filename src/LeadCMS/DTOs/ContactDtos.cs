@@ -157,7 +157,7 @@ public class ContactImportDto : BaseImportDto
 
         set
         {
-            email = value == null ? null : value.ToLower();
+            email = value?.ToLower();
         }
     }
 

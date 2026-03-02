@@ -444,6 +444,107 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
         await GetTest($"{itemsUrl}?{filter}", HttpStatusCode.BadRequest);
     }
 
+    [Fact]
+    public async Task CreatePhoneOnlyContact_ShouldSucceed_WithNoDomain()
+    {
+        var phoneOnlyContact = new ContactCreateDto
+        {
+            Phone = "+14155559999",
+            FirstName = "PhoneOnly",
+            Language = "en",
+        };
+
+        var createUrl = await PostTest(itemsUrl, phoneOnlyContact);
+        createUrl.Should().NotBeNull();
+
+        var contactId = Convert.ToInt32(createUrl.Split("/").Last());
+        var dbContext = App.GetDbContext()!;
+        var contact = await dbContext.Contacts!.FindAsync(contactId);
+
+        contact.Should().NotBeNull();
+        contact!.Email.Should().BeNull();
+        contact.Phone.Should().Be("+14155559999");
+        contact.DomainId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CreatePhoneOnlyContact_ThenAddEmail_ShouldCreateDomain()
+    {
+        TrackEntityType<Domain>();
+
+        var phoneOnlyContact = new ContactCreateDto
+        {
+            Phone = "+14155558888",
+            FirstName = "PhoneThenEmail",
+            Language = "en",
+        };
+
+        var createUrl = await PostTest(itemsUrl, phoneOnlyContact);
+        createUrl.Should().NotBeNull();
+
+        var contactId = Convert.ToInt32(createUrl.Split("/").Last());
+        var dbContext = App.GetDbContext()!;
+        var contact = await dbContext.Contacts!.FindAsync(contactId);
+        contact!.DomainId.Should().BeNull();
+
+        // Now patch to add email
+        var update = new ContactUpdateDto { Email = "phonethenemail@example.com" };
+        var patchResponse = await Patch(createUrl, update);
+        patchResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        dbContext = App.GetDbContext()!;
+        var updatedContact = await dbContext.Contacts!.FindAsync(contactId);
+        updatedContact!.Email.Should().Be("phonethenemail@example.com");
+        updatedContact.DomainId.Should().NotBeNull("adding email should create and link a domain");
+    }
+
+    [Fact]
+    public async Task ImportMixedContacts_ShouldHandlePhoneOnlyEntries()
+    {
+        var result = await PostImportTest(itemsUrl, "contacts_mixed.json");
+
+        result.Should().NotBeNull();
+        result.Added.Should().Be(2);
+
+        var dbContext = App.GetDbContext()!;
+        var contacts = dbContext.Contacts!.ToList();
+
+        // Phone-only contact — no domain
+        var phoneOnly = contacts.FirstOrDefault(c => c.FirstName == "PhoneOnly");
+        phoneOnly.Should().NotBeNull();
+        phoneOnly!.Email.Should().BeNull();
+        phoneOnly.Phone.Should().Be("+14155551000");
+        phoneOnly.DomainId.Should().BeNull();
+
+        // Mixed contact — has domain
+        var mixed = contacts.FirstOrDefault(c => c.FirstName == "Mixed");
+        mixed.Should().NotBeNull();
+        mixed!.Email.Should().Be("mixed@example.com");
+        mixed.DomainId.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task CreateContactWithoutEmailOrPhone_ShouldSucceed()
+    {
+        var bareContact = new ContactCreateDto
+        {
+            FirstName = "BareMinimum",
+            Language = "en",
+        };
+
+        var createUrl = await PostTest(itemsUrl, bareContact);
+        createUrl.Should().NotBeNull();
+
+        var contactId = Convert.ToInt32(createUrl.Split("/").Last());
+        var dbContext = App.GetDbContext()!;
+        var contact = await dbContext.Contacts!.FindAsync(contactId);
+
+        contact.Should().NotBeNull();
+        contact!.Email.Should().BeNull();
+        contact.Phone.Should().BeNull();
+        contact.DomainId.Should().BeNull();
+    }
+
     protected override ContactUpdateDto UpdateItem(TestContact to)
     {
         var from = new ContactUpdateDto();

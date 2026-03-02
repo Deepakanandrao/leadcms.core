@@ -86,6 +86,7 @@
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>
     <EmbeddedResource Include="Resources\Contacts\contacts.json" />
+    <EmbeddedResource Include="Resources\Contacts\contacts_mixed.json" />
     <EmbeddedResource Include="Resources\Contacts\contactsToUpdate.csv">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>

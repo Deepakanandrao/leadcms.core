@@ -1,0 +1,17 @@
+[
+  {
+    "firstName": "PhoneOnly",
+    "lastName": "Contact",
+    "phone": "+14155551000",
+    "timezone": -8,
+    "language": "en"
+  },
+  {
+    "email": "mixed@example.com",
+    "firstName": "Mixed",
+    "lastName": "Contact",
+    "phone": "+14155551001",
+    "timezone": 0,
+    "language": "en"
+  }
+]

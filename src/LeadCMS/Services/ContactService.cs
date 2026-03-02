@@ -79,8 +79,10 @@ namespace LeadCMS.Services
             }
         }
 
-        public async Task<Contact> FindOrCreate(string email, string language, int timezone)
+        public async Task<Contact> FindOrCreate(string email, string? language = null, int? timezone = null)
         {
+            ArgumentException.ThrowIfNullOrWhiteSpace(email);
+
             var customer = pgDbContext.Contacts!.FirstOrDefault(c => c.Email == email);
 
             if (customer == null)
@@ -91,8 +93,15 @@ namespace LeadCMS.Services
                 };
             }
 
-            customer.Timezone = timezone;
-            customer.Language = language;
+            if (timezone.HasValue)
+            {
+                customer.Timezone = timezone.Value;
+            }
+
+            if (!string.IsNullOrWhiteSpace(language))
+            {
+                customer.Language = language;
+            }
 
             await SaveAsync(customer);
 
@@ -159,7 +168,7 @@ namespace LeadCMS.Services
             emailSchedulingService.SetDBContext(pgDbContext);
         }
 
-        public async Task<Contact> FindOrCreateByPhone(string phone, string? language, int timezone)
+        public async Task<Contact> FindOrCreateByPhone(string phone, string? language = null, int? timezone = null)
         {
             var normalized = phoneNormalizationService.Normalize(phone);
 
@@ -178,19 +187,21 @@ namespace LeadCMS.Services
 
             if (contact == null)
             {
-                contact = new Contact();
+                contact = new Contact
+                {
+                    PhoneRaw = phone,
+                };
 
                 if (normalized != null)
                 {
                     contact.Phone = normalized;
                 }
-                else
-                {
-                    contact.PhoneRaw = phone;
-                }
             }
 
-            contact.Timezone = timezone;
+            if (timezone.HasValue)
+            {
+                contact.Timezone = timezone.Value;
+            }
 
             if (!string.IsNullOrWhiteSpace(language))
             {
@@ -328,7 +339,19 @@ namespace LeadCMS.Services
             // Already in E.164 format — skip
             if (rawPhone.StartsWith('+') && rawPhone.Length >= 8)
             {
+                // Preserve original input in PhoneRaw if not already set
+                if (string.IsNullOrWhiteSpace(contact.PhoneRaw))
+                {
+                    contact.PhoneRaw = rawPhone;
+                }
+
                 return;
+            }
+
+            // Always preserve the original user input
+            if (string.IsNullOrWhiteSpace(contact.PhoneRaw))
+            {
+                contact.PhoneRaw = rawPhone;
             }
 
             var normalized = phoneNormalizationService.Normalize(rawPhone, contact.CountryCode, contact.Language);
@@ -339,8 +362,7 @@ namespace LeadCMS.Services
             }
             else
             {
-                // Could not normalize — move original value to PhoneRaw, clear Phone
-                contact.PhoneRaw = rawPhone;
+                // Could not normalize — clear Phone, raw is already preserved
                 contact.Phone = null;
             }
         }

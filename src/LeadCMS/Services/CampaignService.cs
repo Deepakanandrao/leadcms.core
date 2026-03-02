@@ -313,6 +313,16 @@ public class CampaignService : ICampaignService
                 }
             }
 
+            // Defensive: skip contact whose email was cleared between audience resolution and batch send
+            if (string.IsNullOrWhiteSpace(recipient.Contact?.Email))
+            {
+                recipient.Status = CampaignRecipientStatus.Skipped;
+                recipient.SkipReason = CampaignSkipReason.InvalidEmail;
+                skipped++;
+                await dbContext.SaveChangesAsync();
+                continue;
+            }
+
             try
             {
                 var templateArgs = FromContact(recipient.Contact);
@@ -320,7 +330,7 @@ public class CampaignService : ICampaignService
                 await emailFromTemplateService.SendAsync(
                     template.Name,
                     template.Language,
-                    new[] { recipient.Contact!.Email! },
+                    new[] { recipient.Contact.Email },
                     templateArgs,
                     attachments: null,
                     contactId: recipient.ContactId,

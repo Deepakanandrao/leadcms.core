@@ -12,8 +12,8 @@ namespace LeadCMS.Interfaces
 
         Task Unsubscribe(string email, string reason, string source, DateTime createdAt, string? ip);
 
-        Task<Contact> FindOrCreate(string email, string language, int timezone);
+        Task<Contact> FindOrCreate(string email, string? language = null, int? timezone = null);
 
-        Task<Contact> FindOrCreateByPhone(string phone, string? language, int timezone);
+        Task<Contact> FindOrCreateByPhone(string phone, string? language = null, int? timezone = null);
     }
 }
