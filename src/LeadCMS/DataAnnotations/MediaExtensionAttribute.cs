@@ -40,10 +40,29 @@ namespace LeadCMS.DataAnnotations
                 throw new MissingConfigurationException("Failed to resolve ISettingService object.");
             }
 
-            var maxFileSizeSetting = settingService
-                .GetSystemSettingAsync(SettingKeys.MediaMaxFileSize)
-                .GetAwaiter()
-                .GetResult();
+            var extensionSizeInfo = configuration.Value.MaxSize
+                .FirstOrDefault(info =>
+                    !string.Equals(info.Extension, "default", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(info.Extension, fileExtension, StringComparison.OrdinalIgnoreCase));
+
+            string? maxFileSizeSetting;
+
+            if (extensionSizeInfo != null)
+            {
+                if (string.IsNullOrWhiteSpace(extensionSizeInfo.MaxSize))
+                {
+                    throw new MissingConfigurationException($"Failed to resolve Media.Max.FileSize setting for extension '{fileExtension}'.");
+                }
+
+                maxFileSizeSetting = extensionSizeInfo.MaxSize;
+            }
+            else
+            {
+                maxFileSizeSetting = settingService
+                    .GetSystemSettingAsync(SettingKeys.MediaMaxFileSize)
+                    .GetAwaiter()
+                    .GetResult();
+            }
 
             if (string.IsNullOrWhiteSpace(maxFileSizeSetting))
             {

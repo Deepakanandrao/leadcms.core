@@ -7,7 +7,6 @@ using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;
-using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -93,13 +92,19 @@ namespace LeadCMS.Services
 
         private async Task<EmailTemplate> GetEmailTemplate(string name, int contactId)
         {
-            var contact = await pgDbContext.Contacts!.FirstOrDefaultAsync(c => c.Id == contactId);
+            var contact = await pgDbContext.Contacts!.FirstOrDefaultAsync(c => c.Id == contactId)
+                ?? throw new EntityNotFoundException(nameof(Contact), contactId.ToString());
 
-            var language = contact!.Language;
+            var language = contact.Language;
 
             var template = await GetEmailTemplateByLanguage(name, language);
 
-            return template!;
+            if (template == null)
+            {
+                throw new UnprocessableEntityException($"Invalid template name '{name}'. Email template was not found.");
+            }
+
+            return template;
         }
 
         private async Task<EmailTemplate?> GetEmailTemplateByLanguage(string name, string? language)
