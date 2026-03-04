@@ -40,6 +40,19 @@ public class EmailGroupsTests : SimpleTableTests<EmailGroup, TestEmailGroup, Ema
     }
 
     [Fact]
+    public async Task CreateDuplicateNameAndLanguage_ShouldReturnConflict()
+    {
+        var payload = new TestEmailGroup("dup")
+        {
+            Name = "Transactional",
+            Language = "en",
+        };
+
+        await PostTest(itemsUrl, payload, HttpStatusCode.Created);
+        await PostTest(itemsUrl, payload, HttpStatusCode.Conflict);
+    }
+
+    [Fact]
     public async Task GetWithWhereEqualTest()
     {
         // we are trying to test Where query in Postgres, so we have chosen a type without elastic indexing

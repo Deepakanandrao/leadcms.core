@@ -7,11 +7,13 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 using LeadCMS.DataAnnotations;
 using LeadCMS.Interfaces;
+using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Entities
 {
     [Table("email_group")]
     [SupportsChangeLog]
+    [Index(nameof(Name), nameof(Language), IsUnique = true)]
     public class EmailGroup : BaseEntity, ITranslatable
     {
         /// <summary>

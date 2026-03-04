@@ -70,7 +70,7 @@ public class EmailTemplatesTests : TableWithFKTests<EmailTemplate, TestEmailTemp
 
     protected override async Task<(int, string)> CreateFKItem()
     {
-        var fkItemCreate = new TestEmailGroup();
+        var fkItemCreate = new TestEmailGroup(Guid.NewGuid().ToString("N")[..8]);
 
         var fkUrl = await PostTest("/api/email-groups", fkItemCreate, HttpStatusCode.Created);
 

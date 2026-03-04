@@ -172,7 +172,7 @@ public class ErrorsController : Controller
         {
             return ProblemDetailsFactory.CreateProblemDetails(
                 HttpContext,
-                StatusCodes.Status422UnprocessableEntity,
+                StatusCodes.Status409Conflict,
                 GetUniqueViolationMessage(uniqueConstraintName));
         }
 
@@ -193,7 +193,7 @@ public class ErrorsController : Controller
         {
             return ProblemDetailsFactory.CreateProblemDetails(
                 HttpContext,
-                StatusCodes.Status422UnprocessableEntity,
+                StatusCodes.Status409Conflict,
                 GetUniqueViolationMessage(postgresException.ConstraintName));
         }
 
@@ -208,6 +208,29 @@ public class ErrorsController : Controller
         return constraintName?.ToLowerInvariant() switch
         {
             "ix_content_slug_language" => "A content item with this slug already exists for the selected language.",
+            "ix_account_name" => "An account with this name already exists.",
+            "ix_campaign_name" => "A campaign with this name already exists.",
+            "ix_campaign_recipient_campaign_id_contact_id" => "This contact is already a recipient in the campaign.",
+            "ix_contact_email" => "A contact with this email already exists.",
+            "ix_content_draft_object_id_object_type_created_by_id" => "A draft for this item already exists for the current user.",
+            "ix_content_type_uid" => "A content type with this UID already exists.",
+            "ix_discount_order_item_id" => "A discount is already assigned to this order item.",
+            "ix_domain_name" => "A domain with this name already exists.",
+            "ix_email_group_name_language" => "An email group with this name already exists for the selected language.",
+            "ix_email_template_name_language" => "An email template with this name already exists for the selected language.",
+            "ix_enrichment_quota_usage_provider_key_window_type_window_start" => "Quota usage for this provider and window already exists.",
+            "ix_imap_account_host_user_name" => "An IMAP account with this host and username already exists.",
+            "ix_ip_details_ip" => "IP details for this IP already exist.",
+            "ix_link_uid" => "A link with this UID already exists.",
+            "ix_mail_server_name" => "A mail server with this name already exists.",
+            "ix_order_item_order_id_line_number" => "An order item with this line number already exists in the order.",
+            "ix_order_ref_no" => "An order with this reference number already exists.",
+            "ix_promotion_code" => "A promotion with this code already exists.",
+            "ix_segment_name" => "A segment with this name already exists.",
+            "ix_setting_key_user_id_language" => "A setting with this key, user, and language already exists.",
+            "emailindex" => "A user with this email already exists.",
+            "usernameindex" => "A user with this username already exists.",
+            "rolenameindex" => "A role with this name already exists.",
             _ => "A record with the same unique value already exists.",
         };
     }
