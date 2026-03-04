@@ -352,6 +352,7 @@ public class Program
                 using (LockManager.GetWaitLock("MigrationWaitLock", postgresConfig.ConnectionString))
                 {
                     var dbContext = scope.ServiceProvider.GetRequiredService<PgDbContext>();
+                    dbContext.Database.SetCommandTimeout(600);
                     dbContext.Database.Migrate();
 
                     var esDbContext = scope.ServiceProvider.GetRequiredService<EsDbContext>();
@@ -359,9 +360,10 @@ public class Program
 
                     var pluginContexts = scope.ServiceProvider.GetServices<PluginDbContextBase>();
 
-                    foreach (var pluginContext in pluginContexts)
+                    foreach (var pluginDatabase in pluginContexts.Select(pluginContext => pluginContext.Database))
                     {
-                        pluginContext.Database.Migrate();
+                        pluginDatabase.SetCommandTimeout(600);
+                        pluginDatabase.Migrate();
                     }
 
                     // var elasticClient = scope.ServiceProvider.GetRequiredService<ElasticClient>();
