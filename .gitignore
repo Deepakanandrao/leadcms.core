@@ -462,3 +462,4 @@ logs/
 .mono
 mailpit_auth
 *.pem
+site-content

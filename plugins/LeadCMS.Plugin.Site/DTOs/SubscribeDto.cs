@@ -3,6 +3,7 @@
 // </copyright>
 
 using System.ComponentModel.DataAnnotations;
+using LeadCMS.Enums;
 
 namespace LeadCMS.Plugin.Site.DTOs;
 
@@ -30,6 +31,9 @@ public class SubscribeDto
     [Required]
     public int TimeZoneOffset { get; set; }
 
+    /// <inheritdoc cref="ClientLocaleAwareDto.TimezoneFormat"/>
+    public TimezoneFormat TimezoneFormat { get; set; } = TimezoneFormat.JavaScript;
+
     [Required]
     public string Language { get; set; } = string.Empty;
 }
@@ -42,6 +46,9 @@ public class UnsibscribeDto
 
     [Required]
     public int TimeZoneOffset { get; set; }
+
+    /// <inheritdoc cref="ClientLocaleAwareDto.TimezoneFormat"/>
+    public TimezoneFormat TimezoneFormat { get; set; } = TimezoneFormat.JavaScript;
 
     [Required]
     public string Language { get; set; } = string.Empty;

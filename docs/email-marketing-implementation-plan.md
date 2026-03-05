@@ -24,13 +24,13 @@ The plan is designed to be **incremental** — each phase produces a working, te
 
 | Current Asset                      | Verdict                                   | Reason                                                                                                                                             |
 | ---------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **EmailTemplate**                  | Keep as-is                                | Strong reusable content primitive. MJML + Liquid rendering pipeline is solid. Templates are content — they should remain decoupled from execution. |
+| **EmailTemplate**                  | Keep as-is                                | Strong reusable content primitive. HTML + Liquid rendering pipeline is solid. Templates are content — they should remain decoupled from execution. |
 | **EmailGroup**                     | Keep, but **redefine its role** (see 2.2) | Currently blurs the line between "content folder" and "sequence definition". Needs clarity.                                                        |
 | **Segment**                        | Keep as-is                                | Dynamic and static segments with rule engine — fully sufficient as the audience system. No changes needed.                                         |
 | **Contact**                        | Keep as-is                                | Good CRM contact model with language, timezone, tags, unsubscribe link.                                                                            |
 | **Unsubscribe**                    | Keep + extend later                       | Works for global opt-out. Will need list-level unsubscribe in Phase 4.                                                                             |
 | **EmailLog**                       | Keep as-is                                | Solid audit trail. All future sending continues logging here.                                                                                      |
-| **IEmailFromTemplateService**      | Keep as-is                                | Template resolution, MJML rendering, Liquid processing, send + log — reused by all new sending paths.                                              |
+| **IEmailFromTemplateService**      | Keep as-is                                | Template resolution, HTML rendering, Liquid processing, send + log — reused by all new sending paths.                                              |
 | **Background task infrastructure** | Keep as-is                                | BaseTask, cron-based scheduling, TaskExecutionLog — solid foundation for new tasks.                                                                |
 
 ### 2.2 What changes and why

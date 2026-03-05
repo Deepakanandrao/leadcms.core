@@ -72,14 +72,7 @@ public class SegmentService : ISegmentService
             var contactIds = segment.ContactIds ?? Array.Empty<int>();
             var contactsQuery = dbContext.Contacts!.Where(c => contactIds.Contains(c.Id));
 
-            if (!string.IsNullOrEmpty(query))
-            {
-                var lowerQuery = query.ToLower();
-                contactsQuery = contactsQuery.Where(c =>
-                    (c.Email != null && c.Email.ToLower().Contains(lowerQuery)) ||
-                    (c.FirstName != null && c.FirstName.ToLower().Contains(lowerQuery)) ||
-                    (c.LastName != null && c.LastName.ToLower().Contains(lowerQuery)));
-            }
+            contactsQuery = ApplyContactSearchQuery(contactsQuery, query);
 
             if (limit.HasValue)
             {
@@ -90,16 +83,15 @@ public class SegmentService : ISegmentService
         }
         else if (segment.Type == SegmentType.Dynamic && segment.Definition != null)
         {
-            contacts = await EvaluateDynamicSegmentAsync(segment.Definition, limit);
+            var contactsQuery = BuildDynamicSegmentQuery(segment.Definition);
+            contactsQuery = ApplyContactSearchQuery(contactsQuery, query);
 
-            if (!string.IsNullOrEmpty(query))
+            if (limit.HasValue)
             {
-                var lowerQuery = query.ToLower();
-                contacts = contacts.Where(c =>
-                    (c.Email != null && c.Email.ToLower().Contains(lowerQuery)) ||
-                    (c.FirstName != null && c.FirstName.ToLower().Contains(lowerQuery)) ||
-                    (c.LastName != null && c.LastName.ToLower().Contains(lowerQuery))).ToList();
+                contactsQuery = contactsQuery.Take(limit.Value);
             }
+
+            contacts = await contactsQuery.ToListAsync();
         }
         else
         {
@@ -213,6 +205,20 @@ public class SegmentService : ISegmentService
         await dbContext.SaveChangesAsync();
 
         return newContactCount;
+    }
+
+    private static IQueryable<Contact> ApplyContactSearchQuery(IQueryable<Contact> contactsQuery, string? query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return contactsQuery;
+        }
+
+        var lowerQuery = query.ToLower();
+        return contactsQuery.Where(c =>
+            (c.Email != null && c.Email.ToLower().Contains(lowerQuery)) ||
+            (c.FirstName != null && c.FirstName.ToLower().Contains(lowerQuery)) ||
+            (c.LastName != null && c.LastName.ToLower().Contains(lowerQuery)));
     }
 
     private IQueryable<Contact> BuildDynamicSegmentQuery(SegmentDefinition definition)
@@ -483,25 +489,53 @@ public class SegmentService : ISegmentService
     }
 
     /// <summary>
-    /// Handles the virtual "isUnsubscribed" field by checking if UnsubscribeId is not null (subscribed) or null (unsubscribed).
+    /// Handles the virtual "isUnsubscribed" field.
+    /// A contact is considered unsubscribed when either Contact.UnsubscribeId is set
+    /// or there is an Unsubscribe row linked by Unsubscribe.ContactId.
     /// </summary>
     private Expression? BuildIsUnsubscribedExpression(ParameterExpression parameter, SegmentRule rule)
     {
-        var unsubscribeIdProperty = Expression.Property(parameter, "UnsubscribeId");
+        var unsubscribeIdProperty = Expression.Property(parameter, nameof(Contact.UnsubscribeId));
+        var hasUnsubscribeId = Expression.NotEqual(unsubscribeIdProperty, Expression.Constant(null, typeof(int?)));
 
-        var isTrue = rule.Operator == FieldOperator.IsTrue ||
-                     (rule.Operator == FieldOperator.Equals && string.Equals(rule.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase));
-        var isFalse = rule.Operator == FieldOperator.IsFalse ||
-                      (rule.Operator == FieldOperator.Equals && string.Equals(rule.Value?.ToString(), "false", StringComparison.OrdinalIgnoreCase));
+        var unsubscribesSet = Expression.Property(Expression.Constant(dbContext), nameof(PgDbContext.Unsubscribes));
+        var unsubscribeParam = Expression.Parameter(typeof(Unsubscribe), "u");
+        var unsubscribeContactId = Expression.Property(unsubscribeParam, nameof(Unsubscribe.ContactId));
+        var contactId = Expression.Property(parameter, nameof(Contact.Id));
+        var contactIdAsNullable = Expression.Convert(contactId, typeof(int?));
+        var contactIdMatch = Expression.Equal(unsubscribeContactId, contactIdAsNullable);
+        var unsubscribePredicate = Expression.Lambda<Func<Unsubscribe, bool>>(contactIdMatch, unsubscribeParam);
 
-        if (isTrue)
+        var anyMethod = typeof(Queryable)
+            .GetMethods()
+            .First(m => m.Name == nameof(Queryable.Any) && m.GetParameters().Length == 2)
+            .MakeGenericMethod(typeof(Unsubscribe));
+
+        var hasUnsubscribeByContactId = Expression.Call(anyMethod, unsubscribesSet, unsubscribePredicate);
+        var isUnsubscribedExpression = Expression.OrElse(hasUnsubscribeId, hasUnsubscribeByContactId);
+
+        if (rule.Operator == FieldOperator.IsTrue)
         {
-            return Expression.NotEqual(unsubscribeIdProperty, Expression.Constant(null, typeof(int?)));
+            return isUnsubscribedExpression;
         }
 
-        if (isFalse)
+        if (rule.Operator == FieldOperator.IsFalse)
         {
-            return Expression.Equal(unsubscribeIdProperty, Expression.Constant(null, typeof(int?)));
+            return Expression.Not(isUnsubscribedExpression);
+        }
+
+        var ruleValue = rule.Value?.ToString();
+        if (bool.TryParse(ruleValue, out var parsedValue))
+        {
+            if (rule.Operator == FieldOperator.Equals)
+            {
+                return parsedValue ? isUnsubscribedExpression : Expression.Not(isUnsubscribedExpression);
+            }
+
+            if (rule.Operator == FieldOperator.NotEquals)
+            {
+                return parsedValue ? Expression.Not(isUnsubscribedExpression) : isUnsubscribedExpression;
+            }
         }
 
         return null;

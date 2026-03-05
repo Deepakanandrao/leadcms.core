@@ -55,11 +55,13 @@ public class SubscribesController : Controller
     {
         var group = string.IsNullOrWhiteSpace(subscribeDto.Group) ? DefaultGroup : subscribeDto.Group;
 
+        var utcOffset = TimezoneHelper.NormalizeToUtcOffset(subscribeDto.TimeZoneOffset, subscribeDto.TimezoneFormat);
+
         var token = tokenService.Generate(
             subscribeDto.Email,
             group,
             subscribeDto.Language,
-            subscribeDto.TimeZoneOffset);
+            utcOffset);
 
         var confirmationUrl = BuildConfirmationUrl(token);
 

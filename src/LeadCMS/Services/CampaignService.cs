@@ -67,20 +67,6 @@ public class CampaignService : ICampaignService
 
         var unsubscribedSet = await GetUnsubscribedContactIdsAsync();
 
-        // If no specific contact was requested, pick one from the audience
-        if (!dto.ContactId.HasValue && hasAudienceSegments)
-        {
-            var audienceContact = allContacts.Values
-                .FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Email)
-                    && !unsubscribedSet.Contains(c.Id)
-                    && c.UnsubscribeId == null);
-
-            if (audienceContact != null)
-            {
-                templatePreviewRequest.ContactId = audienceContact.Id;
-            }
-        }
-
         var templatePreview = await emailTemplateService.PreviewAsync(templatePreviewRequest);
 
         var (sendableCount, unsubscribedCount, invalidEmailCount) = CalculateAudienceBreakdown(allContacts, unsubscribedSet);
@@ -100,9 +86,9 @@ public class CampaignService : ICampaignService
         var campaign = await dbContext.Campaigns!.FindAsync(campaignId)
             ?? throw new KeyNotFoundException($"Campaign with id {campaignId} not found.");
 
-        if (campaign.Status != CampaignStatus.Draft)
+        if (campaign.Status != CampaignStatus.Draft && campaign.Status != CampaignStatus.Cancelled)
         {
-            throw new InvalidOperationException($"Campaign can only be launched from Draft status. Current status: {campaign.Status}.");
+            throw new InvalidOperationException($"Campaign can only be launched from Draft or Cancelled status. Current status: {campaign.Status}.");
         }
 
         // Validate template exists
@@ -115,21 +101,20 @@ public class CampaignService : ICampaignService
             throw new InvalidOperationException("Campaign must have at least one segment.");
         }
 
-        // Apply timezone settings from launch DTO (override campaign values if provided)
+        // Apply timezone settings from launch DTO (always override campaign values)
         if (launchDto.TimeZone.HasValue)
         {
             campaign.TimeZone = launchDto.TimeZone;
         }
 
-        if (launchDto.UseContactTimeZone)
-        {
-            campaign.UseContactTimeZone = true;
-        }
+        campaign.UseContactTimeZone = launchDto.UseContactTimeZone;
 
         if (launchDto.SendNow)
         {
+            campaign.ScheduledAt = null;
             campaign.Status = CampaignStatus.Sending;
             campaign.SendStartedAt = DateTime.UtcNow;
+            campaign.UseContactTimeZone = false; // Contact timezones don't make sense for immediate send
 
             // Resolve audience immediately
             var recipientCount = await ResolveAudienceAsync(campaign);
@@ -143,24 +128,65 @@ public class CampaignService : ICampaignService
                 throw new InvalidOperationException("Scheduled time must be provided when not sending immediately.");
             }
 
-            // For future-time validation: if UseContactTimeZone, use the earliest possible
-            // UTC interpretation (UTC+14 = 840 min offset) so we validate against the
-            // earliest timezone that will receive it.
-            int offsetForValidation;
             if (campaign.UseContactTimeZone)
             {
-                offsetForValidation = 840; // UTC+14 (earliest timezone)
+                // Resolve actual audience timezones to validate against real recipient offsets
+                var audienceContacts = await ResolveAudienceContactsAsync(campaign.SegmentIds!, campaign.ExcludeSegmentIds);
+                var campaignFallbackOffset = campaign.TimeZone ?? 0;
+
+                // Collect the distinct timezone offsets actually present in the audience
+                var recipientOffsets = audienceContacts.Values
+                    .Select(c => c.Timezone ?? campaignFallbackOffset)
+                    .Distinct()
+                    .ToList();
+
+                if (recipientOffsets.Count == 0)
+                {
+                    recipientOffsets.Add(campaignFallbackOffset);
+                }
+
+                // Find offsets where the scheduled local time is already in the past
+                var now = DateTime.UtcNow;
+                var pastOffsets = recipientOffsets
+                    .Where(offset => CampaignScheduleHelper.ConvertScheduledLocalToUtc(scheduledAt.Value, offset) <= now)
+                    .OrderByDescending(o => o)
+                    .ToList();
+
+                if (pastOffsets.Count > 0 && !launchDto.AllowPastTimeZones)
+                {
+                    var earliestOffset = pastOffsets.First();
+                    var affectedCount = audienceContacts.Values
+                        .Count(c => pastOffsets.Contains(c.Timezone ?? campaignFallbackOffset));
+
+                    var formattedOffset = FormatUtcOffset(earliestOffset);
+                    var localTimeNow = now.AddMinutes(earliestOffset);
+
+                    throw new CampaignSchedulePastException(
+                        $"The scheduled time is already in the past for {affectedCount} of {audienceContacts.Count} " +
+                        $"recipient(s). The earliest timezone is {formattedOffset} (currently {localTimeNow:MMM dd, yyyy h:mm tt}). " +
+                        $"Either reschedule to a time later than the earliest recipient local time, or set allow past timezones to send to these recipients immediately.",
+                        affectedCount,
+                        audienceContacts.Count,
+                        earliestOffset);
+                }
+
+                // When AllowPastTimeZones is set, validate that at least one timezone is still in the future
+                // (unless all are past, which is fine — they'll all be sent immediately)
+                var futureOffsets = recipientOffsets.Except(pastOffsets).ToList();
+                if (futureOffsets.Count == 0 && !launchDto.AllowPastTimeZones)
+                {
+                    throw new InvalidOperationException("Scheduled time is in the past for all recipient timezones.");
+                }
             }
             else
             {
-                offsetForValidation = campaign.TimeZone ?? 0;
-            }
+                var offsetForValidation = campaign.TimeZone ?? 0;
+                var scheduledUtc = ConvertScheduledToUtc(scheduledAt.Value, offsetForValidation);
 
-            var scheduledUtc = ConvertScheduledToUtc(scheduledAt.Value, offsetForValidation);
-
-            if (scheduledUtc <= DateTime.UtcNow)
-            {
-                throw new InvalidOperationException("Scheduled time must be in the future.");
+                if (scheduledUtc <= DateTime.UtcNow)
+                {
+                    throw new InvalidOperationException("Scheduled time must be in the future.");
+                }
             }
 
             campaign.Status = CampaignStatus.Scheduled;
@@ -220,6 +246,7 @@ public class CampaignService : ICampaignService
     {
         var allContacts = await ResolveAudienceContactsAsync(campaign.SegmentIds, campaign.ExcludeSegmentIds);
         var unsubscribedSet = await GetUnsubscribedContactIdsAsync();
+        var campaignFallbackOffset = campaign.TimeZone ?? 0;
 
         // Check for existing recipients (idempotency guard for re-resolution)
         var existingContactIds = await dbContext.CampaignRecipients!
@@ -241,6 +268,7 @@ public class CampaignService : ICampaignService
             {
                 CampaignId = campaign.Id,
                 ContactId = contact.Id,
+                EffectiveTimezone = contact.Timezone ?? campaignFallbackOffset,
             };
 
             // Check unsubscribe
@@ -409,6 +437,17 @@ public class CampaignService : ICampaignService
         }
 
         return (sendableCount, unsubscribedCount, invalidEmailCount);
+    }
+
+    private static string FormatUtcOffset(int offsetMinutes)
+    {
+        var sign = offsetMinutes >= 0 ? "+" : "-";
+        var abs = Math.Abs(offsetMinutes);
+        var hours = abs / 60;
+        var minutes = abs % 60;
+        return minutes == 0
+            ? $"UTC{sign}{hours}"
+            : $"UTC{sign}{hours}:{minutes:D2}";
     }
 
     /// <summary>

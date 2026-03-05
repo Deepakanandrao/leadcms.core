@@ -28,7 +28,7 @@ public static class CampaignScheduleHelper
         var campaignOffset = campaign.TimeZone ?? 0;
         var recipientOffset = contact?.Timezone ?? campaignOffset;
 
-        return campaign.ScheduledAt.Value.AddMinutes(recipientOffset - campaignOffset);
+        return ConvertScheduledLocalToUtc(campaign.ScheduledAt.Value, recipientOffset);
     }
 
     public static DateTime? GetExpectedSendAtUtc(CampaignRecipient recipient)

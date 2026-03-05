@@ -61,4 +61,11 @@ public class CampaignRecipient : BaseEntityWithIdAndDates
     /// Gets or sets the error message if sending failed.
     /// </summary>
     public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// Gets or sets the effective timezone offset (in UTC minutes) for this recipient.
+    /// Resolved at audience resolution time: uses the contact's timezone if available,
+    /// otherwise falls back to the campaign's timezone.
+    /// </summary>
+    public int EffectiveTimezone { get; set; }
 }

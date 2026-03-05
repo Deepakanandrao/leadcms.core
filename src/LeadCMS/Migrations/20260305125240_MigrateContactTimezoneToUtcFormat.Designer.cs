@@ -6,6 +6,7 @@ using LeadCMS.Data;
 using LeadCMS.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -14,9 +15,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LeadCMS.Migrations
 {
     [DbContext(typeof(PgDbContext))]
-    partial class PgDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260305125240_MigrateContactTimezoneToUtcFormat")]
+    partial class MigrateContactTimezoneToUtcFormat
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -329,10 +332,6 @@ namespace LeadCMS.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
-
-                    b.Property<int>("EffectiveTimezone")
-                        .HasColumnType("integer")
-                        .HasColumnName("effective_timezone");
 
                     b.Property<string>("ErrorMessage")
                         .HasColumnType("text")

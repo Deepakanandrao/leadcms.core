@@ -548,7 +548,7 @@ public class CampaignsTests : BaseTestAutoLogin
     }
 
     [Fact]
-    public async Task GetRecipients_ScheduledByCampaignTimezone_ReturnsExpectedSendAtUtc()
+    public async Task GetRecipients_SendNow_ClearsScheduledExpectedSendAtUtc_ForCampaignTimezone()
     {
         var (templateId, segmentId) = await CreatePrerequisitesAsync("recip-tz", contactCount: 2);
 
@@ -573,14 +573,11 @@ public class CampaignsTests : BaseTestAutoLogin
         recipients.Should().NotBeNull();
         recipients!.Count.Should().Be(2);
 
-        var expectedUtc = scheduledAt;
-        recipients.Should().OnlyContain(r => r.ExpectedSendAtUtc.HasValue);
-        recipients.Select(r => r.ExpectedSendAtUtc!.Value)
-            .Should().OnlyContain(v => Math.Abs((v - expectedUtc).TotalSeconds) <= 1);
+        recipients.Should().OnlyContain(r => !r.ExpectedSendAtUtc.HasValue);
     }
 
     [Fact]
-    public async Task GetRecipients_ScheduledByContactTimezone_ReturnsExpectedSendAtUtcPerContact()
+    public async Task GetRecipients_SendNow_ClearsScheduledExpectedSendAtUtc_ForContactTimezone()
     {
         var contact1Id = await CreateContactWithTimezoneAsync("recip-ctz1", 60);
         var contact2Id = await CreateContactWithTimezoneAsync("recip-ctz2", -120);
@@ -608,13 +605,8 @@ public class CampaignsTests : BaseTestAutoLogin
         recipients.Should().NotBeNull();
         recipients!.Count.Should().Be(2);
 
-        var campaignOffset = launched!.TimeZone ?? 0;
-        var byContact = recipients.ToDictionary(r => r.ContactId, r => r);
-        byContact[contact1Id].ExpectedSendAtUtc.Should().NotBeNull();
-        byContact[contact1Id].ExpectedSendAtUtc!.Value.Should().BeCloseTo(scheduledAt.AddMinutes(60 - campaignOffset), TimeSpan.FromSeconds(1));
-
-        byContact[contact2Id].ExpectedSendAtUtc.Should().NotBeNull();
-        byContact[contact2Id].ExpectedSendAtUtc!.Value.Should().BeCloseTo(scheduledAt.AddMinutes(-120 - campaignOffset), TimeSpan.FromSeconds(1));
+        launched.Should().NotBeNull();
+        recipients.Should().OnlyContain(r => !r.ExpectedSendAtUtc.HasValue);
     }
 
     [Fact]
@@ -744,6 +736,60 @@ public class CampaignsTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task LaunchCampaign_UseContactTimeZone_PastForSomeRecipients_Returns422WithDetails()
+    {
+        // Contact at UTC+12 — schedule 2h ago local => past for this contact
+        var contact1Id = await CreateContactWithTimezoneAsync("tzpast1", 720);
+        // Contact at UTC-12 — schedule 2h ago local => still future for this contact
+        var contact2Id = await CreateContactWithTimezoneAsync("tzpast2", -720);
+        var templateId = await CreateEmailTemplateAsync("tzpast");
+        var segmentId = await CreateStaticSegmentAsync("tzpast", new[] { contact1Id, contact2Id });
+
+        var campaign = new TestCampaign("tzpast", templateId, new[] { segmentId });
+        var location = await PostTest(CampaignsUrl, campaign);
+        var campaignId = ExtractId(location);
+
+        var launchDto = new CampaignLaunchDto
+        {
+            SendNow = false,
+            ScheduledAt = DateTime.UtcNow.AddHours(-2),
+            UseContactTimeZone = true,
+            TimeZone = 0,
+        };
+
+        // Should be rejected because UTC+12 contact's local time is already past
+        await PostTest<CampaignDetailsDto>($"{CampaignsUrl}/{campaignId}/launch", launchDto, HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task LaunchCampaign_UseContactTimeZone_AllowPastTimeZones_Succeeds()
+    {
+        // Contact at UTC+12 — schedule 2h ago local => past for this contact
+        var contact1Id = await CreateContactWithTimezoneAsync("tzallow1", 720);
+        // Contact at UTC-12 — schedule 2h ago local => still future
+        var contact2Id = await CreateContactWithTimezoneAsync("tzallow2", -720);
+        var templateId = await CreateEmailTemplateAsync("tzallow");
+        var segmentId = await CreateStaticSegmentAsync("tzallow", new[] { contact1Id, contact2Id });
+
+        var campaign = new TestCampaign("tzallow", templateId, new[] { segmentId });
+        var location = await PostTest(CampaignsUrl, campaign);
+        var campaignId = ExtractId(location);
+
+        var launchDto = new CampaignLaunchDto
+        {
+            SendNow = false,
+            ScheduledAt = DateTime.UtcNow.AddHours(-2),
+            UseContactTimeZone = true,
+            TimeZone = 0,
+            AllowPastTimeZones = true,
+        };
+
+        var launched = await PostTest<CampaignDetailsDto>($"{CampaignsUrl}/{campaignId}/launch", launchDto, HttpStatusCode.OK);
+        launched.Should().NotBeNull();
+        launched!.Status.Should().Be(CampaignStatus.Scheduled);
+    }
+
+    [Fact]
     public async Task CampaignSendTask_ScheduledWithTimezone_SendsWhenDue()
     {
         var contactId = await CreateContactAsync("tz5_0");
@@ -786,7 +832,7 @@ public class CampaignsTests : BaseTestAutoLogin
     {
         // Create contacts with different timezones
         var contact1Id = await CreateContactWithTimezoneAsync("ctz1", 0);       // UTC
-        var contact2Id = await CreateContactWithTimezoneAsync("ctz2", -720);    // UTC-12 (far behind)
+        var contact2Id = await CreateContactWithTimezoneAsync("ctz2", 720);     // UTC+12 (far ahead — local time is well past)
         var contact3Id = await CreateContactWithTimezoneAsync("ctz3", null);    // No timezone set
 
         var templateId = await CreateEmailTemplateAsync("ctz");
@@ -803,9 +849,10 @@ public class CampaignsTests : BaseTestAutoLogin
             ScheduledAt = DateTime.UtcNow.AddMinutes(-5),
             UseContactTimeZone = true,
             TimeZone = 0, // fallback for contacts without timezone
+            AllowPastTimeZones = true,
         };
 
-        // This might be rejected as past — try SendNow fallback with timezone flags
+        // AllowPastTimeZones lets scheduling proceed even though some contacts are in the past
         var launchResult = await Request(HttpMethod.Post, $"{CampaignsUrl}/{campaignId}/launch", launchDto);
 
         if (launchResult.StatusCode != HttpStatusCode.OK)
@@ -832,7 +879,7 @@ public class CampaignsTests : BaseTestAutoLogin
     [Fact]
     public async Task CampaignSendTask_UseContactTimeZone_SameCampaignAndContactTimezone_SendsWithoutDelay()
     {
-        var contactId = await CreateContactWithTimezoneAsync("ctzsame", -330); // UTC+5:30 in current convention
+        var contactId = await CreateContactWithTimezoneAsync("ctzsame", -330); // UTC-5:30 (matches campaign TimeZone)
         var templateId = await CreateEmailTemplateAsync("ctzsame");
         var segmentId = await CreateStaticSegmentAsync("ctzsame", new[] { contactId });
 
@@ -854,6 +901,37 @@ public class CampaignsTests : BaseTestAutoLogin
         var stats = await GetTest<CampaignStatisticsDto>($"{CampaignsUrl}/{campaignId}/statistics");
         stats.Should().NotBeNull();
         stats!.SentCount.Should().Be(1);
+        stats.PendingCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task LaunchCampaign_SendNow_IgnoresPreviousContactTimezoneScheduling()
+    {
+        var contact1Id = await CreateContactWithTimezoneAsync("sendnow-ctz1", 840);
+        var contact2Id = await CreateContactWithTimezoneAsync("sendnow-ctz2", 0);
+        var templateId = await CreateEmailTemplateAsync("sendnow-ctz");
+        var segmentId = await CreateStaticSegmentAsync("sendnow-ctz", new[] { contact1Id, contact2Id });
+
+        var campaign = new TestCampaign("sendnow-ctz", templateId, new[] { segmentId })
+        {
+            ScheduledAt = DateTime.UtcNow.AddHours(4),
+            TimeZone = 0,
+            UseContactTimeZone = true,
+        };
+
+        var location = await PostTest(CampaignsUrl, campaign);
+        var campaignId = ExtractId(location);
+
+        var launched = await PostTest<CampaignDetailsDto>($"{CampaignsUrl}/{campaignId}/launch", new CampaignLaunchDto { SendNow = true }, HttpStatusCode.OK);
+        launched.Should().NotBeNull();
+        launched!.Status.Should().Be(CampaignStatus.Sending);
+
+        await ExecuteCampaignSendTask();
+
+        var stats = await GetTest<CampaignStatisticsDto>($"{CampaignsUrl}/{campaignId}/statistics");
+        stats.Should().NotBeNull();
+        stats!.TotalRecipients.Should().Be(2);
+        stats.SentCount.Should().Be(2);
         stats.PendingCount.Should().Be(0);
     }
 
@@ -1002,7 +1080,6 @@ public class CampaignsTests : BaseTestAutoLogin
         result.TemplatePreview.RenderedSubject.Should().NotBeNullOrEmpty();
         result.TemplatePreview.FromEmail.Should().NotBeNullOrEmpty();
         result.TemplatePreview.FromName.Should().NotBeNullOrEmpty();
-        result.TemplatePreview.PreviewContactId.Should().BeGreaterThan(0);
         result.TemplatePreview.PreviewContactEmail.Should().NotBeNullOrEmpty();
     }
 

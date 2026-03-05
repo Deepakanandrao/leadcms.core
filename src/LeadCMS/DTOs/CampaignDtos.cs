@@ -151,6 +151,15 @@ public class CampaignLaunchDto
     /// Contacts without a timezone use the campaign's TimeZone as a fallback.
     /// </summary>
     public bool UseContactTimeZone { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether to allow scheduling even when some
+    /// recipients' local time has already passed the scheduled time.
+    /// When true, those recipients will be sent the email at the earliest possible time.
+    /// When false (default), an error is returned listing the affected timezones.
+    /// Only relevant when <see cref="UseContactTimeZone"/> is true.
+    /// </summary>
+    public bool AllowPastTimeZones { get; set; }
 }
 
 public class CampaignRecipientDetailsDto
@@ -175,6 +184,12 @@ public class CampaignRecipientDetailsDto
     /// For already sent recipients, this is the actual <see cref="SentAt"/> timestamp.
     /// </summary>
     public DateTime? ExpectedSendAtUtc { get; set; }
+
+    /// <summary>
+    /// Gets or sets the effective timezone offset (in UTC minutes) for this recipient.
+    /// Uses the contact's timezone if available, otherwise the campaign's timezone.
+    /// </summary>
+    public int EffectiveTimezone { get; set; }
 
     public string? ErrorMessage { get; set; }
 
@@ -209,13 +224,15 @@ public class CampaignPreviewRequestDto
 
     /// <summary>
     /// Gets or sets the specific contact ID to use for rendering the template preview.
-    /// When not provided, a contact from the target audience is used.
+    /// When provided, this real contact is used. When omitted, a dummy contact is generated
+    /// according to <see cref="ContactType"/>.
     /// </summary>
     public int? ContactId { get; set; }
 
     /// <summary>
     /// Gets or sets the type of dummy contact to generate for the preview.
-    /// Ignored when <see cref="ContactId"/> is provided. Defaults to <see cref="PreviewContactType.Full"/>.
+    /// Used when <see cref="ContactId"/> is not provided. Defaults to <see cref="PreviewContactType.Full"/>.
+    /// Ignored when <see cref="ContactId"/> is provided.
     /// </summary>
     public PreviewContactType? ContactType { get; set; }
 

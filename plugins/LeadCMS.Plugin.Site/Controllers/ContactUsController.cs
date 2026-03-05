@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
+using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
 using LeadCMS.Plugin.Site.Configuration;
 using LeadCMS.Plugin.Site.Data;
@@ -118,13 +119,15 @@ public class ContactUsController : Controller
         // Create or find contact record
         Contact contact;
 
+        var utcOffset = TimezoneHelper.NormalizeToUtcOffset(contactUsDto.TimeZoneOffset, contactUsDto.TimezoneFormat);
+
         if (!string.IsNullOrWhiteSpace(contactUsDto.Email))
         {
-            contact = await contactService.FindOrCreate(contactUsDto.Email, contactUsDto.Language, contactUsDto.TimeZoneOffset);
+            contact = await contactService.FindOrCreate(contactUsDto.Email, contactUsDto.Language, utcOffset);
         }
         else if (!string.IsNullOrWhiteSpace(contactUsDto.Phone))
         {
-            contact = await contactService.FindOrCreateByPhone(contactUsDto.Phone, contactUsDto.Language, contactUsDto.TimeZoneOffset);
+            contact = await contactService.FindOrCreateByPhone(contactUsDto.Phone, contactUsDto.Language, utcOffset);
         }
         else
         {
@@ -167,7 +170,7 @@ public class ContactUsController : Controller
         // Save contact changes
         await dbContext.SaveChangesAsync();
 
-        var leadInfo = BuildLeadNotificationInfo(contactUsDto, attachmentFiles, contact.Id);
+        var leadInfo = BuildLeadNotificationInfo(contactUsDto, attachmentFiles, contact.Id, utcOffset);
 
         // Send lead notifications to all enabled channels (email, Telegram, Slack)
         await leadNotificationService.SendLeadNotificationsAsync(leadInfo);
@@ -192,7 +195,7 @@ public class ContactUsController : Controller
         return Ok();
     }
 
-    protected virtual LeadNotificationInfo BuildLeadNotificationInfo(ContactUsDto contactUsDto, List<AttachmentDto> attachmentFiles, int contactId)
+    protected virtual LeadNotificationInfo BuildLeadNotificationInfo(ContactUsDto contactUsDto, List<AttachmentDto> attachmentFiles, int contactId, int utcOffset)
     {
         return new LeadNotificationInfo
         {
@@ -210,7 +213,7 @@ public class ContactUsController : Controller
             Language = contactUsDto.Language,
             ExtraData = contactUsDto.ExtraData,
             Attachments = attachmentFiles.Count > 0 ? attachmentFiles : null,
-            TimeZoneOffset = contactUsDto.TimeZoneOffset,
+            TimeZoneOffset = utcOffset,
             IpAddress = httpContextHelper?.IpAddress,
             UserAgent = httpContextHelper?.UserAgent,
             ContactId = contactId,

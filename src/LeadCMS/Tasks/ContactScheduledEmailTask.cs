@@ -183,7 +183,7 @@ public class ContactScheduledEmailTask : BaseTask
     private DateTime? GetNextExecutionTime(ContactEmailSchedule contactEmailSchedule, int retryDelay, EmailLog? lastEmailLog)
     {
         var contactSchedule = JsonSerializer.Deserialize<Schedule>(contactEmailSchedule.Schedule!.Schedule);
-        var userToServerTimeZoneOffset = TimeZoneInfo.Local.BaseUtcOffset.TotalMinutes + (contactEmailSchedule.Contact!.Timezone ?? 0);
+        var userToServerTimeZoneOffset = TimeZoneInfo.Local.BaseUtcOffset.TotalMinutes - (contactEmailSchedule.Contact!.Timezone ?? 0);
         var lastRunTime = lastEmailLog is null ? contactEmailSchedule.CreatedAt : lastEmailLog.CreatedAt;
 
         // If a retry scenario, adding the retry interval. No need to evaluate schedule.

@@ -105,6 +105,53 @@ public class SegmentsTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task GetDynamicSegmentContacts_AppliesQueryBeforeLimit()
+    {
+        for (var i = 0; i < 10; i++)
+        {
+            await CreateContactAsync(i.ToString(), $"other{i}@test.net", "Ann", "Allowed");
+        }
+
+        var matchingId = await CreateContactAsync("target", "ann.test@example.test", "Ann", "Allowed");
+
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "firstName", Operator = FieldOperator.Equals, Value = "Ann" },
+                },
+            },
+        };
+
+        var segmentDto = new SegmentCreateDto
+        {
+            Name = "Dynamic segment query limit",
+            Type = SegmentType.Dynamic,
+            Definition = definition,
+        };
+
+        var segmentLocation = await PostTest(SegmentsUrl, segmentDto);
+        var segment = await GetTest<SegmentDetailsDto>(segmentLocation);
+        var segmentValue = segment ?? throw new InvalidOperationException("Expected segment details.");
+
+        var response = await GetTest($"{SegmentsUrl}/{segmentValue.Id}/contacts?query=ann.test%40example.test&limit=10");
+        var totalCountHeader = response.Headers.GetValues(ResponseHeaderNames.TotalCount).FirstOrDefault();
+        totalCountHeader.Should().Be("1");
+
+        var content = await response.Content.ReadAsStringAsync();
+        var contacts = JsonHelper.Deserialize<List<ContactDetailsDto>>(content);
+
+        contacts.Should().NotBeNull();
+        var contactsList = contacts ?? throw new InvalidOperationException("Expected contacts payload.");
+        contactsList.Should().ContainSingle();
+        contactsList[0].Id.Should().Be(matchingId);
+        contactsList[0].Email.Should().Be("ann.test@example.test");
+    }
+
+    [Fact]
     public async Task PreviewSegment_RespectsIncludeAndExcludeRules()
     {
         var includedId = await CreateContactAsync("1", "vip1@test.net", "Annabelle", "Allowed");
@@ -966,6 +1013,220 @@ public class SegmentsTests : BaseTestAutoLogin
                 Rules = new List<SegmentRule>
                 {
                     new SegmentRule { FieldId = "isUnsubscribed", Operator = FieldOperator.IsTrue },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts.Should().ContainSingle();
+        preview.Contacts[0].FirstName.Should().Be("Subscribed");
+    }
+
+    [Fact]
+    public async Task PreviewSegment_IsUnsubscribedTrue_MatchesContactByUnsubscribeContactId()
+    {
+        var dbContext = App.GetDbContext()!;
+
+        var domain = new Domain { Name = $"isunsub-{Guid.NewGuid().ToString()[..8]}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var subscribed = new Contact
+        {
+            Email = $"sub-{Guid.NewGuid().ToString()[..8]}@example.test",
+            FirstName = "Subscribed",
+            DomainId = domain.Id,
+        };
+        var unsubscribed = new Contact
+        {
+            Email = $"unsub-{Guid.NewGuid().ToString()[..8]}@example.test",
+            FirstName = "Unsubscribed",
+            DomainId = domain.Id,
+        };
+
+        dbContext.Contacts!.AddRange(subscribed, unsubscribed);
+        await dbContext.SaveChangesAsync();
+
+        dbContext.Unsubscribes!.Add(new Unsubscribe
+        {
+            Reason = "Opt out",
+            ContactId = unsubscribed.Id,
+        });
+        await dbContext.SaveChangesAsync();
+
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "isUnsubscribed", Operator = FieldOperator.IsTrue },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts.Should().ContainSingle();
+        preview.Contacts[0].FirstName.Should().Be("Unsubscribed");
+    }
+
+    [Fact]
+    public async Task PreviewSegment_IsUnsubscribedEqualsFalse_ExcludesUnsubscribedByContactId()
+    {
+        var dbContext = App.GetDbContext()!;
+
+        var domain = new Domain { Name = $"issub-{Guid.NewGuid().ToString()[..8]}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var subscribed = new Contact
+        {
+            Email = $"subonly-{Guid.NewGuid().ToString()[..8]}@example.test",
+            FirstName = "Subscribed",
+            DomainId = domain.Id,
+        };
+        var unsubscribed = new Contact
+        {
+            Email = $"unsubonly-{Guid.NewGuid().ToString()[..8]}@example.test",
+            FirstName = "Unsubscribed",
+            DomainId = domain.Id,
+        };
+
+        dbContext.Contacts!.AddRange(subscribed, unsubscribed);
+        await dbContext.SaveChangesAsync();
+
+        dbContext.Unsubscribes!.Add(new Unsubscribe
+        {
+            Reason = "No longer interested",
+            ContactId = unsubscribed.Id,
+        });
+        await dbContext.SaveChangesAsync();
+
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "isUnsubscribed", Operator = FieldOperator.Equals, Value = false },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts.Should().ContainSingle();
+        preview.Contacts[0].FirstName.Should().Be("Subscribed");
+    }
+
+    [Fact]
+    public async Task PreviewSegment_IsUnsubscribedEqualsTrue_MatchesWhenUnsubscribeIdIsSet()
+    {
+        var dbContext = App.GetDbContext()!;
+
+        var domain = new Domain { Name = $"isunsubid-{Guid.NewGuid().ToString()[..8]}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var subscribed = new Contact
+        {
+            Email = $"subid-{Guid.NewGuid().ToString()[..8]}@example.test",
+            FirstName = "Subscribed",
+            DomainId = domain.Id,
+        };
+        var unsubscribed = new Contact
+        {
+            Email = $"unsubid-{Guid.NewGuid().ToString()[..8]}@example.test",
+            FirstName = "Unsubscribed",
+            DomainId = domain.Id,
+        };
+
+        dbContext.Contacts!.AddRange(subscribed, unsubscribed);
+        await dbContext.SaveChangesAsync();
+
+        var unsubscribe = new Unsubscribe
+        {
+            Reason = "Manual opt out",
+        };
+        dbContext.Unsubscribes!.Add(unsubscribe);
+        await dbContext.SaveChangesAsync();
+
+        unsubscribed.UnsubscribeId = unsubscribe.Id;
+        await dbContext.SaveChangesAsync();
+
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "isUnsubscribed", Operator = FieldOperator.Equals, Value = true },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts.Should().ContainSingle();
+        preview.Contacts[0].FirstName.Should().Be("Unsubscribed");
+    }
+
+    [Fact]
+    public async Task PreviewSegment_IsUnsubscribedNotEqualsTrue_ExcludesWhenUnsubscribeIdIsSet()
+    {
+        var dbContext = App.GetDbContext()!;
+
+        var domain = new Domain { Name = $"isnotunsub-{Guid.NewGuid().ToString()[..8]}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var subscribed = new Contact
+        {
+            Email = $"subnoteq-{Guid.NewGuid().ToString()[..8]}@example.test",
+            FirstName = "Subscribed",
+            DomainId = domain.Id,
+        };
+        var unsubscribed = new Contact
+        {
+            Email = $"unsubnoteq-{Guid.NewGuid().ToString()[..8]}@example.test",
+            FirstName = "Unsubscribed",
+            DomainId = domain.Id,
+        };
+
+        dbContext.Contacts!.AddRange(subscribed, unsubscribed);
+        await dbContext.SaveChangesAsync();
+
+        var unsubscribe = new Unsubscribe
+        {
+            Reason = "Manual opt out",
+        };
+        dbContext.Unsubscribes!.Add(unsubscribe);
+        await dbContext.SaveChangesAsync();
+
+        unsubscribed.UnsubscribeId = unsubscribe.Id;
+        await dbContext.SaveChangesAsync();
+
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "isUnsubscribed", Operator = FieldOperator.NotEquals, Value = true },
                 },
             },
         };
