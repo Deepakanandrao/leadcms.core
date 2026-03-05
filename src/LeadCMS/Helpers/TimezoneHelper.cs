@@ -37,4 +37,21 @@ public static class TimezoneHelper
     {
         return rawOffset.HasValue ? NormalizeToUtcOffset(rawOffset.Value, format) : null;
     }
+
+    /// <summary>
+    /// Formats an offset in minutes as a human-readable UTC offset string,
+    /// e.g. <c>UTC+2</c>, <c>UTC-5:30</c>, <c>UTC+0</c>.
+    /// </summary>
+    /// <param name="offsetMinutes">The UTC offset in minutes (positive = east).</param>
+    /// <returns>A formatted string such as <c>UTC+3</c> or <c>UTC-5:30</c>.</returns>
+    public static string FormatUtcOffset(int offsetMinutes)
+    {
+        var sign = offsetMinutes >= 0 ? "+" : "-";
+        var abs = Math.Abs(offsetMinutes);
+        var hours = abs / 60;
+        var minutes = abs % 60;
+        return minutes == 0
+            ? $"UTC{sign}{hours}"
+            : $"UTC{sign}{hours}:{minutes:D2}";
+    }
 }

@@ -158,7 +158,7 @@ public class CampaignService : ICampaignService
                     var affectedCount = audienceContacts.Values
                         .Count(c => pastOffsets.Contains(c.Timezone ?? campaignFallbackOffset));
 
-                    var formattedOffset = FormatUtcOffset(earliestOffset);
+                    var formattedOffset = TimezoneHelper.FormatUtcOffset(earliestOffset);
                     var localTimeNow = now.AddMinutes(earliestOffset);
 
                     throw new CampaignSchedulePastException(
@@ -437,17 +437,6 @@ public class CampaignService : ICampaignService
         }
 
         return (sendableCount, unsubscribedCount, invalidEmailCount);
-    }
-
-    private static string FormatUtcOffset(int offsetMinutes)
-    {
-        var sign = offsetMinutes >= 0 ? "+" : "-";
-        var abs = Math.Abs(offsetMinutes);
-        var hours = abs / 60;
-        var minutes = abs % 60;
-        return minutes == 0
-            ? $"UTC{sign}{hours}"
-            : $"UTC{sign}{hours}:{minutes:D2}";
     }
 
     /// <summary>

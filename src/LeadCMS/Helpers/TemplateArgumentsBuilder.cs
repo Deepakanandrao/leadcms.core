@@ -53,6 +53,17 @@ public static class TemplateArgumentsBuilder
         args["Language"] = contact.Language ?? string.Empty;
         args["CountryCode"] = contact.CountryCode?.ToString() ?? string.Empty;
         args["ContinentCode"] = contact.ContinentCode?.ToString() ?? string.Empty;
+        args["Birthday"] = contact.Birthday?.ToString("yyyy-MM-dd") ?? string.Empty;
+        args["Timezone"] = contact.Timezone?.ToString() ?? string.Empty;
+        args["TimezoneFormatted"] = contact.Timezone.HasValue
+            ? TimezoneHelper.FormatUtcOffset(contact.Timezone.Value)
+            : string.Empty;
+        args["DealsCount"] = contact.DealsCount;
+        args["OrdersCount"] = contact.OrdersCount;
+        args["LastOrderDate"] = contact.LastOrderDate?.ToString("yyyy-MM-dd") ?? string.Empty;
+        args["TotalRevenue"] = contact.TotalRevenue;
+        args["Tags"] = contact.Tags?.ToList() ?? new List<string>();
+        args["SocialMedia"] = contact.SocialMedia ?? new Dictionary<string, string>();
 
         // Account fields (flattened for backwards compatibility + nested object)
         args["AccountName"] = contact.Account?.Name ?? string.Empty;

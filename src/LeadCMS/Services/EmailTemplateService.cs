@@ -204,6 +204,18 @@ public class EmailTemplateService : IEmailTemplateService
         contact.Language = "en";
         contact.CountryCode = Country.US;
         contact.ContinentCode = Continent.NA;
+        contact.Birthday = new DateTime(1990, 6, 15, 0, 0, 0, DateTimeKind.Utc);
+        contact.Timezone = -300;
+        contact.DealsCount = 2;
+        contact.OrdersCount = 3;
+        contact.LastOrderDate = new DateTime(2025, 11, 20, 0, 0, 0, DateTimeKind.Utc);
+        contact.TotalRevenue = 1249.97m;
+        contact.Tags = new[] { "VIP", "Newsletter", "Enterprise" };
+        contact.SocialMedia = new Dictionary<string, string>
+        {
+            ["LinkedIn"] = "https://www.linkedin.com/in/peterliapin/",
+            ["Twitter"] = "@peterliapin",
+        };
 
         if (contactType == PreviewContactType.Standard)
         {
