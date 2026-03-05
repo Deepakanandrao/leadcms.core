@@ -64,6 +64,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LeadCMS.Plugin.AI", "plugin
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LeadCMS.Plugin.Deploy", "plugins\LeadCMS.Plugin.Deploy\LeadCMS.Plugin.Deploy.csproj", "{D797434D-4BE8-4CCC-8AF4-8BD101BB6EEC}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LeadCMS.Plugin.XLTools", "..\..\XLTools\plugin.leadcms\LeadCMS.Plugin.XLTools.csproj", "{8AB766FF-640C-4E43-A06B-1814066558C8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LeadCMS.Plugin.WaveService", "..\..\WaveService\leadcms-plugin-waveservice\LeadCMS.Plugin.WaveService.csproj", "{BB8C4F68-8ED7-435E-922E-6EED611406C0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -274,6 +278,42 @@ Global
 		{D797434D-4BE8-4CCC-8AF4-8BD101BB6EEC}.Release|x64.Build.0 = Release|Any CPU
 		{D797434D-4BE8-4CCC-8AF4-8BD101BB6EEC}.Release|x86.ActiveCfg = Release|Any CPU
 		{D797434D-4BE8-4CCC-8AF4-8BD101BB6EEC}.Release|x86.Build.0 = Release|Any CPU
+		{8AB766FF-640C-4E43-A06B-1814066558C8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8AB766FF-640C-4E43-A06B-1814066558C8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8AB766FF-640C-4E43-A06B-1814066558C8}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{8AB766FF-640C-4E43-A06B-1814066558C8}.Debug|x64.Build.0 = Debug|Any CPU
+		{8AB766FF-640C-4E43-A06B-1814066558C8}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{8AB766FF-640C-4E43-A06B-1814066558C8}.Debug|x86.Build.0 = Debug|Any CPU
+		{8AB766FF-640C-4E43-A06B-1814066558C8}.Migration|Any CPU.ActiveCfg = Migration|Any CPU
+		{8AB766FF-640C-4E43-A06B-1814066558C8}.Migration|Any CPU.Build.0 = Migration|Any CPU
+		{8AB766FF-640C-4E43-A06B-1814066558C8}.Migration|x64.ActiveCfg = Migration|Any CPU
+		{8AB766FF-640C-4E43-A06B-1814066558C8}.Migration|x64.Build.0 = Migration|Any CPU
+		{8AB766FF-640C-4E43-A06B-1814066558C8}.Migration|x86.ActiveCfg = Migration|Any CPU
+		{8AB766FF-640C-4E43-A06B-1814066558C8}.Migration|x86.Build.0 = Migration|Any CPU
+		{8AB766FF-640C-4E43-A06B-1814066558C8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8AB766FF-640C-4E43-A06B-1814066558C8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8AB766FF-640C-4E43-A06B-1814066558C8}.Release|x64.ActiveCfg = Release|Any CPU
+		{8AB766FF-640C-4E43-A06B-1814066558C8}.Release|x64.Build.0 = Release|Any CPU
+		{8AB766FF-640C-4E43-A06B-1814066558C8}.Release|x86.ActiveCfg = Release|Any CPU
+		{8AB766FF-640C-4E43-A06B-1814066558C8}.Release|x86.Build.0 = Release|Any CPU
+		{BB8C4F68-8ED7-435E-922E-6EED611406C0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BB8C4F68-8ED7-435E-922E-6EED611406C0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BB8C4F68-8ED7-435E-922E-6EED611406C0}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{BB8C4F68-8ED7-435E-922E-6EED611406C0}.Debug|x64.Build.0 = Debug|Any CPU
+		{BB8C4F68-8ED7-435E-922E-6EED611406C0}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{BB8C4F68-8ED7-435E-922E-6EED611406C0}.Debug|x86.Build.0 = Debug|Any CPU
+		{BB8C4F68-8ED7-435E-922E-6EED611406C0}.Migration|Any CPU.ActiveCfg = Migration|Any CPU
+		{BB8C4F68-8ED7-435E-922E-6EED611406C0}.Migration|Any CPU.Build.0 = Migration|Any CPU
+		{BB8C4F68-8ED7-435E-922E-6EED611406C0}.Migration|x64.ActiveCfg = Migration|Any CPU
+		{BB8C4F68-8ED7-435E-922E-6EED611406C0}.Migration|x64.Build.0 = Migration|Any CPU
+		{BB8C4F68-8ED7-435E-922E-6EED611406C0}.Migration|x86.ActiveCfg = Migration|Any CPU
+		{BB8C4F68-8ED7-435E-922E-6EED611406C0}.Migration|x86.Build.0 = Migration|Any CPU
+		{BB8C4F68-8ED7-435E-922E-6EED611406C0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BB8C4F68-8ED7-435E-922E-6EED611406C0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BB8C4F68-8ED7-435E-922E-6EED611406C0}.Release|x64.ActiveCfg = Release|Any CPU
+		{BB8C4F68-8ED7-435E-922E-6EED611406C0}.Release|x64.Build.0 = Release|Any CPU
+		{BB8C4F68-8ED7-435E-922E-6EED611406C0}.Release|x86.ActiveCfg = Release|Any CPU
+		{BB8C4F68-8ED7-435E-922E-6EED611406C0}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -289,6 +329,8 @@ Global
 		{7F36C230-689C-44F8-8B09-7531BCC80ED4} = {0F2716C8-A043-4743-A8AD-54B86635D567}
 		{17BE3B33-52DC-4646-BB3B-B6E18F13C371} = {0F2716C8-A043-4743-A8AD-54B86635D567}
 		{D797434D-4BE8-4CCC-8AF4-8BD101BB6EEC} = {0F2716C8-A043-4743-A8AD-54B86635D567}
+		{8AB766FF-640C-4E43-A06B-1814066558C8} = {0F2716C8-A043-4743-A8AD-54B86635D567}
+		{BB8C4F68-8ED7-435E-922E-6EED611406C0} = {0F2716C8-A043-4743-A8AD-54B86635D567}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {6EF3C125-1622-4B2D-8E00-69AF3F2CF063}
@@ -298,6 +340,6 @@ Global
 		$0.DotNetNamingPolicy = $1
 		$1.DirectoryNamespaceAssociation = PrefixedHierarchical
 		$0.TextStylePolicy = $3
-		version = 1.4.8-pre
+		version = 1.4.9-pre
 	EndGlobalSection
 EndGlobal
