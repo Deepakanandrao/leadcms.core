@@ -285,14 +285,17 @@ public class CampaignService : ICampaignService
 
         // Get pending recipients in batches
         var pendingRecipients = await dbContext.CampaignRecipients!
-            .Include(r => r.Contact)
-                .ThenInclude(c => c!.Account)
-            .Include(r => r.Contact)
-                .ThenInclude(c => c!.Domain)
             .Where(r => r.CampaignId == campaign.Id && r.Status == CampaignRecipientStatus.Pending)
             .OrderBy(r => r.Id)
             .Take(batchSize)
             .ToListAsync();
+
+        var contactIds = pendingRecipients
+            .Select(r => r.ContactId)
+            .Distinct()
+            .ToList();
+
+        var contactsById = await TemplateContactLoader.LoadByIdsAsync(dbContext, contactIds);
 
         foreach (var recipient in pendingRecipients)
         {
@@ -304,9 +307,11 @@ public class CampaignService : ICampaignService
             }
 
             // Per-contact timezone: skip recipients whose local scheduled time has not arrived yet
-            if (campaign.UseContactTimeZone && campaign.ScheduledAt.HasValue && recipient.Contact != null)
+            contactsById.TryGetValue(recipient.ContactId, out var contact);
+
+            if (campaign.UseContactTimeZone && campaign.ScheduledAt.HasValue && contact != null)
             {
-                var recipientUtcTime = CampaignScheduleHelper.GetExpectedSendAtUtc(campaign, recipient.Contact);
+                var recipientUtcTime = CampaignScheduleHelper.GetExpectedSendAtUtc(campaign, contact);
                 if (recipientUtcTime.HasValue && recipientUtcTime.Value > DateTime.UtcNow)
                 {
                     continue;
@@ -314,7 +319,7 @@ public class CampaignService : ICampaignService
             }
 
             // Defensive: skip contact whose email was cleared between audience resolution and batch send
-            if (string.IsNullOrWhiteSpace(recipient.Contact?.Email))
+            if (string.IsNullOrWhiteSpace(contact?.Email))
             {
                 recipient.Status = CampaignRecipientStatus.Skipped;
                 recipient.SkipReason = CampaignSkipReason.InvalidEmail;
@@ -325,12 +330,12 @@ public class CampaignService : ICampaignService
 
             try
             {
-                var templateArgs = FromContact(recipient.Contact);
+                var templateArgs = FromContact(contact);
 
                 await emailFromTemplateService.SendAsync(
                     template.Name,
                     template.Language,
-                    new[] { recipient.Contact.Email },
+                    new[] { contact.Email },
                     templateArgs,
                     attachments: null,
                     contactId: recipient.ContactId,

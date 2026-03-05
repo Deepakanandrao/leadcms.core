@@ -8,8 +8,8 @@ using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Enums;
 using LeadCMS.Geography;
+using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
-using Microsoft.EntityFrameworkCore;
 
 using static LeadCMS.Helpers.TemplateArgumentsBuilder;
 
@@ -37,7 +37,7 @@ public class EmailTemplateService : IEmailTemplateService
         Contact? previewContact = null;
         if (dto.ContactId.HasValue)
         {
-            previewContact = await LoadPreviewContactAsync(dto.ContactId.Value)
+            previewContact = await TemplateContactLoader.LoadByIdAsync(dbContext, dto.ContactId.Value)
                 ?? throw new KeyNotFoundException($"Contact with id {dto.ContactId.Value} not found.");
         }
 
@@ -72,7 +72,7 @@ public class EmailTemplateService : IEmailTemplateService
         Contact? contact = null;
         if (dto.ContactId.HasValue)
         {
-            contact = await LoadPreviewContactAsync(dto.ContactId.Value)
+            contact = await TemplateContactLoader.LoadByIdAsync(dbContext, dto.ContactId.Value)
                 ?? throw new KeyNotFoundException($"Contact with id {dto.ContactId.Value} not found.");
         }
 
@@ -279,19 +279,5 @@ public class EmailTemplateService : IEmailTemplateService
         };
 
         return contact;
-    }
-
-    private async Task<Contact?> LoadPreviewContactAsync(int contactId)
-    {
-        return await dbContext.Contacts!
-            .Include(c => c.Account)
-            .Include(c => c.Domain)
-            .Include(c => c.Orders)!
-                .ThenInclude(o => o.OrderItems)
-            .Include(c => c.Deals)!
-                .ThenInclude(d => d.DealPipeline)
-            .Include(c => c.Deals)!
-                .ThenInclude(d => d.DealPipelineStage)
-            .FirstOrDefaultAsync(c => c.Id == contactId);
     }
 }

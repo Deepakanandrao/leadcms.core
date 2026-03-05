@@ -30,6 +30,13 @@ public class CampaignsTests : BaseTestAutoLogin
         TrackEntityType<EmailTemplate>();
         TrackEntityType<Unsubscribe>();
         TrackEntityType<EmailLog>();
+        TrackEntityType<Account>();
+        TrackEntityType<Domain>();
+        TrackEntityType<Order>();
+        TrackEntityType<OrderItem>();
+        TrackEntityType<DealPipeline>();
+        TrackEntityType<DealPipelineStage>();
+        TrackEntityType<Deal>();
     }
 
     // ──────────────────────────────────────────────────
@@ -918,6 +925,51 @@ public class CampaignsTests : BaseTestAutoLogin
         await PostTest<object>($"{EmailTemplatesUrl}/send-test", sendTestDto, HttpStatusCode.UnprocessableEntity);
     }
 
+    [Fact]
+    public async Task CampaignSendTask_WithNestedContactTemplateParameters_RendersAllValues()
+    {
+        var uid = $"send_nested_{Guid.NewGuid().ToString("N")[..8]}";
+        var contactId = await CreateContactAsync(uid);
+        var nestedData = await SeedNestedTemplateDataAsync(contactId, uid);
+
+        var groupId = await CreateEmailGroupAsync(uid);
+        var template = new EmailTemplateCreateDto
+        {
+            Name = $"nested-send-template-{uid}",
+            Subject = "Order {{ Orders[0].RefNo }} at {{ Account.Name }}",
+            BodyTemplate = "<p>{{ Account.Name }}|{{ Domain.Name }}|{{ Orders[0].RefNo }}|{{ Orders[0].OrderItems[0].ProductName }}|{{ Deals[0].DealPipeline.Name }}|{{ Deals[0].DealPipelineStage.Name }}</p>",
+            FromEmail = $"nested-send-{uid}@test.net",
+            FromName = "Nested Send",
+            Language = "en",
+            EmailGroupId = groupId,
+        };
+
+        var templateLocation = await PostTest(EmailTemplatesUrl, template);
+        var templateId = ExtractId(templateLocation);
+        var segmentId = await CreateStaticSegmentAsync(uid, new[] { contactId });
+
+        var campaign = new TestCampaign(uid, templateId, new[] { segmentId });
+        var campaignLocation = await PostTest(CampaignsUrl, campaign);
+        var campaignId = ExtractId(campaignLocation);
+
+        await PostTest<CampaignDetailsDto>($"{CampaignsUrl}/{campaignId}/launch", new CampaignLaunchDto { SendNow = true }, HttpStatusCode.OK);
+        await ExecuteCampaignSendTask();
+
+        var dbContext = App.GetDbContext()!;
+        var emailLog = dbContext.EmailLogs!
+            .Where(e => e.CampaignId == campaignId && e.ContactId == contactId)
+            .OrderByDescending(e => e.CreatedAt)
+            .FirstOrDefault();
+
+        emailLog.Should().NotBeNull();
+        emailLog!.HtmlBody.Should().Contain(nestedData.AccountName);
+        emailLog.HtmlBody.Should().Contain(nestedData.DomainName);
+        emailLog.HtmlBody.Should().Contain(nestedData.OrderRefNo);
+        emailLog.HtmlBody.Should().Contain(nestedData.OrderItemName);
+        emailLog.HtmlBody.Should().Contain(nestedData.PipelineName);
+        emailLog.HtmlBody.Should().Contain(nestedData.PipelineStageName);
+    }
+
     // ──────────────────────────────────────────────────
     // Preview Tests — Campaign Preview (audience stats + template rendering via /api/campaigns/preview)
     // ──────────────────────────────────────────────────
@@ -975,6 +1027,48 @@ public class CampaignsTests : BaseTestAutoLogin
         result.Should().NotBeNull();
         result!.TemplatePreview.PreviewContactId.Should().Be(contact2Id);
         result.TemplatePreview.PreviewContactEmail.Should().Contain("pv2_1");
+    }
+
+    [Fact]
+    public async Task CampaignPreview_WithNestedContactTemplateParameters_RendersAllValues()
+    {
+        var uid = $"preview_nested_{Guid.NewGuid().ToString("N")[..8]}";
+        var contactId = await CreateContactAsync(uid);
+        var nestedData = await SeedNestedTemplateDataAsync(contactId, uid);
+
+        var groupId = await CreateEmailGroupAsync(uid);
+        var template = new EmailTemplateCreateDto
+        {
+            Name = $"nested-preview-template-{uid}",
+            Subject = "Order {{ Orders[0].RefNo }} at {{ Account.Name }}",
+            BodyTemplate = "<p>{{ Account.Name }}|{{ Domain.Name }}|{{ Orders[0].RefNo }}|{{ Orders[0].OrderItems[0].ProductName }}|{{ Deals[0].DealPipeline.Name }}|{{ Deals[0].DealPipelineStage.Name }}</p>",
+            FromEmail = $"nested-preview-{uid}@test.net",
+            FromName = "Nested Preview",
+            Language = "en",
+            EmailGroupId = groupId,
+        };
+
+        var templateLocation = await PostTest(EmailTemplatesUrl, template);
+        var templateId = ExtractId(templateLocation);
+        var segmentId = await CreateStaticSegmentAsync(uid, new[] { contactId });
+
+        var previewDto = new CampaignPreviewRequestDto
+        {
+            EmailTemplateId = templateId,
+            SegmentIds = new[] { segmentId },
+            ContactId = contactId,
+        };
+
+        var result = await PostTest<CampaignPreviewResultDto>(CampaignPreviewUrl, previewDto, HttpStatusCode.OK);
+
+        result.Should().NotBeNull();
+        result!.TemplatePreview.PreviewContactId.Should().Be(contactId);
+        result.TemplatePreview.RenderedBody.Should().Contain(nestedData.AccountName);
+        result.TemplatePreview.RenderedBody.Should().Contain(nestedData.DomainName);
+        result.TemplatePreview.RenderedBody.Should().Contain(nestedData.OrderRefNo);
+        result.TemplatePreview.RenderedBody.Should().Contain(nestedData.OrderItemName);
+        result.TemplatePreview.RenderedBody.Should().Contain(nestedData.PipelineName);
+        result.TemplatePreview.RenderedBody.Should().Contain(nestedData.PipelineStageName);
     }
 
     [Fact]
@@ -1391,5 +1485,82 @@ public class CampaignsTests : BaseTestAutoLogin
         var content = await response.Content.ReadAsStringAsync();
         var task = JsonHelper.Deserialize<TaskExecutionDto>(content);
         task!.Completed.Should().BeTrue();
+    }
+
+    private async Task<(string AccountName, string DomainName, string OrderRefNo, string OrderItemName, string PipelineName, string PipelineStageName)> SeedNestedTemplateDataAsync(int contactId, string uid)
+    {
+        var accountName = $"Account-{uid}";
+        var domainName = $"{uid}.example.test";
+        var orderRefNo = $"ORD-{uid}";
+        var orderItemName = $"Product-{uid}";
+        var pipelineName = $"Pipeline-{uid}";
+        var pipelineStageName = $"Stage-{uid}";
+
+        var dbContext = App.GetDbContext()!;
+        var contact = dbContext.Contacts!.First(c => c.Id == contactId);
+        var userId = dbContext.Users!.Select(u => u.Id).First();
+
+        var account = new Account
+        {
+            Name = accountName,
+        };
+
+        var domain = new Domain
+        {
+            Name = domainName,
+            Account = account,
+        };
+
+        contact.Account = account;
+        contact.Domain = domain;
+
+        var order = new Order
+        {
+            ContactId = contactId,
+            RefNo = orderRefNo,
+            Currency = "USD",
+            ExchangeRate = 1m,
+            Status = OrderStatus.Paid,
+            OrderItems = new List<OrderItem>
+            {
+                new OrderItem
+                {
+                    LineNumber = 1,
+                    ProductName = orderItemName,
+                    Currency = "USD",
+                    Quantity = 1,
+                    UnitPrice = 9.99m,
+                },
+            },
+        };
+
+        var dealPipeline = new DealPipeline
+        {
+            Name = pipelineName,
+        };
+
+        var dealPipelineStage = new DealPipelineStage
+        {
+            Name = pipelineStageName,
+            DealPipeline = dealPipeline,
+            Order = 1,
+        };
+
+        var deal = new Deal
+        {
+            Account = account,
+            DealPipeline = dealPipeline,
+            DealPipelineStage = dealPipelineStage,
+            DealCurrency = "USD",
+            DealValue = 1000m,
+            UserId = userId,
+            Contacts = new List<Contact> { contact },
+        };
+
+        dbContext.Orders!.Add(order);
+        dbContext.Deals!.Add(deal);
+        await dbContext.SaveChangesAsync();
+
+        return (accountName, domainName, orderRefNo, orderItemName, pipelineName, pipelineStageName);
     }
 }
