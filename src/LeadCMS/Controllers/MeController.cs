@@ -8,6 +8,7 @@ using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
+using LeadCMS.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -85,6 +86,14 @@ public class MeController : ControllerBase
                     ["UserName"] = user.UserName ?? user.Email ?? string.Empty,
                     ["Password"] = password,
                 };
+
+                var utmParams = UtmParametersBuilder.Create()
+                    .WithDefaults()
+                    .WithContext(new UtmParameters { Campaign = "password_updated" })
+                    .Build();
+
+                TemplateArgumentsBuilder.WithUtmParameters(args, utmParams);
+
                 await emailFromTemplateService.SendAsync("Password_Updated", value.Language, new[] { user.Email! }, args, null);
             }
         }

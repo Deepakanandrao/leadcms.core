@@ -3,6 +3,7 @@
 // </copyright>
 
 using LeadCMS.Entities;
+using LeadCMS.Models;
 
 namespace LeadCMS.Helpers;
 
@@ -126,6 +127,32 @@ public static class TemplateArgumentsBuilder
         }
 
         return baseArgs;
+    }
+
+    /// <summary>
+    /// Merges UTM parameters into an existing template arguments dictionary.
+    /// UTM keys (<c>utm_source</c>, <c>utm_medium</c>, …) and the pre-built <c>utm_query</c>
+    /// are added so that email templates can reference them directly:
+    /// <code>&lt;a href="https://example.com/pricing?{{ utm_query }}"&gt;Click here&lt;/a&gt;</code>
+    /// </summary>
+    /// <param name="args">The template arguments dictionary to merge into.</param>
+    /// <param name="utmParams">UTM parameters to add. When <c>null</c> or empty, the dictionary is returned unchanged.</param>
+    /// <returns>The same <paramref name="args"/> dictionary with UTM values merged in, for fluent chaining.</returns>
+    public static Dictionary<string, object> WithUtmParameters(
+        Dictionary<string, object> args,
+        UtmParameters? utmParams)
+    {
+        if (utmParams == null || !utmParams.HasValues)
+        {
+            return args;
+        }
+
+        foreach (var kv in utmParams.ToDictionary())
+        {
+            args[kv.Key] = kv.Value;
+        }
+
+        return args;
     }
 
     /// <summary>

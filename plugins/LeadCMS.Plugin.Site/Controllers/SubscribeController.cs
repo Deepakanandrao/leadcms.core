@@ -6,6 +6,7 @@ using LeadCMS.Entities;
 using LeadCMS.Exceptions;
 using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
+using LeadCMS.Models;
 using LeadCMS.Plugin.Site.Configuration;
 using LeadCMS.Plugin.Site.Data;
 using LeadCMS.Plugin.Site.DTOs;
@@ -65,15 +66,24 @@ public class SubscribesController : Controller
 
         var confirmationUrl = BuildConfirmationUrl(token);
 
+        var subscriptionArgs = new Dictionary<string, object>
+        {
+            { "email", subscribeDto.Email },
+            { "confirmationUrl", confirmationUrl },
+        };
+
+        var utmParams = UtmParametersBuilder.Create()
+            .WithDefaults()
+            .WithContext(new UtmParameters { Campaign = "subscription_confirmation", Content = "confirm_email" })
+            .Build();
+
+        TemplateArgumentsBuilder.WithUtmParameters(subscriptionArgs, utmParams);
+
         await emailService.SendAsync(
             "Subscription_Email_Confirmation",
             subscribeDto.Language,
             new[] { subscribeDto.Email },
-            new Dictionary<string, object>
-            {
-                { "email", subscribeDto.Email },
-                { "confirmationUrl", confirmationUrl },
-            },
+            subscriptionArgs,
             null);
 
         return Ok();
@@ -113,11 +123,20 @@ public class SubscribesController : Controller
             return BadRequest("Contact has no email address for subscription confirmation.");
         }
 
+        var confirmArgs = new Dictionary<string, object> { { "email", contact.Email } };
+
+        var confirmUtmParams = UtmParametersBuilder.Create()
+            .WithDefaults()
+            .WithContext(new UtmParameters { Campaign = "subscription_confirmed", Content = "welcome" })
+            .Build();
+
+        TemplateArgumentsBuilder.WithUtmParameters(confirmArgs, confirmUtmParams);
+
         await emailService.SendAsync(
             "Subscription_Confirmation",
             payload.Language,
             new[] { contact.Email },
-            new Dictionary<string, object> { { "email", contact.Email } },
+            confirmArgs,
             null);
 
         return Ok();

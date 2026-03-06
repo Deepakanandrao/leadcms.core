@@ -7,6 +7,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 using LeadCMS.DataAnnotations;
 using LeadCMS.Helpers;
+using LeadCMS.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Entities;
@@ -84,6 +85,14 @@ public class Campaign : BaseEntity
     /// </summary>
     [Required]
     public string Language { get; set; } = LanguageHelper.DefaultFallbackLanguage;
+
+    /// <summary>
+    /// Gets or sets optional UTM parameter overrides for this campaign.
+    /// These values take highest priority and override both system defaults
+    /// and context-derived values when building UTM tracking parameters.
+    /// </summary>
+    [Column(TypeName = "jsonb")]
+    public UtmParameters? UtmParameters { get; set; }
 
     /// <summary>
     /// Gets or sets when the campaign actually started sending.

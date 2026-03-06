@@ -10,6 +10,7 @@ using LeadCMS.Entities;
 using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
+using LeadCMS.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -116,6 +117,14 @@ public class UsersController : ControllerBase
                 ["UserName"] = newUser.UserName ?? newUser.Email ?? string.Empty,
                 ["Password"] = password,
             };
+
+            var utmParams = UtmParametersBuilder.Create()
+                .WithDefaults()
+                .WithContext(new UtmParameters { Campaign = "account_created" })
+                .Build();
+
+            TemplateArgumentsBuilder.WithUtmParameters(args, utmParams);
+
             await emailFromTemplateService.SendAsync("Account_Created", userDto.Language, new[] { newUser.Email! }, args, null);
         }
 
@@ -163,6 +172,14 @@ public class UsersController : ControllerBase
                     ["UserName"] = existingEntity.UserName ?? existingEntity.Email ?? string.Empty,
                     ["Password"] = password,
                 };
+
+                var utmParams = UtmParametersBuilder.Create()
+                    .WithDefaults()
+                    .WithContext(new UtmParameters { Campaign = "password_updated" })
+                    .Build();
+
+                TemplateArgumentsBuilder.WithUtmParameters(args, utmParams);
+
                 await emailFromTemplateService.SendAsync("Password_Updated", userDto.Language, new[] { existingEntity.Email! }, args, null);
             }
         }

@@ -7,6 +7,7 @@ using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
+using LeadCMS.Models;
 using LeadCMS.Plugin.Site.Configuration;
 using LeadCMS.Plugin.Site.Data;
 using LeadCMS.Plugin.Site.DTOs;
@@ -184,6 +185,13 @@ public class ContactUsController : Controller
 
             // Use same template arguments as notification email
             var templateArgs = leadNotificationMessageBuilder.BuildEmailTemplateArguments(leadInfo);
+
+            var utmParams = UtmParametersBuilder.Create()
+                .WithDefaults()
+                .WithContext(new UtmParameters { Campaign = acknowledgmentTemplate.ToLowerInvariant(), Content = "acknowledgment" })
+                .Build();
+
+            TemplateArgumentsBuilder.WithUtmParameters(templateArgs, utmParams);
 
             await emailService.SendToContactAsync(
                 contact.Id,

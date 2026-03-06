@@ -5,6 +5,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using LeadCMS.Enums;
+using LeadCMS.Models;
 
 namespace LeadCMS.DTOs;
 
@@ -57,6 +58,13 @@ public class EmailTemplatePreviewRequestDto
     /// These values are merged on top of built-in contact template arguments.
     /// </summary>
     public Dictionary<string, JsonElement>? CustomTemplateParameters { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional UTM parameter overrides for the preview.
+    /// When provided, these values override system defaults. When null, system defaults are used
+    /// so that <c>{{ utm_query }}</c> still renders in the preview.
+    /// </summary>
+    public UtmParameters? UtmParameters { get; set; }
 }
 
 public class EmailTemplatePreviewResultDto

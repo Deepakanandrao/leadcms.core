@@ -6,6 +6,7 @@ using System.Net.Http.Json;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
+using LeadCMS.Models;
 using LeadCMS.Plugin.Site.Configuration;
 using LeadCMS.Plugin.Site.DTOs;
 using LeadCMS.Plugin.Site.Exceptions;
@@ -113,6 +114,13 @@ public class LeadNotificationService : ILeadNotificationService
             var templateName = string.IsNullOrWhiteSpace(leadInfo.NotificationType)
                 ? "Contact_Us"
                 : leadInfo.NotificationType;
+
+            var utmParams = UtmParametersBuilder.Create()
+                .WithDefaults()
+                .WithContext(new UtmParameters { Campaign = templateName.ToLowerInvariant(), Content = "notification" })
+                .Build();
+
+            TemplateArgumentsBuilder.WithUtmParameters(templateArgs, utmParams);
 
             await emailService.SendAsync(
                 templateName,

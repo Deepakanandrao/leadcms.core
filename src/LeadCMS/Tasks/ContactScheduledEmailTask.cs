@@ -5,7 +5,9 @@
 using System.Text.Json;
 using LeadCMS.Data;
 using LeadCMS.Entities;
+using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
+using LeadCMS.Models;
 using LeadCMS.Services;
 using Microsoft.EntityFrameworkCore;
 
@@ -167,7 +169,16 @@ public class ContactScheduledEmailTask : BaseTask
         // TODO: contact based template arguments
         // Get related variable dictionary from variable service.
         // Add any required scope based variables into the dictionary.
-        return new Dictionary<string, object> { { "Key", "Value" } };
+        var args = new Dictionary<string, object> { { "Key", "Value" } };
+
+        var utmParams = UtmParametersBuilder.Create()
+            .WithDefaults()
+            .WithContext(new UtmParameters { Campaign = "scheduled_email" })
+            .Build();
+
+        TemplateArgumentsBuilder.WithUtmParameters(args, utmParams);
+
+        return args;
     }
 
     private bool IsRightTimeToExecute(DateTime nextExecutionTime)

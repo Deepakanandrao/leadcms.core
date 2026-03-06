@@ -10,6 +10,7 @@ using LeadCMS.Enums;
 using LeadCMS.Geography;
 using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
+using LeadCMS.Models;
 
 using static LeadCMS.Helpers.TemplateArgumentsBuilder;
 
@@ -49,6 +50,14 @@ public class EmailTemplateService : IEmailTemplateService
         var customTemplateArgs = ConvertCustomTemplateParameters(dto.CustomTemplateParameters);
         templateArgs = Merge(templateArgs, customTemplateArgs);
 
+        var utmParams = UtmParametersBuilder.Create()
+            .WithDefaults()
+            .WithContext(new UtmParameters { Campaign = "preview" })
+            .WithOverrides(dto.UtmParameters)
+            .Build();
+
+        WithUtmParameters(templateArgs, utmParams);
+
         var bodySource = dto.BodyTemplate;
 
         var renderedBody = await liquidTemplateService.RenderAsync(bodySource, templateArgs);
@@ -83,6 +92,13 @@ public class EmailTemplateService : IEmailTemplateService
 
         var customTemplateArgs = ConvertCustomTemplateParameters(dto.CustomTemplateParameters);
         templateArgs = Merge(templateArgs, customTemplateArgs);
+
+        var testUtmParams = UtmParametersBuilder.Create()
+            .WithDefaults()
+            .WithContext(new UtmParameters { Campaign = "test_send" })
+            .Build();
+
+        WithUtmParameters(templateArgs, testUtmParams);
 
         var bodySource = dto.BodyTemplate;
 

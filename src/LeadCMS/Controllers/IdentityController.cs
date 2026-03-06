@@ -10,6 +10,7 @@ using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
+using LeadCMS.Models;
 using LeadCMS.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -128,6 +129,13 @@ public class IdentityController : ControllerBase
             ["ResetUrl"] = resetUrl,
             ["UserName"] = user.UserName ?? string.Empty,
         };
+
+        var utmParams = UtmParametersBuilder.Create()
+            .WithDefaults()
+            .WithContext(new UtmParameters { Campaign = "password_reset", Content = "reset_link" })
+            .Build();
+
+        TemplateArgumentsBuilder.WithUtmParameters(templateArgs, utmParams);
 
         await emailFromTemplateService.SendAsync(
             "Password_Reset",

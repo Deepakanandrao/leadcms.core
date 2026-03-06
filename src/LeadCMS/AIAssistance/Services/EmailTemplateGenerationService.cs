@@ -249,6 +249,7 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
 
         sb.AppendLine("- Use {{ variableName }} Liquid syntax for all variable placeholders");
         sb.AppendLine("- Use {% if condition %}...{% endif %} for conditional blocks");
+        sb.AppendLine("- Append {{ utm_query }} to all website/landing-page links for tracking attribution");
         sb.AppendLine("- Return only the JSON structure as specified in the system prompt");
 
         return sb.ToString();
@@ -445,7 +446,7 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
                       <td style="font-family:Arial, Helvetica, sans-serif; font-size:14px; line-height:1.5; color:#222222;">
                         <p style="margin:0 0 14px 0;">Hi {{ FirstName }},</p>
                         <p style="margin:0 0 14px 0;">Your message body here. Keep it short and personal.</p>
-                        <p style="margin:0 0 14px 0;">Here is a link if needed: <a href="https://example.com" style="color:#1a73e8;">Click here</a></p>
+                        <p style="margin:0 0 14px 0;">Here is a link if needed: <a href="https://example.com?{{ utm_query }}" style="color:#1a73e8;">Click here</a></p>
                         <p style="margin:0 0 0 0;">Best regards,<br>Sender Name<br>Sender Title</p>
                       </td>
                     </tr>
@@ -561,6 +562,62 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
         sb.AppendLine("                 {% unless condition %}...{% endunless %}");
         sb.AppendLine("- Loops:         {% for item in items %}...{% endfor %}");
         sb.AppendLine("- Convert any legacy placeholders (<%token%>, ${token}) to {{ token }} Liquid syntax");
+    }
+
+    /// <summary>
+    /// Appends guidance on UTM (Urchin Tracking Module) parameters that the system
+    /// injects into every email at send time. These variables enable marketing
+    /// attribution tracking in Google Analytics and other analytics tools.
+    /// </summary>
+    private static void AppendUtmParametersGuidance(StringBuilder sb)
+    {
+        sb.AppendLine();
+        sb.AppendLine("UTM TRACKING PARAMETERS (automatically injected at send time):");
+        sb.AppendLine();
+        sb.AppendLine("The following UTM variables are available in every email template.");
+        sb.AppendLine("They are populated automatically by the system with values appropriate to the sending context");
+        sb.AppendLine("(campaign name, notification type, scheduled email, etc.).");
+        sb.AppendLine();
+        sb.AppendLine("Individual UTM variables:");
+        sb.AppendLine("  {{ utm_source }}   — traffic source, e.g. 'leadcms'");
+        sb.AppendLine("  {{ utm_medium }}   — channel type, e.g. 'email'");
+        sb.AppendLine("  {{ utm_campaign }} — campaign or template identifier, e.g. 'onboarding_day_3'");
+        sb.AppendLine("  {{ utm_content }}  — link/variant identifier, e.g. 'cta_top', 'hero_button'");
+        sb.AppendLine("  {{ utm_term }}     — optional keyword or classification (not always present)");
+        sb.AppendLine("  {{ utm_id }}       — optional campaign ID (not always present)");
+        sb.AppendLine();
+        sb.AppendLine("Pre-built query string:");
+        sb.AppendLine("  {{ utm_query }}    — contains all populated UTM parameters as a ready-to-use URL query string,");
+        sb.AppendLine("                       e.g. 'utm_source=leadcms&utm_medium=email&utm_campaign=onboarding_day_3'");
+        sb.AppendLine();
+        sb.AppendLine("HOW TO USE UTM PARAMETERS IN LINKS:");
+        sb.AppendLine();
+        sb.AppendLine("PREFERRED — append {{ utm_query }} to every link that points to the recipient's website or landing page:");
+        sb.AppendLine();
+        sb.AppendLine("  For URLs without existing query parameters:");
+        sb.AppendLine("    <a href=\"https://example.com/pricing?{{ utm_query }}\">View pricing</a>");
+        sb.AppendLine();
+        sb.AppendLine("  For URLs that already have query parameters:");
+        sb.AppendLine("    <a href=\"https://example.com/page?existing=value&{{ utm_query }}\">Click here</a>");
+        sb.AppendLine();
+        sb.AppendLine("  For CTA buttons (bulletproof button pattern):");
+        sb.AppendLine("    <a href=\"https://example.com/signup?{{ utm_query }}\" ...>Sign Up Now</a>");
+        sb.AppendLine();
+        sb.AppendLine("  To distinguish multiple links in the same email, override utm_content per link:");
+        sb.AppendLine("    <a href=\"https://example.com?{{ utm_query }}&utm_content=hero_button\">Hero CTA</a>");
+        sb.AppendLine("    <a href=\"https://example.com?{{ utm_query }}&utm_content=footer_link\">Footer link</a>");
+        sb.AppendLine();
+        sb.AppendLine("WHEN TO TAG LINKS:");
+        sb.AppendLine("- Tag all links that point to the sender's or client's website/app");
+        sb.AppendLine("- Do NOT tag external third-party links (social media profiles, external references)");
+        sb.AppendLine("- Do NOT tag mailto: links, tel: links, or anchor fragments");
+        sb.AppendLine("- Do NOT tag unsubscribe links");
+        sb.AppendLine();
+        sb.AppendLine("IMPORTANT:");
+        sb.AppendLine("- Never hardcode UTM values in templates — always use the Liquid variables");
+        sb.AppendLine("- The system sets appropriate values per email context (campaign, notification, scheduled, transactional)");
+        sb.AppendLine("- Use {{ utm_query }} for the standard set; append &utm_content=<identifier> only when");
+        sb.AppendLine("  you need to differentiate multiple clickable elements within the same email");
     }
 
     private static void AppendSenderSignatureRules(StringBuilder sb, string senderName, string senderEmail)
@@ -897,6 +954,9 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
         AppendLiquidSyntax(sb);
         sb.Append(TemplateParametersKnowledge);
 
+        // ── UTM tracking parameters ─────────────────────────────────────
+        AppendUtmParametersGuidance(sb);
+
         // ── Sender signature ────────────────────────────────────────────
         AppendSenderSignatureRules(sb, senderName, senderEmail);
 
@@ -936,6 +996,7 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
         AppendCategoryGuidance(sb, category);
         AppendLiquidSyntax(sb);
         sb.Append(TemplateParametersKnowledge);
+        AppendUtmParametersGuidance(sb);
         AppendSenderSignatureRules(sb, senderName, senderEmail);
         AppendOutputFormat(sb, "HTML");
 

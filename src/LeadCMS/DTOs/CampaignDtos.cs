@@ -9,6 +9,7 @@ using CsvHelper.Configuration.Attributes;
 using LeadCMS.Entities;
 using LeadCMS.Enums;
 using LeadCMS.Infrastructure;
+using LeadCMS.Models;
 
 namespace LeadCMS.DTOs;
 
@@ -51,6 +52,12 @@ public class CampaignCreateDto
     /// When not provided, defaults to the system default language.
     /// </summary>
     public string? Language { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional UTM parameter overrides for this campaign.
+    /// Any non-null values here override the system defaults and context-derived UTM parameters.
+    /// </summary>
+    public UtmParameters? UtmParameters { get; set; }
 }
 
 public class CampaignUpdateDto : IPatchDto
@@ -77,6 +84,12 @@ public class CampaignUpdateDto : IPatchDto
     public bool? UseContactTimeZone { get; set; }
 
     public string? Language { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional UTM parameter overrides for this campaign.
+    /// Any non-null values here override the system defaults and context-derived UTM parameters.
+    /// </summary>
+    public UtmParameters? UtmParameters { get; set; }
 }
 
 public class CampaignDetailsDto : CampaignCreateDto
@@ -241,6 +254,13 @@ public class CampaignPreviewRequestDto
     /// These values are merged on top of built-in contact template arguments.
     /// </summary>
     public Dictionary<string, JsonElement>? CustomTemplateParameters { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional UTM parameter overrides for the campaign preview.
+    /// These values override system defaults and context-derived UTM parameters.
+    /// When null, defaults (<c>utm_source=leadcms</c>, <c>utm_medium=email</c>) are still injected.
+    /// </summary>
+    public UtmParameters? UtmParameters { get; set; }
 }
 
 public class CampaignPreviewResultDto

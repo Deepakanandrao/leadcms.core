@@ -8,6 +8,7 @@ using LeadCMS.Entities;
 using LeadCMS.Enums;
 using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
+using LeadCMS.Models;
 using Microsoft.EntityFrameworkCore;
 
 using static LeadCMS.Helpers.TemplateArgumentsBuilder;
@@ -45,6 +46,12 @@ public class CampaignService : ICampaignService
         var template = await dbContext.EmailTemplates!.FindAsync(dto.EmailTemplateId)
             ?? throw new KeyNotFoundException($"Email template with id {dto.EmailTemplateId} not found.");
 
+        var campaignUtm = UtmParametersBuilder.Create()
+            .WithDefaults()
+            .WithContext(new UtmParameters { Campaign = "campaign_preview" })
+            .WithOverrides(dto.UtmParameters)
+            .Build();
+
         var templatePreviewRequest = new EmailTemplatePreviewRequestDto
         {
             Subject = template.Subject,
@@ -55,6 +62,7 @@ public class CampaignService : ICampaignService
             ContactType = dto.ContactType,
             Language = dto.Language,
             CustomTemplateParameters = dto.CustomTemplateParameters,
+            UtmParameters = campaignUtm,
         };
 
         var segmentIds = dto.SegmentIds ?? Array.Empty<int>();
@@ -359,6 +367,14 @@ public class CampaignService : ICampaignService
             try
             {
                 var templateArgs = FromContact(contact);
+
+                var utmParams = UtmParametersBuilder.Create()
+                    .WithDefaults()
+                    .WithContext(new UtmParameters { Campaign = campaign.Name })
+                    .WithOverrides(campaign.UtmParameters)
+                    .Build();
+
+                WithUtmParameters(templateArgs, utmParams);
 
                 await emailFromTemplateService.SendAsync(
                     template.Name,
