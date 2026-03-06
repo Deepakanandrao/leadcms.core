@@ -625,7 +625,7 @@ public class Program
 
     private static void ConfigureEmailServices(WebApplicationBuilder builder)
     {
-        builder.Services.AddSingleton<ILiquidTemplateService, LiquidTemplateService>();
+        builder.Services.AddScoped<ILiquidTemplateService, LiquidTemplateService>();
         builder.Services.AddScoped<IEmailWithLogService, EmailWithLogService>();
         builder.Services.AddScoped<IEmailFromTemplateService, EmailFromTemplateService>();
     }

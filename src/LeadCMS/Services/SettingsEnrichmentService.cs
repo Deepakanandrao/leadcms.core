@@ -97,6 +97,55 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
     }
 
     /// <summary>
+    /// Enriches settings list with general site link defaults.
+    /// Values are sourced from appsettings and can be overridden via database settings.
+    /// </summary>
+    /// <param name="settings">List of settings to enrich.</param>
+    public async Task EnrichWithGeneralSettingsAsync(List<Setting> settings)
+    {
+        var siteUrl = await settingService.GetSystemSettingAsync(SettingKeys.GeneralSiteUrl);
+        if (string.IsNullOrWhiteSpace(siteUrl))
+        {
+            siteUrl = configuration["General:SiteUrl"];
+        }
+
+        if (string.IsNullOrWhiteSpace(siteUrl))
+        {
+            siteUrl = configuration["SiteUrl"];
+        }
+
+        var unsubscribeUrl = await settingService.GetSystemSettingAsync(SettingKeys.GeneralUnsubscribeUrl);
+        if (string.IsNullOrWhiteSpace(unsubscribeUrl))
+        {
+            unsubscribeUrl = configuration["General:UnsubscribeUrl"];
+        }
+
+        var privacyUrl = await settingService.GetSystemSettingAsync(SettingKeys.GeneralPrivacyUrl);
+        if (string.IsNullOrWhiteSpace(privacyUrl))
+        {
+            privacyUrl = configuration["General:PrivacyUrl"];
+        }
+
+        var normalizedSiteUrl = string.IsNullOrWhiteSpace(siteUrl)
+            ? string.Empty
+            : siteUrl.TrimEnd('/');
+
+        if (string.IsNullOrWhiteSpace(unsubscribeUrl) && !string.IsNullOrWhiteSpace(normalizedSiteUrl))
+        {
+            unsubscribeUrl = $"{normalizedSiteUrl}/unsubscribe";
+        }
+
+        if (string.IsNullOrWhiteSpace(privacyUrl) && !string.IsNullOrWhiteSpace(normalizedSiteUrl))
+        {
+            privacyUrl = $"{normalizedSiteUrl}/privacy";
+        }
+
+        SetSettingIfNullOrEmpty(settings, SettingKeys.GeneralSiteUrl, normalizedSiteUrl);
+        SetSettingIfNullOrEmpty(settings, SettingKeys.GeneralUnsubscribeUrl, string.IsNullOrWhiteSpace(unsubscribeUrl) ? string.Empty : unsubscribeUrl.TrimEnd('/'));
+        SetSettingIfNullOrEmpty(settings, SettingKeys.GeneralPrivacyUrl, string.IsNullOrWhiteSpace(privacyUrl) ? string.Empty : privacyUrl.TrimEnd('/'));
+    }
+
+    /// <summary>
     /// Enriches settings list with media optimization defaults.
     /// </summary>
     /// <param name="settings">List of settings to enrich.</param>
@@ -174,6 +223,7 @@ public class SettingsEnrichmentService : ISettingsEnrichmentService
         await EnrichWithContentValidationSettingsAsync(settings, userId);
         await EnrichWithIdentitySettingsAsync(settings, userId);
         await EnrichWithApiSettingsAsync(settings);
+        await EnrichWithGeneralSettingsAsync(settings);
         await EnrichWithMediaSettingsAsync(settings, userId);
         await EnrichWithLeadCaptureSettingsAsync(settings);
         EnrichWithPluginSettings(settings);

@@ -22,7 +22,12 @@ namespace LeadCMS.Services
         private readonly IConfiguration configuration;
         private readonly ILiquidTemplateService liquidTemplateService;
 
-        public EmailFromTemplateService(IEmailWithLogService emailWithLogService, PgDbContext pgDbContext, IOptions<ApiSettingsConfig> apiSettingsConfig, IConfiguration configuration, ILiquidTemplateService liquidTemplateService)
+        public EmailFromTemplateService(
+            IEmailWithLogService emailWithLogService,
+            PgDbContext pgDbContext,
+            IOptions<ApiSettingsConfig> apiSettingsConfig,
+            IConfiguration configuration,
+            ILiquidTemplateService liquidTemplateService)
         {
             this.emailWithLogService = emailWithLogService;
             this.pgDbContext = pgDbContext;

@@ -297,4 +297,74 @@ public class SettingsTests : BaseTestAutoLogin
 
         Assert.Equal(1, count);
     }
+
+    [Fact]
+    public async Task GetSystemSettings_ContainsGeneralSiteLinkSettings()
+    {
+        var settings = await GetTest<List<SettingDetailsDto>>("/api/settings/system", HttpStatusCode.OK);
+
+        settings.Should().NotBeNull();
+        var settingDict = settings!.ToDictionary(s => s.Key, s => s.Value);
+
+        settingDict.Should().ContainKey(SettingKeys.GeneralSiteUrl);
+        settingDict.Should().ContainKey(SettingKeys.GeneralUnsubscribeUrl);
+        settingDict.Should().ContainKey(SettingKeys.GeneralPrivacyUrl);
+    }
+
+    [Fact]
+    public async Task PutSystemSetting_GeneralSiteUrl_UpdatesValue()
+    {
+        var key = SettingKeys.GeneralSiteUrl;
+        var value = "https://override.example.com";
+        var url = $"/api/settings/system/{Uri.EscapeDataString(key)}?value={Uri.EscapeDataString(value)}";
+
+        var response = await Request(HttpMethod.Put, url, null);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var setting = await GetTest<SettingDetailsDto>($"/api/settings/system/{Uri.EscapeDataString(key)}", HttpStatusCode.OK);
+        setting.Should().NotBeNull();
+        setting!.Value.Should().Be(value);
+    }
+
+    [Fact]
+    public async Task GetSystemSetting_ReturnsEnrichedAppSettingsValue_WhenNotSetInDatabase()
+    {
+        var key = "ApiSettings.DefaultFromEmail";
+
+        using var scope = App.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<Data.PgDbContext>();
+
+        var existing = await dbContext.Settings!
+            .Where(s => s.Key == key && s.UserId == null)
+            .ToListAsync();
+
+        if (existing.Count > 0)
+        {
+            dbContext.Settings!.RemoveRange(existing);
+            await dbContext.SaveChangesAsync();
+        }
+
+        var setting = await GetTest<SettingDetailsDto>($"/api/settings/system/{Uri.EscapeDataString(key)}", HttpStatusCode.OK);
+        setting.Should().NotBeNull();
+        setting!.Value.Should().Be("no-reply@leadcms.ai");
+    }
+
+    [Fact]
+    public async Task GetSystemSettings_GeneralUnsubscribeAndPrivacy_AreDerivedFromGeneralSiteUrl_WhenMissing()
+    {
+        var siteUrl = "https://derived-settings.example";
+
+        await Request(HttpMethod.Put, $"/api/settings/system/{Uri.EscapeDataString(SettingKeys.GeneralSiteUrl)}?value={Uri.EscapeDataString(siteUrl)}", null);
+        await Request(HttpMethod.Put, $"/api/settings/system/{Uri.EscapeDataString(SettingKeys.GeneralUnsubscribeUrl)}?value=", null);
+        await Request(HttpMethod.Put, $"/api/settings/system/{Uri.EscapeDataString(SettingKeys.GeneralPrivacyUrl)}?value=", null);
+
+        var settings = await GetTest<List<SettingDetailsDto>>("/api/settings/system", HttpStatusCode.OK);
+        settings.Should().NotBeNull();
+
+        var settingDict = settings!.ToDictionary(s => s.Key, s => s.Value);
+
+        settingDict[SettingKeys.GeneralSiteUrl].Should().Be(siteUrl);
+        settingDict[SettingKeys.GeneralUnsubscribeUrl].Should().Be($"{siteUrl}/unsubscribe");
+        settingDict[SettingKeys.GeneralPrivacyUrl].Should().Be($"{siteUrl}/privacy");
+    }
 }

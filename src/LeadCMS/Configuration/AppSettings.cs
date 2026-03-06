@@ -275,3 +275,21 @@ public class ContentConfig
     /// </summary>
     public bool EnableCodeEditorLineNumbers { get; set; } = true;
 }
+
+public class SiteLinksConfig
+{
+    /// <summary>
+    /// Gets or sets the main site URL (e.g. "https://example.com"). Available in email templates as {{ site_url }}.
+    /// </summary>
+    public string SiteUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the base unsubscribe URL (e.g. "https://example.com/unsubscribe"). Available in email templates as {{ unsubscribe_url }}.
+    /// </summary>
+    public string UnsubscribeUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the privacy policy URL (e.g. "https://example.com/privacy"). Available in email templates as {{ privacy_url }}.
+    /// </summary>
+    public string PrivacyUrl { get; set; } = string.Empty;
+}

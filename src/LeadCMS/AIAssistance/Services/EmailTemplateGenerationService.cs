@@ -283,6 +283,13 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
             sb.AppendLine(referenceBody);
         }
 
+        sb.AppendLine();
+        sb.AppendLine("EDITING INTENT:");
+        sb.AppendLine("- Preserve the existing template structure and markup unless the user explicitly requests structural/layout changes");
+        sb.AppendLine("- Keep the same sections, order, and overall skeleton");
+        sb.AppendLine("- Do not rewrite the entire template just to apply local text changes");
+        sb.AppendLine("- Do not add new footer/legal/unsubscribe blocks unless explicitly requested");
+
         return sb.ToString();
     }
 
@@ -319,7 +326,7 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
         sb.AppendLine("   <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">");
         sb.AppendLine("   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
         sb.AppendLine("   <title>Email</title>");
-        sb.AppendLine("4. <body style=\"margin:0; padding:0;\">");
+        sb.AppendLine("4. <body style=\"background-color:#ffffff;\">");
         sb.AppendLine();
 
         // ── Layout ──────────────────────────────────────────────────
@@ -417,6 +424,8 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
                 - Short paragraphs (2-3 sentences) with natural line breaks
                 - Simple text-based signature (name, title) — no graphical footers
                 - Ideal for sales outreach, personal follow-ups, relationship-building
+                - Do NOT include an unsubscribe link unless the user explicitly requests one.
+                  Personal-style emails should look like genuine 1:1 communication.
 
                 Layout — STRICT rules:
                 - Left-aligned text only — NO center alignment anywhere (no align="center", no margin:0 auto, no text-align:center)
@@ -439,7 +448,7 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
                   <meta name="viewport" content="width=device-width, initial-scale=1.0">
                   <title>Email</title>
                 </head>
-                <body style="margin:0; padding:0; background-color:#ffffff;">
+                <body style="background-color:#ffffff;">
                   <div style="display:none;font-size:1px;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;mso-hide:all;font-family:sans-serif;">Preheader text</div>
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                     <tr>
@@ -620,6 +629,45 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
         sb.AppendLine("  you need to differentiate multiple clickable elements within the same email");
     }
 
+    /// <summary>
+    /// Appends guidance on site link variables that are available in email templates
+    /// when configured in application settings (General group).
+    /// </summary>
+    private static void AppendSiteLinksGuidance(StringBuilder sb)
+    {
+        sb.AppendLine();
+        sb.AppendLine("SITE LINK VARIABLES (available when configured in application settings):");
+        sb.AppendLine();
+        sb.AppendLine("  {{ site_url }}         — the main website URL, e.g. 'https://example.com'");
+        sb.AppendLine("  {{ unsubscribe_url }}  — the unsubscribe page URL, e.g. 'https://example.com/unsubscribe'");
+        sb.AppendLine("  {{ privacy_url }}      — the privacy policy page URL, e.g. 'https://example.com/privacy'");
+        sb.AppendLine();
+        sb.AppendLine("HOW TO USE SITE LINK VARIABLES:");
+        sb.AppendLine();
+        sb.AppendLine("These variables may or may not be set depending on the deployment. Use Liquid conditionals");
+        sb.AppendLine("to safely include them only when they are available:");
+        sb.AppendLine();
+        sb.AppendLine("  Unsubscribe link:");
+        sb.AppendLine("    {% if unsubscribe_url %}");
+        sb.AppendLine("      <a href=\"{{ unsubscribe_url }}\" style=\"color:#999999;font-size:12px;\">Unsubscribe</a>");
+        sb.AppendLine("    {% endif %}");
+        sb.AppendLine();
+        sb.AppendLine("  Privacy policy link:");
+        sb.AppendLine("    {% if privacy_url %}");
+        sb.AppendLine("      <a href=\"{{ privacy_url }}\" style=\"color:#999999;font-size:12px;\">Privacy Policy</a>");
+        sb.AppendLine("    {% endif %}");
+        sb.AppendLine();
+        sb.AppendLine("  Site URL:");
+        sb.AppendLine("    {% if site_url %}");
+        sb.AppendLine("      <a href=\"{{ site_url }}?{{ utm_query }}\" style=\"color:#1a73e8;\">Visit our website</a>");
+        sb.AppendLine("    {% endif %}");
+        sb.AppendLine();
+        sb.AppendLine("IMPORTANT:");
+        sb.AppendLine("- Always wrap site link variables in {% if variable_name %}...{% endif %} guards");
+        sb.AppendLine("- Do NOT append {{ utm_query }} to unsubscribe or privacy URLs — only to site_url");
+        sb.AppendLine("- These variables are distinct from recipient data — they are application-wide settings");
+    }
+
     private static void AppendSenderSignatureRules(StringBuilder sb, string senderName, string senderEmail)
     {
         sb.AppendLine();
@@ -693,15 +741,46 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
         sb.AppendLine("Scalar fields (use as {{ FieldName }}):");
         foreach (var kvp in args)
         {
-            if (kvp.Value is not string strVal)
+            if (kvp.Key is "Account" or "Domain" or "Orders" or "Deals")
             {
                 continue;
             }
 
             sb.Append("  {{ ").Append(kvp.Key).Append(" }}");
-            if (!string.IsNullOrEmpty(strVal))
+            switch (kvp.Value)
             {
-                sb.Append(" — e.g. \"").Append(strVal).Append('"');
+                case string strVal when !string.IsNullOrEmpty(strVal):
+                    sb.Append(" — e.g. \"").Append(strVal).Append('"');
+                    break;
+                case IEnumerable<string> listVal:
+                    {
+                        var listPreview = listVal.Take(3).ToArray();
+                        sb.Append(" — list (loop with {% for item in ").Append(kvp.Key).Append(" %}...{% endfor %})");
+                        if (listPreview.Length > 0)
+                        {
+                            sb.Append("; e.g. [\"").Append(string.Join("\", \"", listPreview)).Append("\"]");
+                        }
+
+                        break;
+                    }
+
+                case Dictionary<string, string> mapVal:
+                    {
+                        var samplePair = mapVal.FirstOrDefault();
+                        sb.Append(" — key-value map");
+                        if (!string.IsNullOrEmpty(samplePair.Key))
+                        {
+                            sb.Append("; e.g. {{ ").Append(kvp.Key).Append('.').Append(samplePair.Key).Append(" }}");
+                        }
+
+                        break;
+                    }
+
+                case null:
+                    break;
+                default:
+                    sb.Append(" — e.g. \"").Append(kvp.Value).Append('"');
+                    break;
             }
 
             sb.AppendLine();
@@ -772,15 +851,22 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
         sb.AppendLine("  {% endfor %}");
 
         sb.AppendLine();
+        sb.AppendLine("Site link variables (available when configured in application settings):");
+        sb.AppendLine("  {{ site_url }}         — the main website URL");
+        sb.AppendLine("  {{ unsubscribe_url }}  — the unsubscribe page URL");
+        sb.AppendLine("  {{ privacy_url }}      — the privacy policy page URL");
+        sb.AppendLine("  These may not be set in all deployments. Always wrap in {% if variable_name %}...{% endif %}.");
+
+        sb.AppendLine();
         sb.AppendLine("Custom variables — callers may pass additional key-value pairs through TemplateVariables.");
         sb.AppendLine();
         sb.AppendLine("STRICT VARIABLE RULE — DO NOT HALLUCINATE VARIABLES:");
-        sb.AppendLine("Only use template variables listed above or explicitly provided through TemplateVariables.");
+        sb.AppendLine("Only use template variables listed above, UTM variables, site link variables,");
+        sb.AppendLine("or variables explicitly provided through TemplateVariables.");
         sb.AppendLine("Using a non-existent variable causes a rendering failure.");
-        sb.AppendLine();
-        sb.AppendLine("IMPORTANT — ALL VARIABLES ABOVE ARE RECIPIENT DATA:");
-        sb.AppendLine("Every variable listed above belongs to the EMAIL RECIPIENT.");
-        sb.AppendLine("NEVER use these variables in the sender signature or sign-off section.");
+        sb.AppendLine("IMPORTANT — DATA ORIGIN:");
+        sb.AppendLine("Most variables listed above are recipient data. Site link variables are application-level settings.");
+        sb.AppendLine("NEVER use recipient variables in the sender signature or sign-off section.");
         sb.AppendLine("The sender's identity is provided separately — see SENDER SIGNATURE RULES.");
 
         return sb.ToString();
@@ -957,6 +1043,9 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
         // ── UTM tracking parameters ─────────────────────────────────────
         AppendUtmParametersGuidance(sb);
 
+        // ── Site link variables ──────────────────────────────────────────
+        AppendSiteLinksGuidance(sb);
+
         // ── Sender signature ────────────────────────────────────────────
         AppendSenderSignatureRules(sb, senderName, senderEmail);
 
@@ -981,9 +1070,13 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
         sb.AppendLine($"Edit the provided HTML email template based on the user's request.");
         sb.AppendLine();
         sb.AppendLine("EDITING RULES:");
-        sb.AppendLine("1. PRESERVE STRUCTURE: keep the same logical structure and layout as the original");
-        sb.AppendLine("2. CONSERVATIVE EDITS: when ambiguous, make the minimum changes necessary");
-        sb.AppendLine("3. NO HALLUCINATION: only use variables listed in AVAILABLE TEMPLATE PARAMETERS or provided via REQUIRED TEMPLATE VARIABLES");
+        sb.AppendLine("1. PRESERVE STRUCTURE: keep the same logical structure and layout as the original template");
+        sb.AppendLine("2. STRUCTURAL LOCK: unless explicitly requested, do NOT introduce a new wrapper/boilerplate structure");
+        sb.AppendLine("   (no forced <!DOCTYPE>/<html>/<head>/<body> rewrite, no new global containers, no VML scaffolding changes)");
+        sb.AppendLine("3. MARKUP PARITY: preserve existing sections, ordering, and markup patterns; edit only requested content");
+        sb.AppendLine("4. CONSERVATIVE EDITS: when ambiguous, make the minimum changes necessary");
+        sb.AppendLine("5. NO HALLUCINATION: only use variables listed in AVAILABLE TEMPLATE PARAMETERS or provided via REQUIRED TEMPLATE VARIABLES");
+        sb.AppendLine("6. NO UNSOLICITED FOOTER CHANGES: do not add unsubscribe/footer/company blocks unless requested by the user or explicit system instructions");
         sb.AppendLine();
 
         // ── Site profile ────────────────────────────────────────────────
@@ -992,11 +1085,16 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
         // ── Email template instructions ─────────────────────────────────
         await AppendEmailTemplateInstructionsAsync(sb);
 
+        sb.AppendLine("FORMAT RULES APPLICABILITY IN EDIT MODE:");
+        sb.AppendLine("- Apply format rules to new/modified blocks only");
+        sb.AppendLine("- Do not normalize or rewrite untouched blocks just to match canonical boilerplate");
+        sb.AppendLine();
         AppendFormatRules(sb);
         AppendCategoryGuidance(sb, category);
         AppendLiquidSyntax(sb);
         sb.Append(TemplateParametersKnowledge);
         AppendUtmParametersGuidance(sb);
+        AppendSiteLinksGuidance(sb);
         AppendSenderSignatureRules(sb, senderName, senderEmail);
         AppendOutputFormat(sb, "HTML");
 

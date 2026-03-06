@@ -3,6 +3,7 @@
 // </copyright>
 
 using System.Text.Json;
+using LeadCMS.Constants;
 using LeadCMS.Enums;
 using LeadCMS.Helpers;
 
@@ -1316,6 +1317,37 @@ public class CampaignsTests : BaseTestAutoLogin
         result.Should().NotBeNull();
         result!.RenderedSubject.Should().Be("Hello OverrideName");
         result.RenderedBody.Should().Contain("Hello OverrideName");
+    }
+
+    [Fact]
+    public async Task TemplatePreview_WithEmptySiteLinkCustomParameters_UsesConfiguredAndDerivedLinks()
+    {
+        var siteUrl = "https://preview-links.example.org";
+
+        await Request(HttpMethod.Put, $"/api/settings/system/{Uri.EscapeDataString(SettingKeys.GeneralSiteUrl)}?value={Uri.EscapeDataString(siteUrl)}", null);
+        await Request(HttpMethod.Put, $"/api/settings/system/{Uri.EscapeDataString(SettingKeys.GeneralUnsubscribeUrl)}?value=", null);
+        await Request(HttpMethod.Put, $"/api/settings/system/{Uri.EscapeDataString(SettingKeys.GeneralPrivacyUrl)}?value=", null);
+
+        var previewDto = new EmailTemplatePreviewRequestDto
+        {
+            Subject = "Links",
+            BodyTemplate = "<p>{{ site_url }}</p><p>{{ unsubscribe_url }}</p><p>{{ privacy_url }}</p>",
+            FromEmail = "site-links-preview@test.net",
+            FromName = "Site Links Preview",
+            CustomTemplateParameters = new Dictionary<string, JsonElement>
+            {
+                ["site_url"] = JsonSerializer.SerializeToElement(string.Empty),
+                ["unsubscribe_url"] = JsonSerializer.SerializeToElement(string.Empty),
+                ["privacy_url"] = JsonSerializer.SerializeToElement(string.Empty),
+            },
+        };
+
+        var result = await PostTest<EmailTemplatePreviewResultDto>(EmailTemplatePreviewUrl, previewDto, HttpStatusCode.OK);
+
+        result.Should().NotBeNull();
+        result!.RenderedBody.Should().Contain(siteUrl);
+        result.RenderedBody.Should().Contain($"{siteUrl}/unsubscribe");
+        result.RenderedBody.Should().Contain($"{siteUrl}/privacy");
     }
 
     [Fact]

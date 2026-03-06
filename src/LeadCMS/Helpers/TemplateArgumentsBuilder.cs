@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using LeadCMS.Configuration;
 using LeadCMS.Entities;
 using LeadCMS.Models;
 
@@ -150,6 +151,41 @@ public static class TemplateArgumentsBuilder
         foreach (var kv in utmParams.ToDictionary())
         {
             args[kv.Key] = kv.Value;
+        }
+
+        return args;
+    }
+
+    /// <summary>
+    /// Merges site link URLs from application settings into an existing template arguments dictionary.
+    /// Only non-empty values are added. The following variables become available in Liquid templates:
+    /// <c>{{ site_url }}</c>, <c>{{ unsubscribe_url }}</c>, <c>{{ privacy_url }}</c>.
+    /// </summary>
+    /// <param name="args">The template arguments dictionary to merge into.</param>
+    /// <param name="siteLinks">Site link configuration from application settings.</param>
+    /// <returns>The same <paramref name="args"/> dictionary with site link values merged in, for fluent chaining.</returns>
+    public static Dictionary<string, object> WithSiteLinks(
+        Dictionary<string, object> args,
+        SiteLinksConfig? siteLinks)
+    {
+        if (siteLinks == null)
+        {
+            return args;
+        }
+
+        if (!string.IsNullOrWhiteSpace(siteLinks.SiteUrl))
+        {
+            args["site_url"] = siteLinks.SiteUrl.TrimEnd('/');
+        }
+
+        if (!string.IsNullOrWhiteSpace(siteLinks.UnsubscribeUrl))
+        {
+            args["unsubscribe_url"] = siteLinks.UnsubscribeUrl.TrimEnd('/');
+        }
+
+        if (!string.IsNullOrWhiteSpace(siteLinks.PrivacyUrl))
+        {
+            args["privacy_url"] = siteLinks.PrivacyUrl.TrimEnd('/');
         }
 
         return args;

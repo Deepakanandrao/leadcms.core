@@ -26,6 +26,13 @@ public static class SettingKeys
 
     public const string EnableCodeEditorLineNumbers = "Content.EnableCodeEditorLineNumbers";
 
+    // General site link settings
+    public const string GeneralSiteUrl = "General.SiteUrl";
+
+    public const string GeneralUnsubscribeUrl = "General.UnsubscribeUrl";
+
+    public const string GeneralPrivacyUrl = "General.PrivacyUrl";
+
     // Identity password policy settings
     public const string RequireDigit = "Identity.RequireDigit";
 

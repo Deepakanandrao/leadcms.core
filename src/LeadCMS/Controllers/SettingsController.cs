@@ -187,6 +187,11 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
             return NotFound($"System setting with key '{key}' not found.");
         }
 
+        var singleSettingList = new List<Setting> { setting };
+        await settingsEnrichmentService.EnrichWithAllKnownSettingsAsync(singleSettingList);
+
+        setting = singleSettingList.FirstOrDefault(s => s.Key == key) ?? setting;
+
         var settingDto = mapper.Map<SettingDetailsDto>(setting);
         return Ok(settingDto);
     }

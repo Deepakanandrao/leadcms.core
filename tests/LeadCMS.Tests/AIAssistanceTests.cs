@@ -815,6 +815,71 @@ public class AIAssistanceTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task EmailTemplateEdit_ShouldInstructStructurePreservationInSystemPrompt()
+    {
+        TestAIProviderService.EnqueueTextResponse(@"{
+  ""name"": ""preserve-structure-email"",
+  ""subject"": ""Subject"",
+  ""bodyTemplate"": ""<table><tr><td>Hello</td></tr></table>"",
+  ""fromName"": ""Team""
+}");
+
+        var request = new EmailTemplateEditRequest
+        {
+            Prompt = "Update just one sentence in the second paragraph.",
+            Name = "preserve-structure-email",
+            Subject = "Original Subject",
+            BodyTemplate = "<meta charset=\"UTF-8\"><table><tr><td><p>Paragraph 1</p><p>Paragraph 2</p></td></tr></table>",
+            FromName = "Team",
+            FromEmail = "team@test.com",
+            Language = "en",
+        };
+
+        await PostTest<EmailTemplateDetailsDto>("/api/email-templates/ai-edit", request, HttpStatusCode.OK);
+
+        var lastRequest = TestAIProviderService.GetLastTextRequest();
+        lastRequest.Should().NotBeNull();
+        lastRequest!.SystemPrompt.Should().Contain("STRUCTURAL LOCK");
+        lastRequest.SystemPrompt.Should().Contain("MARKUP PARITY");
+        lastRequest.SystemPrompt.Should().Contain("NO UNSOLICITED FOOTER CHANGES");
+        lastRequest.SystemPrompt.Should().Contain("Do not normalize or rewrite untouched blocks");
+        lastRequest.UserPrompt.Should().Contain("EDITING INTENT");
+        lastRequest.UserPrompt.Should().Contain("Do not rewrite the entire template just to apply local text changes");
+    }
+
+    [Fact]
+    public async Task EmailTemplateGeneration_SystemPrompt_ShouldIncludeTagsAndSocialMediaTemplateParameters()
+    {
+        TrackEntityType<EmailGroup>();
+
+        TestAIProviderService.EnqueueTextResponse(@"{
+  ""name"": ""params-check"",
+  ""subject"": ""Subject"",
+  ""bodyTemplate"": ""<html><body><p>Hello</p></body></html>"",
+  ""fromName"": ""Team""
+}");
+
+        var groupUrl = await PostTest("/api/email-groups", new TestEmailGroup("-ai-params"), HttpStatusCode.Created);
+        var group = await GetTest<EmailGroup>(groupUrl);
+
+        var request = new EmailTemplateGenerationRequest
+        {
+            Language = "en",
+            EmailGroupId = group!.Id,
+            Prompt = "Create a lifecycle email",
+        };
+
+        await PostTest<EmailTemplateDetailsDto>("/api/email-templates/ai-draft", request, HttpStatusCode.OK);
+
+        var lastRequest = TestAIProviderService.GetLastTextRequest();
+        lastRequest.Should().NotBeNull();
+        lastRequest!.SystemPrompt.Should().Contain("{{ Tags }}");
+        lastRequest.SystemPrompt.Should().Contain("loop with {% for item in Tags %}...{% endfor %}");
+        lastRequest.SystemPrompt.Should().Contain("{{ SocialMedia }}");
+        lastRequest.SystemPrompt.Should().Contain("key-value map");
+    }
+
+    [Fact]
     public async Task EmailTemplateGeneration_WithNoSiteProfile_ShouldNotIncludeSiteProfileSection()
     {
         TrackEntityType<EmailGroup>();

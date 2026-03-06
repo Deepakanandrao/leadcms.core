@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using LeadCMS.Configuration;
 using LeadCMS.Helpers;
 using LeadCMS.Models;
 
@@ -712,5 +713,147 @@ public class UtmParametersTests
 
         utm.Campaign.Should().BeNull();
         utm.Content.Should().BeNull();
+    }
+
+    // ────────────────────────────────────────────────────────
+    //  WithSiteLinks
+    // ────────────────────────────────────────────────────────
+
+    [Fact]
+    public void WithSiteLinks_AllValuesSet_InjectsAllKeys()
+    {
+        var args = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        var config = new SiteLinksConfig
+        {
+            SiteUrl = "https://example.com",
+            UnsubscribeUrl = "https://example.com/unsubscribe",
+            PrivacyUrl = "https://example.com/privacy",
+        };
+
+        TemplateArgumentsBuilder.WithSiteLinks(args, config);
+
+        args.Should().ContainKey("site_url").WhoseValue.Should().Be("https://example.com");
+        args.Should().ContainKey("unsubscribe_url").WhoseValue.Should().Be("https://example.com/unsubscribe");
+        args.Should().ContainKey("privacy_url").WhoseValue.Should().Be("https://example.com/privacy");
+    }
+
+    [Fact]
+    public void WithSiteLinks_TrimsTrailingSlash()
+    {
+        var args = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        var config = new SiteLinksConfig
+        {
+            SiteUrl = "https://example.com/",
+            UnsubscribeUrl = "https://example.com/unsubscribe/",
+            PrivacyUrl = "https://example.com/privacy/",
+        };
+
+        TemplateArgumentsBuilder.WithSiteLinks(args, config);
+
+        args["site_url"].Should().Be("https://example.com");
+        args["unsubscribe_url"].Should().Be("https://example.com/unsubscribe");
+        args["privacy_url"].Should().Be("https://example.com/privacy");
+    }
+
+    [Fact]
+    public void WithSiteLinks_OnlySiteUrl_InjectsOnlySiteUrl()
+    {
+        var args = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        var config = new SiteLinksConfig
+        {
+            SiteUrl = "https://mysite.com",
+        };
+
+        TemplateArgumentsBuilder.WithSiteLinks(args, config);
+
+        args.Should().ContainKey("site_url").WhoseValue.Should().Be("https://mysite.com");
+        args.Should().NotContainKey("unsubscribe_url");
+        args.Should().NotContainKey("privacy_url");
+    }
+
+    [Fact]
+    public void WithSiteLinks_EmptyValues_DoesNotInject()
+    {
+        var args = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        var config = new SiteLinksConfig();
+
+        TemplateArgumentsBuilder.WithSiteLinks(args, config);
+
+        args.Should().NotContainKey("site_url");
+        args.Should().NotContainKey("unsubscribe_url");
+        args.Should().NotContainKey("privacy_url");
+    }
+
+    [Fact]
+    public void WithSiteLinks_NullConfig_ReturnsArgsUnchanged()
+    {
+        var args = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["existing"] = "value",
+        };
+
+        var result = TemplateArgumentsBuilder.WithSiteLinks(args, null);
+
+        result.Should().BeSameAs(args);
+        result.Should().ContainSingle();
+    }
+
+    [Fact]
+    public void WithSiteLinks_WhitespaceValues_DoesNotInject()
+    {
+        var args = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        var config = new SiteLinksConfig
+        {
+            SiteUrl = "   ",
+            UnsubscribeUrl = "\t",
+            PrivacyUrl = " \n ",
+        };
+
+        TemplateArgumentsBuilder.WithSiteLinks(args, config);
+
+        args.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void WithSiteLinks_DoesNotOverrideExistingKeys()
+    {
+        var args = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["site_url"] = "https://override.com",
+        };
+        var config = new SiteLinksConfig
+        {
+            SiteUrl = "https://from-config.com",
+        };
+
+        TemplateArgumentsBuilder.WithSiteLinks(args, config);
+
+        // Config value replaces existing — this is consistent with how
+        // WithUtmParameters and Merge work (last write wins).
+        args["site_url"].Should().Be("https://from-config.com");
+    }
+
+    [Fact]
+    public void WithSiteLinks_CombinesWithUtmParameters()
+    {
+        var args = TemplateArgumentsBuilder.FromContact(null);
+
+        var utmParams = UtmParametersBuilder.Create()
+            .WithDefaults()
+            .WithContext(new UtmParameters { Campaign = "test" })
+            .Build();
+        TemplateArgumentsBuilder.WithUtmParameters(args, utmParams);
+
+        var config = new SiteLinksConfig
+        {
+            SiteUrl = "https://example.com",
+            UnsubscribeUrl = "https://example.com/unsubscribe",
+        };
+        TemplateArgumentsBuilder.WithSiteLinks(args, config);
+
+        args.Should().ContainKey("utm_source");
+        args.Should().ContainKey("utm_query");
+        args.Should().ContainKey("site_url");
+        args.Should().ContainKey("unsubscribe_url");
     }
 }

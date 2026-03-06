@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using LeadCMS.Constants;
 using LeadCMS.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -280,6 +281,56 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
         var log = await GetLastEmailLogAsync();
         log.Subject.Should().Be("Subject only");
         log.HtmlBody.Should().Contain("No variables here, just static text.");
+    }
+
+    [Fact]
+    public async Task HtmlTemplate_WithSiteLinkVariables_UsesGeneralSystemSettings()
+    {
+        var siteUrl = "https://example.org";
+        var unsubscribeUrl = "https://example.org/unsubscribe";
+        var privacyUrl = "https://example.org/privacy";
+
+        await Request(HttpMethod.Put, $"/api/settings/system/{Uri.EscapeDataString(SettingKeys.GeneralSiteUrl)}?value={Uri.EscapeDataString(siteUrl)}", null);
+        await Request(HttpMethod.Put, $"/api/settings/system/{Uri.EscapeDataString(SettingKeys.GeneralUnsubscribeUrl)}?value={Uri.EscapeDataString(unsubscribeUrl)}", null);
+        await Request(HttpMethod.Put, $"/api/settings/system/{Uri.EscapeDataString(SettingKeys.GeneralPrivacyUrl)}?value={Uri.EscapeDataString(privacyUrl)}", null);
+
+        var groupId = await CreateEmailGroupAsync();
+        await CreateTemplateViaApiAsync(
+            groupId,
+            "site_links_general",
+            "Links",
+            "<p>{{ site_url }}</p><p>{{ unsubscribe_url }}</p><p>{{ privacy_url }}</p>");
+
+        await SendEmailAsync("site_links_general", "en", "recipient@test.net", null);
+
+        var log = await GetLastEmailLogAsync();
+        log.HtmlBody.Should().Contain(siteUrl);
+        log.HtmlBody.Should().Contain(unsubscribeUrl);
+        log.HtmlBody.Should().Contain(privacyUrl);
+    }
+
+    [Fact]
+    public async Task HtmlTemplate_WithDerivedSiteLinkVariables_UsesGeneralSiteUrlWhenOtherLinksEmpty()
+    {
+        var siteUrl = "https://derived.example.org";
+
+        await Request(HttpMethod.Put, $"/api/settings/system/{Uri.EscapeDataString(SettingKeys.GeneralSiteUrl)}?value={Uri.EscapeDataString(siteUrl)}", null);
+        await Request(HttpMethod.Put, $"/api/settings/system/{Uri.EscapeDataString(SettingKeys.GeneralUnsubscribeUrl)}?value=", null);
+        await Request(HttpMethod.Put, $"/api/settings/system/{Uri.EscapeDataString(SettingKeys.GeneralPrivacyUrl)}?value=", null);
+
+        var groupId = await CreateEmailGroupAsync();
+        await CreateTemplateViaApiAsync(
+            groupId,
+            "site_links_derived",
+            "Links",
+            "<p>{{ site_url }}</p><p>{{ unsubscribe_url }}</p><p>{{ privacy_url }}</p>");
+
+        await SendEmailAsync("site_links_derived", "en", "recipient@test.net", null);
+
+        var log = await GetLastEmailLogAsync();
+        log.HtmlBody.Should().Contain(siteUrl);
+        log.HtmlBody.Should().Contain($"{siteUrl}/unsubscribe");
+        log.HtmlBody.Should().Contain($"{siteUrl}/privacy");
     }
 
     [Fact]
