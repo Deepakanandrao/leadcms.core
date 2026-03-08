@@ -3,6 +3,7 @@
 // </copyright>
 
 using System.Text.Json;
+using LeadCMS.Helpers;
 
 namespace LeadCMS.Tests;
 
@@ -212,6 +213,66 @@ public class CommentsTests : TableWithFKTests<Comment, TestComment, CommentUpdat
         filteredResult.Statistics["NotApproved"].Should().Be(1); // comment1
         filteredResult.Statistics["Approved"].Should().Be(1);    // comment2
         filteredResult.Statistics["Spam"].Should().Be(1);        // comment3
+    }
+
+    [Fact]
+    public async Task Sync_ShouldReturnAvatarUrl()
+    {
+        await CreateFKItemsWithUid();
+
+        var testComment = new TestComment("sync-avatar", 1);
+        var commentUrl = await PostTest(itemsUrl, testComment);
+        var createdComment = await GetTest<CommentDetailsDto>(commentUrl);
+
+        var syncResult = await GetSyncResult<CommentDetailsDto>("/api/comments/sync");
+
+        syncResult.Should().NotBeNull();
+        var syncedComment = syncResult!.Items.Should().ContainSingle(c => c.Id == createdComment!.Id).Subject;
+        syncedComment.AvatarUrl.Should().Be(GravatarHelper.EmailToGravatarUrl(testComment.AuthorEmail));
+    }
+
+    [Fact]
+    public async Task GetAll_WithoutParentInclude_ShouldNotPopulateParent()
+    {
+        await CreateFKItemsWithUid();
+
+        var parentUrl = await PostTest(itemsUrl, new TestComment("parent", 1));
+        var parentComment = await GetTest<CommentDetailsDto>(parentUrl);
+
+        var childUrl = await PostTest(itemsUrl, new TestComment("child", 1)
+        {
+            ParentId = parentComment!.Id,
+        });
+
+        var childComment = await GetTest<CommentDetailsDto>(childUrl);
+        var comments = await GetTest<List<CommentDetailsDto>>(itemsUrl);
+
+        comments.Should().NotBeNull();
+        var returnedChild = comments!.Should().ContainSingle(c => c.Id == childComment!.Id).Subject;
+        returnedChild.ParentId.Should().Be(parentComment.Id);
+        returnedChild.Parent.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetAll_WithParentInclude_ShouldPopulateParent()
+    {
+        await CreateFKItemsWithUid();
+
+        var parentUrl = await PostTest(itemsUrl, new TestComment("parent-include", 1));
+        var parentComment = await GetTest<CommentDetailsDto>(parentUrl);
+
+        var childUrl = await PostTest(itemsUrl, new TestComment("child-include", 1)
+        {
+            ParentId = parentComment!.Id,
+        });
+
+        var childComment = await GetTest<CommentDetailsDto>(childUrl);
+        var comments = await GetTest<List<CommentDetailsDto>>($"{itemsUrl}?filter[include]=Parent");
+
+        comments.Should().NotBeNull();
+        var returnedChild = comments!.Should().ContainSingle(c => c.Id == childComment!.Id).Subject;
+        returnedChild.Parent.Should().NotBeNull();
+        returnedChild.Parent!.Id.Should().Be(parentComment.Id);
     }
 
     [Fact]
@@ -461,5 +522,16 @@ public class CommentsTests : TableWithFKTests<Comment, TestComment, CommentUpdat
             var contact = new TestContact(i.ToString());
             await PostTest("/api/contacts", contact);
         }
+    }
+
+    private async Task<SyncResponseDto<TDto, int>?> GetSyncResult<TDto>(string url)
+        where TDto : class
+    {
+        var response = await GetRequest(url);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var content = await response.Content.ReadAsStringAsync();
+        return JsonHelper.Deserialize<SyncResponseDto<TDto, int>>(content);
     }
 }

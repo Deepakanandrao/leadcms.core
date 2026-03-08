@@ -1029,20 +1029,21 @@ public class SegmentsTests : BaseTestAutoLogin
     public async Task PreviewSegment_IsUnsubscribedTrue_MatchesContactByUnsubscribeContactId()
     {
         var dbContext = App.GetDbContext()!;
+        var segmentKey = $"isunsub-{Guid.NewGuid().ToString()[..8]}";
 
-        var domain = new Domain { Name = $"isunsub-{Guid.NewGuid().ToString()[..8]}.com" };
+        var domain = new Domain { Name = $"{segmentKey}.com" };
         dbContext.Domains!.Add(domain);
         await dbContext.SaveChangesAsync();
 
         var subscribed = new Contact
         {
-            Email = $"sub-{Guid.NewGuid().ToString()[..8]}@example.test",
+            Email = $"sub-{segmentKey}@example.test",
             FirstName = "Subscribed",
             DomainId = domain.Id,
         };
         var unsubscribed = new Contact
         {
-            Email = $"unsub-{Guid.NewGuid().ToString()[..8]}@example.test",
+            Email = $"unsub-{segmentKey}@example.test",
             FirstName = "Unsubscribed",
             DomainId = domain.Id,
         };
@@ -1064,6 +1065,7 @@ public class SegmentsTests : BaseTestAutoLogin
                 Connector = RuleConnector.And,
                 Rules = new List<SegmentRule>
                 {
+                    new SegmentRule { FieldId = "email", Operator = FieldOperator.Contains, Value = segmentKey },
                     new SegmentRule { FieldId = "isUnsubscribed", Operator = FieldOperator.IsTrue },
                 },
             },
@@ -1081,20 +1083,21 @@ public class SegmentsTests : BaseTestAutoLogin
     public async Task PreviewSegment_IsUnsubscribedEqualsFalse_ExcludesUnsubscribedByContactId()
     {
         var dbContext = App.GetDbContext()!;
+        var segmentKey = $"issub-{Guid.NewGuid().ToString()[..8]}";
 
-        var domain = new Domain { Name = $"issub-{Guid.NewGuid().ToString()[..8]}.com" };
+        var domain = new Domain { Name = $"{segmentKey}.com" };
         dbContext.Domains!.Add(domain);
         await dbContext.SaveChangesAsync();
 
         var subscribed = new Contact
         {
-            Email = $"subonly-{Guid.NewGuid().ToString()[..8]}@example.test",
+            Email = $"subonly-{segmentKey}@example.test",
             FirstName = "Subscribed",
             DomainId = domain.Id,
         };
         var unsubscribed = new Contact
         {
-            Email = $"unsubonly-{Guid.NewGuid().ToString()[..8]}@example.test",
+            Email = $"unsubonly-{segmentKey}@example.test",
             FirstName = "Unsubscribed",
             DomainId = domain.Id,
         };
@@ -1116,6 +1119,7 @@ public class SegmentsTests : BaseTestAutoLogin
                 Connector = RuleConnector.And,
                 Rules = new List<SegmentRule>
                 {
+                    new SegmentRule { FieldId = "email", Operator = FieldOperator.Contains, Value = segmentKey },
                     new SegmentRule { FieldId = "isUnsubscribed", Operator = FieldOperator.Equals, Value = false },
                 },
             },
@@ -1133,20 +1137,21 @@ public class SegmentsTests : BaseTestAutoLogin
     public async Task PreviewSegment_IsUnsubscribedEqualsTrue_MatchesWhenUnsubscribeIdIsSet()
     {
         var dbContext = App.GetDbContext()!;
+        var segmentKey = $"isunsubid-{Guid.NewGuid().ToString()[..8]}";
 
-        var domain = new Domain { Name = $"isunsubid-{Guid.NewGuid().ToString()[..8]}.com" };
+        var domain = new Domain { Name = $"{segmentKey}.com" };
         dbContext.Domains!.Add(domain);
         await dbContext.SaveChangesAsync();
 
         var subscribed = new Contact
         {
-            Email = $"subid-{Guid.NewGuid().ToString()[..8]}@example.test",
+            Email = $"subid-{segmentKey}@example.test",
             FirstName = "Subscribed",
             DomainId = domain.Id,
         };
         var unsubscribed = new Contact
         {
-            Email = $"unsubid-{Guid.NewGuid().ToString()[..8]}@example.test",
+            Email = $"unsubid-{segmentKey}@example.test",
             FirstName = "Unsubscribed",
             DomainId = domain.Id,
         };
@@ -1171,6 +1176,7 @@ public class SegmentsTests : BaseTestAutoLogin
                 Connector = RuleConnector.And,
                 Rules = new List<SegmentRule>
                 {
+                    new SegmentRule { FieldId = "email", Operator = FieldOperator.Contains, Value = segmentKey },
                     new SegmentRule { FieldId = "isUnsubscribed", Operator = FieldOperator.Equals, Value = true },
                 },
             },
@@ -1188,20 +1194,21 @@ public class SegmentsTests : BaseTestAutoLogin
     public async Task PreviewSegment_IsUnsubscribedNotEqualsTrue_ExcludesWhenUnsubscribeIdIsSet()
     {
         var dbContext = App.GetDbContext()!;
+        var segmentKey = $"isnotunsub-{Guid.NewGuid().ToString()[..8]}";
 
-        var domain = new Domain { Name = $"isnotunsub-{Guid.NewGuid().ToString()[..8]}.com" };
+        var domain = new Domain { Name = $"{segmentKey}.com" };
         dbContext.Domains!.Add(domain);
         await dbContext.SaveChangesAsync();
 
         var subscribed = new Contact
         {
-            Email = $"subnoteq-{Guid.NewGuid().ToString()[..8]}@example.test",
+            Email = $"subnoteq-{segmentKey}@example.test",
             FirstName = "Subscribed",
             DomainId = domain.Id,
         };
         var unsubscribed = new Contact
         {
-            Email = $"unsubnoteq-{Guid.NewGuid().ToString()[..8]}@example.test",
+            Email = $"unsubnoteq-{segmentKey}@example.test",
             FirstName = "Unsubscribed",
             DomainId = domain.Id,
         };
@@ -1226,6 +1233,7 @@ public class SegmentsTests : BaseTestAutoLogin
                 Connector = RuleConnector.And,
                 Rules = new List<SegmentRule>
                 {
+                    new SegmentRule { FieldId = "email", Operator = FieldOperator.Contains, Value = segmentKey },
                     new SegmentRule { FieldId = "isUnsubscribed", Operator = FieldOperator.NotEquals, Value = true },
                 },
             },

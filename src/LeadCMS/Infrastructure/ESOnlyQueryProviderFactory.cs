@@ -7,6 +7,7 @@ using LeadCMS.Configuration;
 using LeadCMS.Data;
 using LeadCMS.Entities;
 using LeadCMS.Interfaces;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace LeadCMS.Infrastructure
@@ -35,10 +36,10 @@ namespace LeadCMS.Infrastructure
             // If Elasticsearch is disabled, fall back to database query provider
             if (!esDbContext.IsElasticsearchEnabled || elasticClient == null)
             {
-                var dbSet = dbContext.Set<T>();
+                var dbSet = dbContext.Set<T>().AsNoTracking();
                 var queryCommands = QueryStringParser.Parse(rawQueryString);
                 var queryBuilder = new QueryModelBuilder<T>(queryCommands, limit == -1 ? apiSettingsConfig.Value.MaxListSize : limit, dbContext);
-                return new DBQueryProvider<T>(dbSet!.AsQueryable<T>(), queryBuilder);
+                return new DBQueryProvider<T>(dbSet, queryBuilder);
             }
 
             var queryCommands2 = QueryStringParser.Parse(rawQueryString);

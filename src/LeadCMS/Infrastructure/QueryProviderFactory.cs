@@ -8,6 +8,7 @@ using LeadCMS.Data;
 using LeadCMS.DataAnnotations;
 using LeadCMS.Entities;
 using LeadCMS.Interfaces;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Nest;
 
@@ -53,20 +54,20 @@ namespace LeadCMS.Infrastructure
 
             var queryBuilder = new QueryModelBuilder<T>(queryCommands, limit == -1 ? apiSettingsConfig.Value.MaxListSize : limit, dbContext);
 
-            var dbSet = dbContext.Set<T>();
+            var dbSet = dbContext.Set<T>().AsNoTracking();
 
             // Only use Elasticsearch if it's enabled and available
-            if (esDbContext.IsElasticsearchEnabled && 
-                elasticClient != null && 
-                typeof(T).GetCustomAttributes(typeof(SupportsElasticAttribute), true).Any() && 
+            if (esDbContext.IsElasticsearchEnabled &&
+                elasticClient != null &&
+                typeof(T).GetCustomAttributes(typeof(SupportsElasticAttribute), true).Any() &&
                 queryBuilder.SearchData.Count > 0)
             {
                 var indexPrefix = dbContext.Configuration.GetSection("Elastic:IndexPrefix").Get<string>();
-                return new MixedQueryProvider<T>(queryBuilder, dbSet!.AsQueryable<T>(), elasticClient, indexPrefix!);
+                return new MixedQueryProvider<T>(queryBuilder, dbSet, elasticClient, indexPrefix!);
             }
             else
             {
-                return new DBQueryProvider<T>(dbSet!.AsQueryable<T>(), queryBuilder);
+                return new DBQueryProvider<T>(dbSet, queryBuilder);
             }
         }
 

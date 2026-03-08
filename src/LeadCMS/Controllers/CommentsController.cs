@@ -102,7 +102,7 @@ public class CommentsController : BaseControllerWithImport<Comment, CommentCreat
 
         var commentDetails = (CommentDetailsDto)((ObjectResult)result!).Value!;
 
-        commentDetails!.AvatarUrl = GravatarHelper.EmailToGravatarUrl(commentDetails.AuthorEmail);
+        commentableControllerExtension.PrepareComment(commentDetails!);
 
         if (User.Identity != null && User.Identity.IsAuthenticated)
         {
@@ -212,31 +212,27 @@ public class CommentsController : BaseControllerWithImport<Comment, CommentCreat
         // Check if the request is authenticated
         bool isAuthenticated = User.Identity?.IsAuthenticated == true;
 
-        if (isAuthenticated)
+        if (baseResult is OkObjectResult okResult && okResult.Value is SyncResponseDto<CommentDetailsDto, int> syncResponse)
         {
-            // Return the full result for authenticated users
-            return baseResult;
-        }
-        else
-        {
-            // Transform the result for anonymous users
-            if (baseResult is OkObjectResult okResult && okResult.Value is SyncResponseDto<CommentDetailsDto, int> syncResponse)
+            commentableControllerExtension.PrepareComments(syncResponse.Items);
+
+            if (isAuthenticated)
             {
-                // Map to anonymous DTOs
-                var anonymousItems = syncResponse.Items.Select(item => mapper.Map<AnonymousCommentDetailsDto>(item)).ToList();
-
-                var anonymousResponse = new SyncResponseDto<AnonymousCommentDetailsDto, int>
-                {
-                    Items = anonymousItems,
-                    Deleted = syncResponse.Deleted,
-                };
-
-                return Ok(anonymousResponse);
+                return Ok(syncResponse);
             }
 
-            // Return the original result if transformation is not possible
-            return baseResult;
+            var anonymousItems = syncResponse.Items.Select(item => mapper.Map<AnonymousCommentDetailsDto>(item)).ToList();
+
+            var anonymousResponse = new SyncResponseDto<AnonymousCommentDetailsDto, int>
+            {
+                Items = anonymousItems,
+                Deleted = syncResponse.Deleted,
+            };
+
+            return Ok(anonymousResponse);
         }
+
+        return baseResult;
     }
 
     protected override async Task SaveRangeAsync(List<Comment> comments)

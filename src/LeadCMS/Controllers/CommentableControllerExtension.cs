@@ -45,10 +45,7 @@ public class CommentableControllerExtension
 
     public ActionResult<List<CommentDetailsDto>> ReturnComments(List<CommentDetailsDto> items, ControllerBase controller)
     {
-        items.ForEach(c =>
-        {
-            c.AvatarUrl = GravatarHelper.EmailToGravatarUrl(c.AuthorEmail);
-        });
+        PrepareComments(items);
 
         if (controller.User.Identity != null && controller.User.Identity.IsAuthenticated)
         {
@@ -60,6 +57,16 @@ public class CommentableControllerExtension
 
             return controller.Ok(commentsForAnonymous);
         }
+    }
+
+    public void PrepareComments(List<CommentDetailsDto> items)
+    {
+        items.ForEach(PrepareCommentCore);
+    }
+
+    public void PrepareComment(CommentDetailsDto item)
+    {
+        PrepareCommentCore(item);
     }
 
     public Comment CreateCommentForICommentable<T>(CommentCreateBaseDto value, int commentableId)
@@ -90,5 +97,15 @@ public class CommentableControllerExtension
         where T : ICommentable
     {
         return T.GetCommentableType();
+    }
+
+    private static void PrepareCommentCore(CommentDetailsDto item)
+    {
+        item.AvatarUrl = GravatarHelper.EmailToGravatarUrl(item.AuthorEmail);
+
+        if (item.Parent != null)
+        {
+            item.Parent.AvatarUrl = GravatarHelper.EmailToGravatarUrl(item.Parent.AuthorEmail);
+        }
     }
 }
