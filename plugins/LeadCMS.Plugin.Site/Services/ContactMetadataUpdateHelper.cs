@@ -40,12 +40,12 @@ public static class ContactMetadataUpdateHelper
     /// </summary>
     public static void ApplyFirstTouchUtm(Contact contact, Utms? utmParameters)
     {
-        if (utmParameters == null || !utmParameters.HasValues)
+        if (utmParameters == null || !utmParameters.HasValues())
         {
             return;
         }
 
-        if (contact.Utms != null && contact.Utms.HasValues)
+        if (contact.Utms != null && contact.Utms.HasValues())
         {
             return;
         }

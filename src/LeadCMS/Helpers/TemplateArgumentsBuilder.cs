@@ -73,7 +73,7 @@ public static class TemplateArgumentsBuilder
         args["SocialMedia"] = contact.SocialMedia ?? new Dictionary<string, string>();
 
         // UTM acquisition parameters (first-touch attribution)
-        if (contact.Utms != null && contact.Utms.HasValues)
+        if (contact.Utms != null && contact.Utms.HasValues())
         {
             AddIfHasValue(args, "contact_utm_source", contact.Utms.Source);
             AddIfHasValue(args, "contact_utm_medium", contact.Utms.Medium);
@@ -159,7 +159,7 @@ public static class TemplateArgumentsBuilder
         Dictionary<string, object> args,
         Utms? utmParams)
     {
-        if (utmParams == null || !utmParams.HasValues)
+        if (utmParams == null || !utmParams.HasValues())
         {
             return args;
         }

@@ -113,15 +113,15 @@ public class UtmParametersTests
     [Fact]
     public void HasValues_WhenAtLeastOneField_ReturnsTrue()
     {
-        new Utms { Campaign = "test" }.HasValues.Should().BeTrue();
-        new Utms { Source = "x" }.HasValues.Should().BeTrue();
+        new Utms { Campaign = "test" }.HasValues().Should().BeTrue();
+        new Utms { Source = "x" }.HasValues().Should().BeTrue();
     }
 
     [Fact]
     public void HasValues_WhenAllEmpty_ReturnsFalse()
     {
-        new Utms().HasValues.Should().BeFalse();
-        new Utms { Source = string.Empty, Medium = null }.HasValues.Should().BeFalse();
+        new Utms().HasValues().Should().BeFalse();
+        new Utms { Source = string.Empty, Medium = null }.HasValues().Should().BeFalse();
     }
 
     // ────────────────────────────────────────────────────────
@@ -222,7 +222,7 @@ public class UtmParametersTests
     {
         var utm = UtmsBuilder.Create().Build();
 
-        utm.HasValues.Should().BeFalse();
+        utm.HasValues().Should().BeFalse();
     }
 
     // ────────────────────────────────────────────────────────
@@ -234,7 +234,7 @@ public class UtmParametersTests
     {
         var result = UtmsBuilder.Merge(null, null);
 
-        result.HasValues.Should().BeFalse();
+        result.HasValues().Should().BeFalse();
     }
 
     [Fact]
