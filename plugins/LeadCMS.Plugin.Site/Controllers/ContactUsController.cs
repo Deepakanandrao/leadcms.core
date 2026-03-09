@@ -162,14 +162,11 @@ public class ContactUsController : Controller
             ua,
             phoneNormalizationService);
 
-        ContactMetadataUpdateHelper.ApplyPublicMetadata(
+        ContactMetadataUpdateHelper.ApplyMetadata(
             contact,
             contactUsDto.Language,
             utcOffset,
-            contactUsDto.Tags,
-            source,
-            ip,
-            ua);
+            contactUsDto.Tags);
 
         var attachmentFiles = new List<AttachmentDto>();
 

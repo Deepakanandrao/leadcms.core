@@ -36,4 +36,21 @@ public class TemplateArgumentsBuilderTests
 
         args.Should().ContainKey("IpAddress").WhoseValue.Should().Be("198.51.100.10");
     }
+
+    [Fact]
+    public void FromContact_WithoutOptionalStringValues_DoesNotAddEmptyStringArguments()
+    {
+        var contact = new Contact();
+
+        var args = TemplateArgumentsBuilder.FromContact(contact, includeNestedObjects: false);
+
+        args.Should().NotContainKey("Email");
+        args.Should().NotContainKey("FirstName");
+        args.Should().NotContainKey("FullName");
+        args.Should().NotContainKey("Timezone");
+        args.Should().NotContainKey("TimezoneFormatted");
+        args.Should().NotContainKey("IpAddress");
+        args.Should().ContainKey("DealsCount").WhoseValue.Should().Be(0);
+        args.Should().ContainKey("OrdersCount").WhoseValue.Should().Be(0);
+    }
 }
