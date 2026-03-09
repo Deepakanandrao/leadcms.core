@@ -9,6 +9,11 @@ namespace LeadCMS.Plugin.Site.DTOs;
 
 public class ClientLocaleAwareDto
 {
+    /// <summary>
+    /// Gets or sets client-provided categorisation tags to merge into the contact.
+    /// </summary>
+    public string[] Tags { get; set; } = Array.Empty<string>();
+
     [Required]
     public int TimeZoneOffset { get; set; }
 

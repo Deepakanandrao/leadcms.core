@@ -45,16 +45,6 @@ public class LeadNotificationService : ILeadNotificationService
         pluginSettings = settings ?? new PluginSettings();
     }
 
-    /// <summary>
-    /// Builds template arguments from lead notification info for use in email templates.
-    /// </summary>
-    /// <param name="leadInfo">The lead notification information.</param>
-    /// <returns>Dictionary of template arguments.</returns>
-    public static Dictionary<string, object> BuildEmailTemplateArguments(LeadNotificationInfo leadInfo)
-    {
-        return new DefaultLeadNotificationMessageBuilder().BuildEmailTemplateArguments(leadInfo);
-    }
-
     /// <inheritdoc/>
     public async Task SendLeadNotificationsAsync(LeadNotificationInfo leadInfo)
     {
@@ -109,7 +99,8 @@ public class LeadNotificationService : ILeadNotificationService
                 throw error;
             }
 
-            var templateArgs = leadNotificationMessageBuilder.BuildEmailTemplateArguments(leadInfo);
+            var templateArgs = leadInfo.ToTemplateArguments();
+            leadNotificationMessageBuilder.EnrichTemplateArguments(templateArgs, leadInfo);
 
             var templateName = string.IsNullOrWhiteSpace(leadInfo.NotificationType)
                 ? "Contact_Us"

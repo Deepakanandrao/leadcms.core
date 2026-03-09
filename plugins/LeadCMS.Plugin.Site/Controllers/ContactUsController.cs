@@ -122,13 +122,20 @@ public class ContactUsController : Controller
 
         var utcOffset = TimezoneHelper.NormalizeToUtcOffset(contactUsDto.TimeZoneOffset, contactUsDto.TimezoneFormat);
 
-        if (!string.IsNullOrWhiteSpace(contactUsDto.Email))
+        var ip = httpContextHelper?.IpAddress;
+        var ua = httpContextHelper?.UserAgent;
+
+        if (!string.IsNullOrWhiteSpace(contactUsDto.Email) || !string.IsNullOrWhiteSpace(contactUsDto.Phone))
         {
-            contact = await contactService.FindOrCreate(contactUsDto.Email, contactUsDto.Language, utcOffset);
+            contact = await contactService.FindOrCreateByIdentifiers(
+                contactUsDto.Email,
+                contactUsDto.Phone,
+                ip,
+                ua);
         }
-        else if (!string.IsNullOrWhiteSpace(contactUsDto.Phone))
+        else if (!string.IsNullOrWhiteSpace(ip) && !string.IsNullOrWhiteSpace(ua))
         {
-            contact = await contactService.FindOrCreateByPhone(contactUsDto.Phone, contactUsDto.Language, utcOffset);
+            contact = await contactService.FindOrCreatePotential(ip, ua);
         }
         else
         {
@@ -136,8 +143,6 @@ public class ContactUsController : Controller
         }
 
         // Apply anti-abuse merge policy: fill only if null, otherwise store in PendingUpdates
-        var ip = httpContextHelper?.IpAddress;
-        var ua = httpContextHelper?.UserAgent;
         const string source = "ContactForm";
 
         var proposedSource = string.IsNullOrWhiteSpace(contactUsDto.Title)
@@ -156,6 +161,15 @@ public class ContactUsController : Controller
             ip,
             ua,
             phoneNormalizationService);
+
+        ContactMetadataUpdateHelper.ApplyPublicMetadata(
+            contact,
+            contactUsDto.Language,
+            utcOffset,
+            contactUsDto.Tags,
+            source,
+            ip,
+            ua);
 
         var attachmentFiles = new List<AttachmentDto>();
 
@@ -183,8 +197,12 @@ public class ContactUsController : Controller
                 ? "Acknowledgment"
                 : contactUsDto.AcknowledgmentType;
 
-            // Use same template arguments as notification email
-            var templateArgs = leadNotificationMessageBuilder.BuildEmailTemplateArguments(leadInfo);
+            // Build template args: start from stored contact data,
+            // then overlay the actual submitted values so templates always
+            // reflect what the user entered (not stale DB data).
+            var templateArgs = TemplateArgumentsBuilder.FromContact(contact, includeNestedObjects: false);
+            TemplateArgumentsBuilder.Merge(templateArgs, leadInfo.ToTemplateArguments());
+            leadNotificationMessageBuilder.EnrichTemplateArguments(templateArgs, leadInfo);
 
             var utmParams = UtmParametersBuilder.Create()
                 .WithDefaults()
@@ -214,14 +232,14 @@ public class ContactUsController : Controller
             FirstName = contactUsDto.FirstName,
             LastName = contactUsDto.LastName,
             Email = contactUsDto.Email,
-            Company = contactUsDto.Company,
+            CompanyName = contactUsDto.Company,
             PageUrl = contactUsDto.PageUrl,
             Subject = contactUsDto.Subject,
             Message = contactUsDto.Message,
             Language = contactUsDto.Language,
             ExtraData = contactUsDto.ExtraData,
             Attachments = attachmentFiles.Count > 0 ? attachmentFiles : null,
-            TimeZoneOffset = utcOffset,
+            Timezone = utcOffset,
             IpAddress = httpContextHelper?.IpAddress,
             UserAgent = httpContextHelper?.UserAgent,
             ContactId = contactId,

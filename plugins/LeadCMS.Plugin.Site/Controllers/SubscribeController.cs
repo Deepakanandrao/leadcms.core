@@ -62,7 +62,8 @@ public class SubscribesController : Controller
             subscribeDto.Email,
             group,
             subscribeDto.Language,
-            utcOffset);
+            utcOffset,
+            subscribeDto.Tags);
 
         var confirmationUrl = BuildConfirmationUrl(token);
 
@@ -102,17 +103,21 @@ public class SubscribesController : Controller
             return BadRequest("Invalid or expired confirmation token.");
         }
 
-        var contact = await contactService.FindOrCreate(payload.Email, payload.Language, payload.TimeZoneOffset);
-
-        ContactMergeHelper.ApplyPublicUpdate(
-            contact,
-            nameof(contact.Source),
-            contact.Source,
-            "Subscribed",
-            v => contact.Source = v,
-            "Subscribe",
+        var contact = await contactService.FindOrCreate(
+            payload.Email,
             httpContextHelper?.IpAddress,
             httpContextHelper?.UserAgent);
+
+        // Email confirmation proves ownership — apply all fields directly.
+        if (!string.IsNullOrWhiteSpace(payload.Language))
+        {
+            contact.Language = payload.Language;
+        }
+
+        contact.Timezone = payload.Timezone;
+        contact.Source = "Subscribed";
+
+        ContactMetadataUpdateHelper.MergeTags(contact, payload.Tags);
 
         await contactService.Subscribe(contact, payload.Group);
 
@@ -147,16 +152,16 @@ public class SubscribesController : Controller
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public virtual async Task<ActionResult> Unsubscribe([FromBody] UnsibscribeDto subscribeDto)
+    public virtual async Task<ActionResult> Unsubscribe([FromBody] UnsubscribeDto unsubscribeDto)
     {
-        var contact = await FindOrThrowNotFound(subscribeDto.Email);
+        var contact = await FindOrThrowNotFound(unsubscribeDto.Email);
 
         if (string.IsNullOrWhiteSpace(contact.Email))
         {
             return BadRequest("Contact has no email address for unsubscription.");
         }
 
-        await contactService.Unsubscribe(contact.Email, "Unsubscribed from email or site", "Site", DateTime.UtcNow, httpContextHelper.IpAddress);
+        await contactService.Unsubscribe(contact.Email, "Unsubscribed from email or site", "Site");
 
         await dbContext.SaveChangesAsync();
 

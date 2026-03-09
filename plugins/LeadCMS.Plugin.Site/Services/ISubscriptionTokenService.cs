@@ -16,10 +16,11 @@ public interface ISubscriptionTokenService
     /// <param name="email">The subscriber's email address.</param>
     /// <param name="group">The email group to subscribe to.</param>
     /// <param name="language">The subscriber's preferred language.</param>
-    /// <param name="timeZoneOffset">The subscriber's timezone offset.</param>
+    /// <param name="timezone">The subscriber's timezone offset in minutes (UTC convention).</param>
+    /// <param name="tags">Optional contact tags to merge when the subscription is confirmed.</param>
     /// <param name="expiry">Optional custom expiry duration (default 24 hours).</param>
     /// <returns>A URL-safe signed token string.</returns>
-    string Generate(string email, string group, string language, int timeZoneOffset, TimeSpan? expiry = null);
+    string Generate(string email, string group, string language, int timezone, string[]? tags = null, TimeSpan? expiry = null);
 
     /// <summary>
     /// Validates a signed token and returns its payload if the signature is

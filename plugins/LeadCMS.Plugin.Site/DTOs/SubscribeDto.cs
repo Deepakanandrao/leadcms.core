@@ -3,11 +3,10 @@
 // </copyright>
 
 using System.ComponentModel.DataAnnotations;
-using LeadCMS.Enums;
 
 namespace LeadCMS.Plugin.Site.DTOs;
 
-public class SubscribeDto
+public class SubscribeDto : ClientLocaleAwareDto
 {
     private string email = string.Empty;
 
@@ -27,29 +26,11 @@ public class SubscribeDto
     }
 
     public string Group { get; set; } = "SubscriberNewsletters";
-
-    [Required]
-    public int TimeZoneOffset { get; set; }
-
-    /// <inheritdoc cref="ClientLocaleAwareDto.TimezoneFormat"/>
-    public TimezoneFormat TimezoneFormat { get; set; } = TimezoneFormat.JavaScript;
-
-    [Required]
-    public string Language { get; set; } = string.Empty;
 }
 
-public class UnsibscribeDto
+public class UnsubscribeDto : ClientLocaleAwareDto
 {
     [Required]
     [EmailAddress]
     public string Email { get; set; } = string.Empty;
-
-    [Required]
-    public int TimeZoneOffset { get; set; }
-
-    /// <inheritdoc cref="ClientLocaleAwareDto.TimezoneFormat"/>
-    public TimezoneFormat TimezoneFormat { get; set; } = TimezoneFormat.JavaScript;
-
-    [Required]
-    public string Language { get; set; } = string.Empty;
 }

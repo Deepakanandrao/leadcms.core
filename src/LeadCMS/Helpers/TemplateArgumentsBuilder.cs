@@ -36,44 +36,48 @@ public static class TemplateArgumentsBuilder
         }
 
         // Scalar contact fields
-        args["Email"] = contact.Email ?? string.Empty;
-        args["FirstName"] = contact.FirstName ?? string.Empty;
-        args["LastName"] = contact.LastName ?? string.Empty;
-        args["FullName"] = contact.FullName
-            ?? BuildFullName(contact.FirstName, contact.MiddleName, contact.LastName);
-        args["MiddleName"] = contact.MiddleName ?? string.Empty;
-        args["Prefix"] = contact.Prefix ?? string.Empty;
-        args["Phone"] = contact.Phone ?? string.Empty;
-        args["JobTitle"] = contact.JobTitle ?? string.Empty;
-        args["CompanyName"] = contact.CompanyName ?? string.Empty;
-        args["Department"] = contact.Department ?? string.Empty;
-        args["CityName"] = contact.CityName ?? string.Empty;
-        args["State"] = contact.State ?? string.Empty;
-        args["Zip"] = contact.Zip ?? string.Empty;
-        args["Address1"] = contact.Address1 ?? string.Empty;
-        args["Address2"] = contact.Address2 ?? string.Empty;
-        args["Language"] = contact.Language ?? string.Empty;
-        args["CountryCode"] = contact.CountryCode?.ToString() ?? string.Empty;
-        args["ContinentCode"] = contact.ContinentCode?.ToString() ?? string.Empty;
-        args["Birthday"] = contact.Birthday?.ToString("yyyy-MM-dd") ?? string.Empty;
-        args["Timezone"] = contact.Timezone?.ToString() ?? string.Empty;
-        args["TimezoneFormatted"] = contact.Timezone.HasValue
+        AddIfHasValue(args, "Email", contact.Email);
+        AddIfHasValue(args, "FirstName", contact.FirstName);
+        AddIfHasValue(args, "LastName", contact.LastName);
+        AddIfHasValue(
+            args,
+            "FullName",
+            contact.FullName ?? BuildFullName(contact.FirstName, contact.MiddleName, contact.LastName));
+        AddIfHasValue(args, "MiddleName", contact.MiddleName);
+        AddIfHasValue(args, "Prefix", contact.Prefix);
+        AddIfHasValue(args, "Phone", contact.Phone);
+        AddIfHasValue(args, "JobTitle", contact.JobTitle);
+        AddIfHasValue(args, "CompanyName", contact.CompanyName);
+        AddIfHasValue(args, "Department", contact.Department);
+        AddIfHasValue(args, "CityName", contact.CityName);
+        AddIfHasValue(args, "State", contact.State);
+        AddIfHasValue(args, "Zip", contact.Zip);
+        AddIfHasValue(args, "Address1", contact.Address1);
+        AddIfHasValue(args, "Address2", contact.Address2);
+        AddIfHasValue(args, "Language", contact.Language);
+        AddIfHasValue(args, "CountryCode", contact.CountryCode?.ToString());
+        AddIfHasValue(args, "ContinentCode", contact.ContinentCode?.ToString());
+        var formattedTimezone = contact.Timezone.HasValue
             ? TimezoneHelper.FormatUtcOffset(contact.Timezone.Value)
-            : string.Empty;
-        args["IpAddress"] = contact.UpdatedByIp ?? contact.CreatedByIp ?? string.Empty;
+            : null;
+
+        AddIfHasValue(args, "Birthday", contact.Birthday?.ToString("yyyy-MM-dd"));
+        AddIfHasValue(args, "Timezone", contact.Timezone?.ToString());
+        AddIfHasValue(args, "TimezoneFormatted", formattedTimezone);
+        AddIfHasValue(args, "IpAddress", contact.UpdatedByIp ?? contact.CreatedByIp);
         args["DealsCount"] = contact.DealsCount;
         args["OrdersCount"] = contact.OrdersCount;
-        args["LastOrderDate"] = contact.LastOrderDate?.ToString("yyyy-MM-dd") ?? string.Empty;
+        AddIfHasValue(args, "LastOrderDate", contact.LastOrderDate?.ToString("yyyy-MM-dd"));
         args["TotalRevenue"] = contact.TotalRevenue;
         args["Tags"] = contact.Tags?.ToList() ?? new List<string>();
         args["SocialMedia"] = contact.SocialMedia ?? new Dictionary<string, string>();
 
         // Account fields (flattened for backwards compatibility + nested object)
-        args["AccountName"] = contact.Account?.Name ?? string.Empty;
-        args["AccountSiteUrl"] = contact.Account?.SiteUrl ?? string.Empty;
+        AddIfHasValue(args, "AccountName", contact.Account?.Name);
+        AddIfHasValue(args, "AccountSiteUrl", contact.Account?.SiteUrl);
 
         // Domain fields (flattened for backwards compatibility + nested object)
-        args["DomainName"] = contact.Domain?.Name ?? string.Empty;
+        AddIfHasValue(args, "DomainName", contact.Domain?.Name);
 
         if (includeNestedObjects)
         {
@@ -190,6 +194,14 @@ public static class TemplateArgumentsBuilder
         }
 
         return args;
+    }
+
+    private static void AddIfHasValue(Dictionary<string, object> args, string key, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            args[key] = value;
+        }
     }
 
     /// <summary>

@@ -25,9 +25,14 @@ public sealed class SubscriptionTokenPayload
     public string Language { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets or sets the subscriber's timezone offset.
+    /// Gets or sets the subscriber's timezone offset in minutes (UTC convention).
     /// </summary>
-    public int TimeZoneOffset { get; set; }
+    public int Timezone { get; set; }
+
+    /// <summary>
+    /// Gets or sets contact tags requested during subscription.
+    /// </summary>
+    public string[] Tags { get; set; } = Array.Empty<string>();
 
     /// <summary>
     /// Gets or sets the UTC time at which the token expires.

@@ -3,11 +3,15 @@
 // </copyright>
 
 using LeadCMS.DTOs;
+using LeadCMS.Helpers;
 
 namespace LeadCMS.Plugin.Site.DTOs;
 
 /// <summary>
 /// Represents information about a captured lead for notification purposes.
+/// Contains the actual submitted data so that notifications and email templates
+/// always reflect what the user entered, regardless of what is stored in the
+/// contact record (which uses an anti-abuse merge policy).
 /// </summary>
 public class LeadNotificationInfo
 {
@@ -45,8 +49,10 @@ public class LeadNotificationInfo
 
     /// <summary>
     /// Gets or sets the company name of the lead.
+    /// Unified with <c>Contact.CompanyName</c> — both map to the <c>CompanyName</c>
+    /// template argument.
     /// </summary>
-    public string? Company { get; set; }
+    public string? CompanyName { get; set; }
 
     /// <summary>
     /// Gets or sets the subject of the inquiry.
@@ -79,9 +85,11 @@ public class LeadNotificationInfo
     public List<AttachmentDto>? Attachments { get; set; }
 
     /// <summary>
-    /// Gets or sets the user's time zone offset in minutes.
+    /// Gets or sets the user's time zone offset in minutes (UTC convention).
+    /// Unified with <c>Contact.Timezone</c> — both map to the <c>Timezone</c>
+    /// template argument.
     /// </summary>
-    public int? TimeZoneOffset { get; set; }
+    public int? Timezone { get; set; }
 
     /// <summary>
     /// Gets or sets the user's IP address.
@@ -99,9 +107,9 @@ public class LeadNotificationInfo
     public int? ContactId { get; set; }
 
     /// <summary>
-    /// Gets the full name of the lead.
+    /// Gets the full name of the lead, or <c>null</c> when neither first nor last name is set.
     /// </summary>
-    public string FullName
+    public string? FullName
     {
         get
         {
@@ -116,7 +124,60 @@ public class LeadNotificationInfo
                 parts.Add(LastName);
             }
 
-            return parts.Count > 0 ? string.Join(" ", parts) : "-";
+            return parts.Count > 0 ? string.Join(" ", parts) : null;
+        }
+    }
+
+    /// <summary>
+    /// Converts the lead submission data into template arguments using canonical
+    /// parameter names that are consistent with <see cref="TemplateArgumentsBuilder.FromContact"/>.
+    /// When merged on top of contact-based arguments via
+    /// <see cref="TemplateArgumentsBuilder.Merge"/>, the submitted values take precedence
+    /// over stale database values, ensuring notifications reflect what the user actually entered.
+    /// </summary>
+    /// <returns>A case-insensitive dictionary of template arguments.</returns>
+    public Dictionary<string, object> ToTemplateArguments()
+    {
+        var args = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
+        // Core contact fields — same canonical names as TemplateArgumentsBuilder.FromContact
+        AddIfHasValue(args, "Email", Email);
+        AddIfHasValue(args, "FirstName", FirstName);
+        AddIfHasValue(args, "LastName", LastName);
+        AddIfHasValue(args, "FullName", FullName);
+        AddIfHasValue(args, "Phone", Phone);
+        AddIfHasValue(args, "CompanyName", CompanyName);
+        AddIfHasValue(args, "Language", Language);
+        AddIfHasValue(args, "IpAddress", IpAddress);
+        AddIfHasValue(args, "UserAgent", UserAgent);
+        AddIfHasValue(args, "ContactId", ContactId?.ToString());
+
+        if (Timezone.HasValue)
+        {
+            args["Timezone"] = Timezone.Value.ToString();
+            args["TimezoneFormatted"] = TimezoneHelper.FormatUtcOffset(Timezone.Value);
+        }
+
+        // Lead-specific fields (not present on Contact)
+        AddIfHasValue(args, "Title", Title);
+        AddIfHasValue(args, "Subject", Subject);
+        AddIfHasValue(args, "Message", Message);
+        AddIfHasValue(args, "PageUrl", PageUrl);
+
+        // Extra data entries are added as top-level template arguments
+        foreach (var item in ExtraData)
+        {
+            args[item.Key] = item.Value;
+        }
+
+        return args;
+    }
+
+    private static void AddIfHasValue(Dictionary<string, object> args, string key, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            args[key] = value;
         }
     }
 }

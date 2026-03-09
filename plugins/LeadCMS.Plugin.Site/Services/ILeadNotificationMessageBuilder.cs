@@ -7,16 +7,20 @@ using LeadCMS.Plugin.Site.DTOs;
 namespace LeadCMS.Plugin.Site.Services;
 
 /// <summary>
-/// Builds channel-specific lead notification payloads.
+/// Extension point for lead notification message formatting.
+/// Implementations can add computed fields (e.g. device summary from User-Agent)
+/// to the template arguments built by <see cref="LeadNotificationInfo.ToTemplateArguments"/>.
 /// </summary>
 public interface ILeadNotificationMessageBuilder
 {
     /// <summary>
-    /// Builds email template arguments from lead data.
+    /// Enriches an existing template arguments dictionary with additional computed
+    /// fields specific to the notification channel (e.g. parsed user-agent details).
+    /// The <paramref name="args"/> dictionary is mutated in place.
     /// </summary>
-    /// <param name="leadInfo">Lead notification info.</param>
-    /// <returns>Template arguments dictionary.</returns>
-    Dictionary<string, object> BuildEmailTemplateArguments(LeadNotificationInfo leadInfo);
+    /// <param name="args">The template arguments dictionary to enrich.</param>
+    /// <param name="leadInfo">The lead notification data.</param>
+    void EnrichTemplateArguments(Dictionary<string, object> args, LeadNotificationInfo leadInfo);
 
     /// <summary>
     /// Builds plain text lead notification content for channels like Telegram and Slack.

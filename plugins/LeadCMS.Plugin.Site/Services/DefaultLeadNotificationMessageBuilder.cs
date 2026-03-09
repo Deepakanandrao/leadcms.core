@@ -3,6 +3,7 @@
 // </copyright>
 
 using System.Text;
+using LeadCMS.Helpers;
 using LeadCMS.Plugin.Site.DTOs;
 using UAParser;
 
@@ -10,190 +11,46 @@ namespace LeadCMS.Plugin.Site.Services;
 
 /// <summary>
 /// Default implementation for Site lead notification message formatting.
+/// Enriches template arguments with user-agent device summary and builds
+/// plain-text messages for Telegram/Slack.
 /// </summary>
 public class DefaultLeadNotificationMessageBuilder : ILeadNotificationMessageBuilder
 {
     /// <inheritdoc/>
-    public virtual Dictionary<string, object> BuildEmailTemplateArguments(LeadNotificationInfo leadInfo)
+    public virtual void EnrichTemplateArguments(Dictionary<string, object> args, LeadNotificationInfo leadInfo)
     {
-        var templateArgs = new Dictionary<string, object>();
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.Email))
+        if (string.IsNullOrWhiteSpace(leadInfo.UserAgent))
         {
-            templateArgs.Add("email", leadInfo.Email);
-            templateArgs.Add("fromEmail", leadInfo.Email);
+            return;
         }
 
-        if (!string.IsNullOrWhiteSpace(leadInfo.FirstName))
+        try
         {
-            templateArgs.Add("firstName", leadInfo.FirstName);
-        }
+            var clientInfo = Parser.GetDefault().Parse(leadInfo.UserAgent);
 
-        if (!string.IsNullOrWhiteSpace(leadInfo.LastName))
-        {
-            templateArgs.Add("lastName", leadInfo.LastName);
-        }
+            var userAgentVersion = ComposeVersion(clientInfo.UA.Major, clientInfo.UA.Minor, clientInfo.UA.Patch);
 
-        if (!string.IsNullOrWhiteSpace(leadInfo.FullName))
-        {
-            templateArgs.Add("fullName", leadInfo.FullName);
-        }
+            var osVersion = ComposeVersion(clientInfo.OS.Major, clientInfo.OS.Minor, clientInfo.OS.Patch, clientInfo.OS.PatchMinor);
 
-        if (!string.IsNullOrWhiteSpace(leadInfo.Company))
-        {
-            templateArgs.Add("company", leadInfo.Company);
-        }
+            var userDeviceSummary = BuildUserDeviceSummary(
+                clientInfo.Device.Brand,
+                clientInfo.Device.Model,
+                clientInfo.Device.Family,
+                clientInfo.OS.Family,
+                osVersion,
+                clientInfo.UA.Family,
+                userAgentVersion);
 
-        if (!string.IsNullOrWhiteSpace(leadInfo.Subject))
-        {
-            templateArgs.Add("subject", leadInfo.Subject);
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.Message))
-        {
-            templateArgs.Add("message", leadInfo.Message);
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.Title))
-        {
-            templateArgs.Add("title", leadInfo.Title);
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.Phone))
-        {
-            templateArgs.Add("phone", leadInfo.Phone);
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.PageUrl))
-        {
-            templateArgs.Add("pageUrl", leadInfo.PageUrl);
-        }
-
-        var timeZoneText = FormatTimeZoneOffset(leadInfo.TimeZoneOffset);
-        if (!string.IsNullOrWhiteSpace(timeZoneText))
-        {
-            templateArgs.Add("timezone", timeZoneText);
-            templateArgs.Add("timeZoneOffset", timeZoneText);
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.IpAddress))
-        {
-            templateArgs.Add("ipAddress", leadInfo.IpAddress);
-        }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.UserAgent))
-        {
-            templateArgs.Add("userAgent", leadInfo.UserAgent);
-
-            try
+            if (!string.IsNullOrWhiteSpace(userDeviceSummary))
             {
-                var clientInfo = Parser.GetDefault().Parse(leadInfo.UserAgent);
-
-                if (!string.IsNullOrWhiteSpace(clientInfo.UA.Family))
-                {
-                    templateArgs["userAgentFamily"] = clientInfo.UA.Family;
-                }
-
-                if (!string.IsNullOrWhiteSpace(clientInfo.UA.Major))
-                {
-                    templateArgs["userAgentMajor"] = clientInfo.UA.Major;
-                }
-
-                if (!string.IsNullOrWhiteSpace(clientInfo.UA.Minor))
-                {
-                    templateArgs["userAgentMinor"] = clientInfo.UA.Minor;
-                }
-
-                if (!string.IsNullOrWhiteSpace(clientInfo.UA.Patch))
-                {
-                    templateArgs["userAgentPatch"] = clientInfo.UA.Patch;
-                }
-
-                var userAgentVersion = ComposeVersion(clientInfo.UA.Major, clientInfo.UA.Minor, clientInfo.UA.Patch);
-                if (!string.IsNullOrWhiteSpace(userAgentVersion))
-                {
-                    templateArgs["userAgentVersion"] = userAgentVersion;
-                }
-
-                if (!string.IsNullOrWhiteSpace(clientInfo.OS.Family))
-                {
-                    templateArgs["osFamily"] = clientInfo.OS.Family;
-                }
-
-                if (!string.IsNullOrWhiteSpace(clientInfo.OS.Major))
-                {
-                    templateArgs["osMajor"] = clientInfo.OS.Major;
-                }
-
-                if (!string.IsNullOrWhiteSpace(clientInfo.OS.Minor))
-                {
-                    templateArgs["osMinor"] = clientInfo.OS.Minor;
-                }
-
-                if (!string.IsNullOrWhiteSpace(clientInfo.OS.Patch))
-                {
-                    templateArgs["osPatch"] = clientInfo.OS.Patch;
-                }
-
-                if (!string.IsNullOrWhiteSpace(clientInfo.OS.PatchMinor))
-                {
-                    templateArgs["osPatchMinor"] = clientInfo.OS.PatchMinor;
-                }
-
-                var osVersion = ComposeVersion(clientInfo.OS.Major, clientInfo.OS.Minor, clientInfo.OS.Patch, clientInfo.OS.PatchMinor);
-                if (!string.IsNullOrWhiteSpace(osVersion))
-                {
-                    templateArgs["osVersion"] = osVersion;
-                }
-
-                if (!string.IsNullOrWhiteSpace(clientInfo.Device.Family))
-                {
-                    templateArgs["deviceFamily"] = clientInfo.Device.Family;
-                }
-
-                if (!string.IsNullOrWhiteSpace(clientInfo.Device.Brand))
-                {
-                    templateArgs["deviceBrand"] = clientInfo.Device.Brand;
-                }
-
-                if (!string.IsNullOrWhiteSpace(clientInfo.Device.Model))
-                {
-                    templateArgs["deviceModel"] = clientInfo.Device.Model;
-                }
-
-                var userDeviceSummary = BuildUserDeviceSummary(
-                    clientInfo.Device.Brand,
-                    clientInfo.Device.Model,
-                    clientInfo.Device.Family,
-                    clientInfo.OS.Family,
-                    osVersion,
-                    clientInfo.UA.Family,
-                    userAgentVersion);
-
-                if (!string.IsNullOrWhiteSpace(userDeviceSummary))
-                {
-                    templateArgs["userDeviceSummary"] = userDeviceSummary;
-                }
-            }
-            catch (Exception)
-            {
-                templateArgs["userAgentParseFailed"] = true;
-                templateArgs["userDeviceSummary"] = leadInfo.UserAgent;
+                args["userDeviceSummary"] = userDeviceSummary;
             }
         }
-
-        if (!string.IsNullOrWhiteSpace(leadInfo.Language))
+        catch (Exception)
         {
-            templateArgs.Add("language", leadInfo.Language);
+            args["userAgentParseFailed"] = true;
+            args["userDeviceSummary"] = leadInfo.UserAgent;
         }
-
-        foreach (var item in leadInfo.ExtraData)
-        {
-            templateArgs.Add($"{item.Key}", item.Value);
-            templateArgs.Add($"extraData[{item.Key}]", item.Value);
-        }
-
-        return templateArgs;
     }
 
     /// <inheritdoc/>
@@ -206,16 +63,20 @@ public class DefaultLeadNotificationMessageBuilder : ILeadNotificationMessageBui
             : "New lead captured";
 
         sb.AppendLine($"📩 {title}");
-        sb.AppendLine($"✔️ Name: {leadInfo.FullName}");
+
+        if (!string.IsNullOrWhiteSpace(leadInfo.FullName))
+        {
+            sb.AppendLine($"✔️ Name: {leadInfo.FullName}");
+        }
 
         if (!string.IsNullOrWhiteSpace(leadInfo.Phone))
         {
             sb.AppendLine($"✔️ Phone: {leadInfo.Phone}");
         }
 
-        if (!string.IsNullOrWhiteSpace(leadInfo.Company))
+        if (!string.IsNullOrWhiteSpace(leadInfo.CompanyName))
         {
-            sb.AppendLine($"✔️ Company: {leadInfo.Company}");
+            sb.AppendLine($"✔️ Company: {leadInfo.CompanyName}");
         }
 
         if (!string.IsNullOrWhiteSpace(leadInfo.Email))
@@ -233,10 +94,9 @@ public class DefaultLeadNotificationMessageBuilder : ILeadNotificationMessageBui
             sb.AppendLine($"✔️ Subject: {leadInfo.Subject}");
         }
 
-        var timeZoneText = FormatTimeZoneOffset(leadInfo.TimeZoneOffset);
-        if (!string.IsNullOrWhiteSpace(timeZoneText))
+        if (leadInfo.Timezone.HasValue)
         {
-            sb.AppendLine($"✔️ Timezone: {timeZoneText}");
+            sb.AppendLine($"✔️ Timezone: {TimezoneHelper.FormatUtcOffset(leadInfo.Timezone.Value)}");
         }
 
         if (!string.IsNullOrWhiteSpace(leadInfo.Language))
@@ -260,19 +120,6 @@ public class DefaultLeadNotificationMessageBuilder : ILeadNotificationMessageBui
         }
 
         return sb.ToString().TrimEnd(',', ' ', '\n', '\r');
-    }
-
-    protected static string? FormatTimeZoneOffset(int? offsetMinutes)
-    {
-        if (!offsetMinutes.HasValue)
-        {
-            return null;
-        }
-
-        var offset = TimeSpan.FromMinutes(offsetMinutes.Value);
-        var sign = offset >= TimeSpan.Zero ? "+" : "-";
-        var absolute = offset.Duration();
-        return $"UTC{sign}{absolute:hh\\:mm}";
     }
 
     protected static string? ComposeVersion(params string?[] versionParts)

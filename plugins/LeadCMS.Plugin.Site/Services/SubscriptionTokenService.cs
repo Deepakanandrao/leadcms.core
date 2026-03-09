@@ -32,14 +32,19 @@ public class SubscriptionTokenService : ISubscriptionTokenService
     }
 
     /// <inheritdoc/>
-    public string Generate(string email, string group, string language, int timeZoneOffset, TimeSpan? expiry = null)
+    public string Generate(string email, string group, string language, int timezone, string[]? tags = null, TimeSpan? expiry = null)
     {
         var payload = new SubscriptionTokenPayload
         {
             Email = email.ToLowerInvariant(),
             Group = group,
             Language = language,
-            TimeZoneOffset = timeZoneOffset,
+            Timezone = timezone,
+            Tags = tags?
+                .Where(tag => !string.IsNullOrWhiteSpace(tag))
+                .Select(tag => tag.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray() ?? Array.Empty<string>(),
             ExpiresAtUtc = DateTime.UtcNow.Add(expiry ?? DefaultExpiry),
         };
 

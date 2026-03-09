@@ -79,33 +79,48 @@ namespace LeadCMS.Services
             }
         }
 
-        public async Task<Contact> FindOrCreate(string email, string? language = null, int? timezone = null)
+        public async Task<Contact> FindOrCreate(string email, string? ipAddress = null, string? userAgent = null)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(email);
 
-            var customer = pgDbContext.Contacts!.FirstOrDefault(c => c.Email == email);
+            return await FindOrCreateByIdentifiers(email, null, ipAddress, userAgent);
+        }
 
-            if (customer == null)
+        public async Task<Contact> FindOrCreateByIdentifiers(string? email = null, string? phone = null, string? ipAddress = null, string? userAgent = null)
+        {
+            email = NormalizeEmail(email);
+
+            if (string.IsNullOrWhiteSpace(email) && string.IsNullOrWhiteSpace(phone) && (string.IsNullOrWhiteSpace(ipAddress) || string.IsNullOrWhiteSpace(userAgent)))
             {
-                customer = new Contact
+                throw new ArgumentException("At least one identifier must be provided.");
+            }
+
+            var contact = FindExistingContactByPriority(email, phone, ipAddress, userAgent);
+
+            if (contact == null)
+            {
+                contact = new Contact();
+            }
+
+            if (!string.IsNullOrWhiteSpace(email) && string.IsNullOrWhiteSpace(contact.Email))
+            {
+                contact.Email = email;
+            }
+
+            if (!string.IsNullOrWhiteSpace(phone))
+            {
+                contact.PhoneRaw = phone;
+
+                var normalized = phoneNormalizationService.Normalize(phone);
+                if (!string.IsNullOrWhiteSpace(normalized))
                 {
-                    Email = email,
-                };
+                    contact.Phone = normalized;
+                }
             }
 
-            if (timezone.HasValue)
-            {
-                customer.Timezone = timezone.Value;
-            }
+            await SaveAsync(contact);
 
-            if (!string.IsNullOrWhiteSpace(language))
-            {
-                customer.Language = language;
-            }
-
-            await SaveAsync(customer);
-
-            return customer;
+            return contact;
         }
 
         public async Task Subscribe(Contact contact, string groupName)
@@ -123,12 +138,13 @@ namespace LeadCMS.Services
             {
                 Contact = contact,
                 Schedule = emailSchedule,
-                CreatedAt = DateTime.UtcNow,
             });
         }
 
-        public async Task Unsubscribe(string email, string reason, string source, DateTime createdAt, string? ip)
+        public async Task Unsubscribe(string email, string reason, string source, DateTime? createdAt = null)
         {
+            email = NormalizeEmail(email) ?? email;
+
             var contact = (from u in pgDbContext.Contacts
                            where u.Email == email
                            select u).FirstOrDefault();
@@ -139,10 +155,13 @@ namespace LeadCMS.Services
                 {
                     ContactId = contact.Id,
                     Reason = reason,
-                    CreatedByIp = ip,
                     Source = source,
-                    CreatedAt = createdAt,
                 };
+
+                if (createdAt.HasValue)
+                {
+                    unsubscribe.CreatedAt = createdAt.Value;
+                }
 
                 await pgDbContext.Unsubscribes!.AddAsync(unsubscribe);
 
@@ -168,49 +187,89 @@ namespace LeadCMS.Services
             emailSchedulingService.SetDBContext(pgDbContext);
         }
 
-        public async Task<Contact> FindOrCreateByPhone(string phone, string? language = null, int? timezone = null)
+        public async Task<Contact> FindOrCreateByPhone(string phone, string? ipAddress = null, string? userAgent = null)
         {
-            var normalized = phoneNormalizationService.Normalize(phone);
+            return await FindOrCreateByIdentifiers(null, phone, ipAddress, userAgent);
+        }
 
-            Contact? contact = null;
+        public async Task<Contact> FindOrCreatePotential(string ipAddress, string userAgent)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(ipAddress);
+            ArgumentException.ThrowIfNullOrWhiteSpace(userAgent);
 
-            if (normalized != null)
-            {
-                contact = pgDbContext.Contacts!.FirstOrDefault(c => c.Phone == normalized);
-            }
+            var contact = FindPotentialContact(ipAddress, userAgent);
 
-            // Fall back to raw phone search if normalization failed or no match found
-            if (contact == null && normalized == null)
-            {
-                contact = pgDbContext.Contacts!.FirstOrDefault(c => c.PhoneRaw == phone);
-            }
-
-            if (contact == null)
-            {
-                contact = new Contact
-                {
-                    PhoneRaw = phone,
-                };
-
-                if (normalized != null)
-                {
-                    contact.Phone = normalized;
-                }
-            }
-
-            if (timezone.HasValue)
-            {
-                contact.Timezone = timezone.Value;
-            }
-
-            if (!string.IsNullOrWhiteSpace(language))
-            {
-                contact.Language = language;
-            }
-
+            contact ??= new Contact();
             await SaveAsync(contact);
 
             return contact;
+        }
+
+        private static string? NormalizeEmail(string? email)
+        {
+            return string.IsNullOrWhiteSpace(email)
+                ? null
+                : email.Trim().ToLowerInvariant();
+        }
+
+        private Contact? FindPotentialContact(string? ipAddress, string? userAgent)
+        {
+            if (string.IsNullOrWhiteSpace(ipAddress) || string.IsNullOrWhiteSpace(userAgent))
+            {
+                return null;
+            }
+
+            return pgDbContext.Contacts!
+                .Where(c =>
+                    string.IsNullOrWhiteSpace(c.Email)
+                    && string.IsNullOrWhiteSpace(c.Phone)
+                    && string.IsNullOrWhiteSpace(c.PhoneRaw)
+                    && c.CreatedByIp == ipAddress
+                    && c.CreatedByUserAgent == userAgent)
+                .OrderByDescending(c => c.UpdatedAt ?? c.CreatedAt)
+                .FirstOrDefault();
+        }
+
+        private Contact? FindExistingContactByPriority(string? email, string? phone, string? ipAddress, string? userAgent)
+        {
+            var normalizedEmail = NormalizeEmail(email);
+
+            if (!string.IsNullOrWhiteSpace(normalizedEmail))
+            {
+                var emailMatch = pgDbContext.Contacts!.FirstOrDefault(c => c.Email == normalizedEmail);
+                if (emailMatch != null)
+                {
+                    return emailMatch;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(phone))
+            {
+                var exactPhoneMatch = pgDbContext.Contacts!.FirstOrDefault(c => c.Phone == phone);
+                if (exactPhoneMatch != null)
+                {
+                    return exactPhoneMatch;
+                }
+
+                var normalized = phoneNormalizationService.Normalize(phone);
+
+                if (!string.IsNullOrWhiteSpace(normalized))
+                {
+                    var normalizedPhoneMatch = pgDbContext.Contacts!.FirstOrDefault(c => c.Phone == normalized);
+                    if (normalizedPhoneMatch != null)
+                    {
+                        return normalizedPhoneMatch;
+                    }
+                }
+
+                var rawPhoneMatch = pgDbContext.Contacts!.FirstOrDefault(c => c.PhoneRaw == phone);
+                if (rawPhoneMatch != null)
+                {
+                    return rawPhoneMatch;
+                }
+            }
+
+            return FindPotentialContact(ipAddress, userAgent);
         }
 
         private async Task EnrichWithDomainId(Contact contact)

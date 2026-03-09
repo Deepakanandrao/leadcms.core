@@ -65,7 +65,7 @@ public class SyncSuppressionsTask : BaseTask
 
             foreach (var supression in supressions)
             {
-                await contactService.Unsubscribe(supression.Email, supression.GetReason(), source, supression.CreatedAt, null);
+                await contactService.Unsubscribe(supression.Email, supression.GetReason(), source, supression.CreatedAt);
             }
         }
 

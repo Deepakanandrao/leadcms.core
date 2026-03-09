@@ -10,10 +10,14 @@ namespace LeadCMS.Interfaces
     {
         Task Subscribe(Contact contact, string groupName);
 
-        Task Unsubscribe(string email, string reason, string source, DateTime createdAt, string? ip);
+        Task Unsubscribe(string email, string reason, string source, DateTime? createdAt = null);
 
-        Task<Contact> FindOrCreate(string email, string? language = null, int? timezone = null);
+        Task<Contact> FindOrCreateByIdentifiers(string? email = null, string? phone = null, string? ipAddress = null, string? userAgent = null);
 
-        Task<Contact> FindOrCreateByPhone(string phone, string? language = null, int? timezone = null);
+        Task<Contact> FindOrCreate(string email, string? ipAddress = null, string? userAgent = null);
+
+        Task<Contact> FindOrCreateByPhone(string phone, string? ipAddress = null, string? userAgent = null);
+
+        Task<Contact> FindOrCreatePotential(string ipAddress, string userAgent);
     }
 }
