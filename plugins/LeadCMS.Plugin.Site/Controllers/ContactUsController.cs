@@ -223,6 +223,7 @@ public class ContactUsController : Controller
     {
         return new LeadNotificationInfo
         {
+            Phone = contactUsDto.Phone,
             Title = string.IsNullOrWhiteSpace(contactUsDto.Title)
                 ? "New contact form submission"
                 : contactUsDto.Title,

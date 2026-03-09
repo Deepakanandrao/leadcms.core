@@ -45,7 +45,7 @@ public static class TemplateArgumentsBuilder
             contact.FullName ?? BuildFullName(contact.FirstName, contact.MiddleName, contact.LastName));
         AddIfHasValue(args, "MiddleName", contact.MiddleName);
         AddIfHasValue(args, "Prefix", contact.Prefix);
-        AddIfHasValue(args, "Phone", contact.Phone);
+        AddIfHasValue(args, "Phone", contact.Phone ?? contact.PhoneRaw);
         AddIfHasValue(args, "JobTitle", contact.JobTitle);
         AddIfHasValue(args, "CompanyName", contact.CompanyName);
         AddIfHasValue(args, "Department", contact.Department);
