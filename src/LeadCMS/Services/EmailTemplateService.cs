@@ -222,6 +222,8 @@ public class EmailTemplateService : IEmailTemplateService
         contact.ContinentCode = Continent.NA;
         contact.Birthday = new DateTime(1990, 6, 15, 0, 0, 0, DateTimeKind.Utc);
         contact.Timezone = -300;
+        contact.CreatedByIp = "198.51.100.10";
+        contact.UpdatedByIp = "203.0.113.20";
         contact.DealsCount = 2;
         contact.OrdersCount = 3;
         contact.LastOrderDate = new DateTime(2025, 11, 20, 0, 0, 0, DateTimeKind.Utc);

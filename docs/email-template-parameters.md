@@ -40,6 +40,7 @@ These are the core top-level variables added by `TemplateArgumentsBuilder.FromCo
 - `{{ Birthday }}` (format: `yyyy-MM-dd`)
 - `{{ Timezone }}`
 - `{{ TimezoneFormatted }}`
+- `{{ IpAddress }}` (prefers `UpdatedByIp`; falls back to `CreatedByIp`)
 - `{{ LastOrderDate }}` (format: `yyyy-MM-dd`)
 
 ### Contact numeric/list/map parameters

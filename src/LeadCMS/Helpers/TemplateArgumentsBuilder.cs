@@ -60,6 +60,7 @@ public static class TemplateArgumentsBuilder
         args["TimezoneFormatted"] = contact.Timezone.HasValue
             ? TimezoneHelper.FormatUtcOffset(contact.Timezone.Value)
             : string.Empty;
+        args["IpAddress"] = contact.UpdatedByIp ?? contact.CreatedByIp ?? string.Empty;
         args["DealsCount"] = contact.DealsCount;
         args["OrdersCount"] = contact.OrdersCount;
         args["LastOrderDate"] = contact.LastOrderDate?.ToString("yyyy-MM-dd") ?? string.Empty;
