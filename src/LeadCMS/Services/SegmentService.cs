@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Globalization;
 using System.Linq.Expressions;
 using AutoMapper;
 using LeadCMS.Data;
@@ -19,6 +20,7 @@ public class SegmentService : ISegmentService
     {
         ["orders"] = ("Orders", typeof(Order)),
         ["deals"] = ("Deals", typeof(Deal)),
+        ["emailLogs"] = ("EmailLogs", typeof(EmailLog)),
     };
 
     private static readonly Dictionary<string, Dictionary<string, (string PropertyName, Type ElementType)>> SubCollectionNavigations = new(StringComparer.OrdinalIgnoreCase)
@@ -702,6 +704,26 @@ public class SegmentService : ISegmentService
             };
         }
 
+        if (entityType == typeof(EmailLog))
+        {
+            return fieldId switch
+            {
+                "recipients" => "Recipients",
+                "fromEmail" => "FromEmail",
+                "subject" => "Subject",
+                "htmlBody" => "HtmlBody",
+                "textBody" => "TextBody",
+                "messageId" => "MessageId",
+                "status" => "Status",
+                "createdAt" => "CreatedAt",
+                "contactId" => "ContactId",
+                "campaignId" => "CampaignId",
+                "scheduleId" => "ScheduleId",
+                "templateId" => "TemplateId",
+                _ => fieldId,
+            };
+        }
+
         return fieldId;
     }
 
@@ -1078,7 +1100,22 @@ public class SegmentService : ISegmentService
 
             if (targetType == typeof(DateTime) || targetType == typeof(DateTime?))
             {
-                return Convert.ToDateTime(value);
+                var parsedDateTime = value switch
+                {
+                    DateTime dateTime => dateTime,
+                    string stringValue => DateTime.Parse(
+                        stringValue,
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.RoundtripKind | DateTimeStyles.AllowWhiteSpaces),
+                    _ => Convert.ToDateTime(value, CultureInfo.InvariantCulture),
+                };
+
+                return parsedDateTime.Kind switch
+                {
+                    DateTimeKind.Utc => parsedDateTime,
+                    DateTimeKind.Local => parsedDateTime.ToUniversalTime(),
+                    _ => DateTime.SpecifyKind(parsedDateTime, DateTimeKind.Utc),
+                };
             }
 
             if (targetType == typeof(decimal) || targetType == typeof(decimal?))

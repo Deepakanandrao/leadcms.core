@@ -140,6 +140,9 @@ public class Contact : BaseEntity, ICommentable
     [JsonIgnore]
     public virtual ICollection<Deal>? Deals { get; set; }
 
+    [JsonIgnore]
+    public virtual ICollection<EmailLog>? EmailLogs { get; set; }
+
     public static string GetCommentableType()
     {
         return "Contact";

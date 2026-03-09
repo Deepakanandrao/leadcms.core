@@ -22,6 +22,7 @@ public class SegmentsTests : BaseTestAutoLogin
         TrackEntityType<Deal>();
         TrackEntityType<DealPipeline>();
         TrackEntityType<DealPipelineStage>();
+        TrackEntityType<EmailLog>();
         TrackEntityType<Account>();
         TrackEntityType<Unsubscribe>();
     }
@@ -1423,6 +1424,226 @@ public class SegmentsTests : BaseTestAutoLogin
         preview!.ContactCount.Should().Be(1);
         preview.Contacts.Should().ContainSingle();
         preview.Contacts[0].FirstName.Should().Be("HighValue");
+    }
+
+    [Fact]
+    public async Task PreviewSegment_EmailLogsRecipientsContains_DoesNotDuplicateContacts()
+    {
+        var dbContext = App.GetDbContext()!;
+        var marker = $"emaillog-rec-{Guid.NewGuid().ToString()[..8]}";
+
+        var domain = new Domain { Name = $"{marker}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var matchingContact = new Contact
+        {
+            Email = $"match-{marker}@example.test",
+            FirstName = "RecipientMatch",
+            DomainId = domain.Id,
+        };
+        var otherContact = new Contact
+        {
+            Email = $"other-{marker}@example.test",
+            FirstName = "OtherContact",
+            DomainId = domain.Id,
+        };
+
+        dbContext.Contacts!.AddRange(matchingContact, otherContact);
+        await dbContext.SaveChangesAsync();
+
+        await dbContext.EmailLogs!.AddRangeAsync(
+            new EmailLog
+            {
+                ContactId = matchingContact.Id,
+                Subject = "First recipient log",
+                Recipients = $"alpha+{marker}@example.test",
+                FromEmail = "sales@example.test",
+                MessageId = $"msg-{marker}-1",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow.AddMinutes(-10),
+            },
+            new EmailLog
+            {
+                ContactId = matchingContact.Id,
+                Subject = "Second recipient log",
+                Recipients = $"beta+{marker}@example.test",
+                FromEmail = "sales@example.test",
+                MessageId = $"msg-{marker}-2",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow.AddMinutes(-5),
+            },
+            new EmailLog
+            {
+                ContactId = otherContact.Id,
+                Subject = "Non matching recipient log",
+                Recipients = "someone-else@example.test",
+                FromEmail = "sales@example.test",
+                MessageId = $"msg-{marker}-3",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow.AddMinutes(-1),
+            });
+        await dbContext.SaveChangesAsync();
+
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "emailLogs.recipients", Operator = FieldOperator.Contains, Value = marker },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts.Should().ContainSingle();
+        preview.Contacts[0].FirstName.Should().Be("RecipientMatch");
+    }
+
+    [Fact]
+    public async Task PreviewSegment_EmailLogsCreatedAtGreaterThan_MatchesRecentContacts()
+    {
+        var dbContext = App.GetDbContext()!;
+        var marker = $"emaillog-date-{Guid.NewGuid().ToString()[..8]}";
+        var threshold = DateTime.UtcNow.AddHours(-1);
+
+        var domain = new Domain { Name = $"{marker}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var recentContact = new Contact
+        {
+            Email = $"recent-{marker}@example.test",
+            FirstName = "RecentContact",
+            DomainId = domain.Id,
+        };
+        var oldContact = new Contact
+        {
+            Email = $"old-{marker}@example.test",
+            FirstName = "OldContact",
+            DomainId = domain.Id,
+        };
+
+        dbContext.Contacts!.AddRange(recentContact, oldContact);
+        await dbContext.SaveChangesAsync();
+
+        await dbContext.EmailLogs!.AddRangeAsync(
+            new EmailLog
+            {
+                ContactId = recentContact.Id,
+                Subject = $"Recent {marker}",
+                Recipients = recentContact.Email!,
+                FromEmail = "support@example.test",
+                MessageId = $"msg-{marker}-recent",
+                Status = EmailStatus.Sent,
+                CreatedAt = threshold.AddMinutes(5),
+            },
+            new EmailLog
+            {
+                ContactId = oldContact.Id,
+                Subject = $"Old {marker}",
+                Recipients = oldContact.Email!,
+                FromEmail = "support@example.test",
+                MessageId = $"msg-{marker}-old",
+                Status = EmailStatus.Sent,
+                CreatedAt = threshold.AddMinutes(-5),
+            });
+        await dbContext.SaveChangesAsync();
+
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "emailLogs.subject", Operator = FieldOperator.Contains, Value = marker },
+                    new SegmentRule { FieldId = "emailLogs.createdAt", Operator = FieldOperator.GreaterThan, Value = threshold.ToString("O") },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts.Should().ContainSingle();
+        preview.Contacts[0].FirstName.Should().Be("RecentContact");
+    }
+
+    [Fact]
+    public async Task PreviewSegment_EmailLogsFromEmailAndSubjectContains_MatchesContact()
+    {
+        var dbContext = App.GetDbContext()!;
+        var marker = $"emaillog-from-{Guid.NewGuid().ToString()[..8]}";
+
+        var domain = new Domain { Name = $"{marker}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var matchingContact = new Contact
+        {
+            Email = $"frommatch-{marker}@example.test",
+            FirstName = "FromSubjectMatch",
+            DomainId = domain.Id,
+        };
+        var otherContact = new Contact
+        {
+            Email = $"fromother-{marker}@example.test",
+            FirstName = "NoMatch",
+            DomainId = domain.Id,
+        };
+
+        dbContext.Contacts!.AddRange(matchingContact, otherContact);
+        await dbContext.SaveChangesAsync();
+
+        await dbContext.EmailLogs!.AddRangeAsync(
+            new EmailLog
+            {
+                ContactId = matchingContact.Id,
+                Subject = $"Launch plan {marker}",
+                Recipients = matchingContact.Email!,
+                FromEmail = $"marketing-{marker}@example.test",
+                MessageId = $"msg-{marker}-match",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow,
+            },
+            new EmailLog
+            {
+                ContactId = otherContact.Id,
+                Subject = "General update",
+                Recipients = otherContact.Email!,
+                FromEmail = "marketing@example.test",
+                MessageId = $"msg-{marker}-other",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow,
+            });
+        await dbContext.SaveChangesAsync();
+
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "emailLogs.fromEmail", Operator = FieldOperator.Contains, Value = marker },
+                    new SegmentRule { FieldId = "emailLogs.subject", Operator = FieldOperator.Contains, Value = marker },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts.Should().ContainSingle();
+        preview.Contacts[0].FirstName.Should().Be("FromSubjectMatch");
     }
 
     [Fact]
