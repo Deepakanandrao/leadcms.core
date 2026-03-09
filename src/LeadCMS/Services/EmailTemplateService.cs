@@ -63,6 +63,20 @@ public class EmailTemplateService : IEmailTemplateService
         var renderedBody = await liquidTemplateService.RenderAsync(bodySource, templateArgs);
         var renderedSubject = await liquidTemplateService.RenderAsync(dto.Subject, templateArgs);
 
+        var previewContactName = previewContact?.FullName;
+        if (string.IsNullOrWhiteSpace(previewContactName) &&
+            templateArgs.TryGetValue("FullName", out var fullNameValue))
+        {
+            previewContactName = fullNameValue as string;
+        }
+
+        var previewContactEmail = previewContact?.Email;
+        if (string.IsNullOrWhiteSpace(previewContactEmail) &&
+            templateArgs.TryGetValue("Email", out var emailValue))
+        {
+            previewContactEmail = emailValue as string ?? string.Empty;
+        }
+
         return new EmailTemplatePreviewResultDto
         {
             RenderedSubject = renderedSubject,
@@ -70,8 +84,8 @@ public class EmailTemplateService : IEmailTemplateService
             FromEmail = dto.FromEmail,
             FromName = dto.FromName,
             PreviewContactId = previewContact?.Id ?? 0,
-            PreviewContactName = previewContact?.FullName ?? (string)templateArgs["FullName"],
-            PreviewContactEmail = previewContact?.Email ?? (string)templateArgs["Email"],
+            PreviewContactName = previewContactName ?? string.Empty,
+            PreviewContactEmail = previewContactEmail ?? string.Empty,
         };
     }
 
