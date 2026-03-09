@@ -3,6 +3,7 @@
 // </copyright>
 
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Web;
 
 namespace LeadCMS.Models;
@@ -62,6 +63,7 @@ public class Utms
     /// <summary>
     /// Gets a value indicating whether at least one UTM parameter has a non-empty value.
     /// </summary>
+    [JsonIgnore]
     public bool HasValues =>
         !string.IsNullOrWhiteSpace(Source) ||
         !string.IsNullOrWhiteSpace(Medium) ||
