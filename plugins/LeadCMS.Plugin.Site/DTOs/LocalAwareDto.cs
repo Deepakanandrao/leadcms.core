@@ -4,6 +4,7 @@
 
 using System.ComponentModel.DataAnnotations;
 using LeadCMS.Enums;
+using LeadCMS.Models;
 
 namespace LeadCMS.Plugin.Site.DTOs;
 
@@ -13,6 +14,12 @@ public class ClientLocaleAwareDto
     /// Gets or sets client-provided categorisation tags to merge into the contact.
     /// </summary>
     public string[] Tags { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Gets or sets UTM acquisition parameters from the client.
+    /// Stored as first-touch attribution on the contact (not overwritten on subsequent submissions).
+    /// </summary>
+    public Utms? Utms { get; set; }
 
     [Required]
     public int TimeZoneOffset { get; set; }

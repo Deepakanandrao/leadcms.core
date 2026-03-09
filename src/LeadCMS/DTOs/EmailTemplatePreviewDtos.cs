@@ -64,7 +64,7 @@ public class EmailTemplatePreviewRequestDto
     /// When provided, these values override system defaults. When null, system defaults are used
     /// so that <c>{{ utm_query }}</c> still renders in the preview.
     /// </summary>
-    public UtmParameters? UtmParameters { get; set; }
+    public Utms? UtmParameters { get; set; }
 }
 
 public class EmailTemplatePreviewResultDto

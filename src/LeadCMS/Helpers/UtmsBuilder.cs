@@ -1,4 +1,4 @@
-// <copyright file="UtmParametersBuilder.cs" company="WavePoint Co. Ltd.">
+// <copyright file="UtmsBuilder.cs" company="WavePoint Co. Ltd.">
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
@@ -7,7 +7,7 @@ using LeadCMS.Models;
 namespace LeadCMS.Helpers;
 
 /// <summary>
-/// Fluent builder that assembles <see cref="UtmParameters"/> using a three-layer override model:
+/// Fluent builder that assembles <see cref="Utms"/> using a three-layer override model:
 ///
 /// <list type="number">
 ///   <item><description><b>Defaults</b> — baseline values applied to every outgoing email
@@ -27,14 +27,14 @@ namespace LeadCMS.Helpers;
 ///
 /// <para>Usage example:</para>
 /// <code>
-/// var utm = UtmParametersBuilder.Create()
+/// var utm = UtmsBuilder.Create()
 ///     .WithDefaults()
-///     .WithContext(new UtmParameters { Campaign = "onboarding_day_3" })
+///     .WithContext(new Utms { Campaign = "onboarding_day_3" })
 ///     .WithOverrides(userProvidedUtm)
 ///     .Build();
 /// </code>
 /// </summary>
-public class UtmParametersBuilder
+public class UtmsBuilder
 {
     /// <summary>Default value used for <c>utm_source</c> when no higher-layer override is set.</summary>
     public const string DefaultSource = "leadcms";
@@ -42,27 +42,27 @@ public class UtmParametersBuilder
     /// <summary>Default value used for <c>utm_medium</c> when no higher-layer override is set.</summary>
     public const string DefaultMedium = "email";
 
-    private UtmParameters defaults = new();
-    private UtmParameters? context;
-    private UtmParameters? overrides;
+    private Utms defaults = new();
+    private Utms? context;
+    private Utms? overrides;
 
     /// <summary>
     /// Creates a new builder instance.
     /// </summary>
-    public static UtmParametersBuilder Create() => new();
+    public static UtmsBuilder Create() => new();
 
     /// <summary>
-    /// Merges two <see cref="UtmParameters"/> instances. Non-null/non-empty values in
+    /// Merges two <see cref="Utms"/> instances. Non-null/non-empty values in
     /// <paramref name="higher"/> override corresponding values in <paramref name="lower"/>.
     /// Returns a new instance; neither input is mutated.
     /// </summary>
     /// <param name="lower">The base layer (lower priority).</param>
     /// <param name="higher">The override layer (higher priority).</param>
-    public static UtmParameters Merge(UtmParameters? lower, UtmParameters? higher)
+    public static Utms Merge(Utms? lower, Utms? higher)
     {
         if (lower == null && higher == null)
         {
-            return new UtmParameters();
+            return new Utms();
         }
 
         if (lower == null)
@@ -76,19 +76,19 @@ public class UtmParametersBuilder
     }
 
     /// <summary>
-    /// Extracts <see cref="UtmParameters"/> from a template-arguments dictionary
+    /// Extracts <see cref="Utms"/> from a template-arguments dictionary
     /// by reading the well-known <c>utm_*</c> keys. Returns <c>null</c> when no
     /// UTM keys are present.
     /// </summary>
     /// <param name="templateArguments">The template arguments dictionary to extract from.</param>
-    public static UtmParameters? FromDictionary(Dictionary<string, object>? templateArguments)
+    public static Utms? FromDictionary(Dictionary<string, object>? templateArguments)
     {
         if (templateArguments == null || templateArguments.Count == 0)
         {
             return null;
         }
 
-        var utm = new UtmParameters();
+        var utm = new Utms();
         bool found = false;
 
         if (templateArguments.TryGetValue("utm_source", out var source) && source is string s && !string.IsNullOrWhiteSpace(s))
@@ -136,9 +136,9 @@ public class UtmParametersBuilder
     /// </summary>
     /// <param name="source">The default <c>utm_source</c> value. Defaults to <c>leadcms</c>.</param>
     /// <param name="medium">The default <c>utm_medium</c> value. Defaults to <c>email</c>.</param>
-    public UtmParametersBuilder WithDefaults(string source = DefaultSource, string medium = DefaultMedium)
+    public UtmsBuilder WithDefaults(string source = DefaultSource, string medium = DefaultMedium)
     {
-        defaults = new UtmParameters
+        defaults = new Utms
         {
             Source = source,
             Medium = medium,
@@ -153,7 +153,7 @@ public class UtmParametersBuilder
     /// <param name="contextParams">
     /// Context-specific UTM parameters, or <c>null</c> to skip this layer.
     /// </param>
-    public UtmParametersBuilder WithContext(UtmParameters? contextParams)
+    public UtmsBuilder WithContext(Utms? contextParams)
     {
         context = contextParams;
         return this;
@@ -166,7 +166,7 @@ public class UtmParametersBuilder
     /// <param name="overrideParams">
     /// User-supplied UTM parameter overrides, or <c>null</c> to skip this layer.
     /// </param>
-    public UtmParametersBuilder WithOverrides(UtmParameters? overrideParams)
+    public UtmsBuilder WithOverrides(Utms? overrideParams)
     {
         overrides = overrideParams;
         return this;
@@ -174,12 +174,12 @@ public class UtmParametersBuilder
 
     /// <summary>
     /// Merges all layers (defaults ← context ← overrides) and returns the resulting
-    /// <see cref="UtmParameters"/>. Higher layers win when they supply a non-empty value
+    /// <see cref="Utms"/>. Higher layers win when they supply a non-empty value
     /// for the same property.
     /// </summary>
-    public UtmParameters Build()
+    public Utms Build()
     {
-        var result = new UtmParameters
+        var result = new Utms
         {
             Source = defaults.Source,
             Medium = defaults.Medium,
@@ -202,9 +202,9 @@ public class UtmParametersBuilder
         return result;
     }
 
-    private static UtmParameters Clone(UtmParameters src)
+    private static Utms Clone(Utms src)
     {
-        return new UtmParameters
+        return new Utms
         {
             Source = src.Source,
             Medium = src.Medium,
@@ -231,7 +231,7 @@ public class UtmParametersBuilder
         return value.Trim().ToTranslit().Slugify().Replace('-', '_').Trim('_');
     }
 
-    private static void ApplyLayer(UtmParameters target, UtmParameters? layer)
+    private static void ApplyLayer(Utms target, Utms? layer)
     {
         if (layer == null)
         {

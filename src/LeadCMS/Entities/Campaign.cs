@@ -92,7 +92,7 @@ public class Campaign : BaseEntity
     /// and context-derived values when building UTM tracking parameters.
     /// </summary>
     [Column(TypeName = "jsonb")]
-    public UtmParameters? UtmParameters { get; set; }
+    public Utms? UtmParameters { get; set; }
 
     /// <summary>
     /// Gets or sets when the campaign actually started sending.

@@ -3,12 +3,14 @@
 // </copyright>
 
 using LeadCMS.Entities;
+using LeadCMS.Models;
 
 namespace LeadCMS.Plugin.Site.Services;
 
 /// <summary>
-/// Applies locale and tag metadata to a contact.
-/// Language and timezone are overwritten; tags are merged additively (deduplicated, case-insensitive).
+/// Applies locale, tag, and UTM metadata to a contact.
+/// Language and timezone are overwritten; tags are merged additively;
+/// UTMs use first-touch attribution (set once, never overwritten).
 /// </summary>
 public static class ContactMetadataUpdateHelper
 {
@@ -16,7 +18,8 @@ public static class ContactMetadataUpdateHelper
         Contact contact,
         string? language,
         int? timezone,
-        IEnumerable<string>? tags)
+        IEnumerable<string>? tags,
+        Utms? utms = null)
     {
         if (!string.IsNullOrWhiteSpace(language))
         {
@@ -29,6 +32,25 @@ public static class ContactMetadataUpdateHelper
         }
 
         MergeTags(contact, tags);
+        ApplyFirstTouchUtm(contact, utms);
+    }
+
+    /// <summary>
+    /// Sets UTM acquisition parameters on the contact only if none exist yet (first-touch wins).
+    /// </summary>
+    public static void ApplyFirstTouchUtm(Contact contact, Utms? utmParameters)
+    {
+        if (utmParameters == null || !utmParameters.HasValues)
+        {
+            return;
+        }
+
+        if (contact.Utms != null && contact.Utms.HasValues)
+        {
+            return;
+        }
+
+        contact.Utms = utmParameters;
     }
 
     /// <summary>

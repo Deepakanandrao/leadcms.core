@@ -171,9 +171,9 @@ public class ContactScheduledEmailTask : BaseTask
         // Add any required scope based variables into the dictionary.
         var args = new Dictionary<string, object> { { "Key", "Value" } };
 
-        var utmParams = UtmParametersBuilder.Create()
+        var utmParams = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "scheduled_email" })
+            .WithContext(new Utms { Campaign = "scheduled_email" })
             .Build();
 
         TemplateArgumentsBuilder.WithUtmParameters(args, utmParams);

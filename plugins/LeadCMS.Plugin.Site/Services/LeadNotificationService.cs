@@ -106,9 +106,9 @@ public class LeadNotificationService : ILeadNotificationService
                 ? "Contact_Us"
                 : leadInfo.NotificationType;
 
-            var utmParams = UtmParametersBuilder.Create()
+            var utmParams = UtmsBuilder.Create()
                 .WithDefaults()
-                .WithContext(new UtmParameters { Campaign = templateName.ToLowerInvariant(), Content = "notification" })
+                .WithContext(new Utms { Campaign = templateName.ToLowerInvariant(), Content = "notification" })
                 .Build();
 
             TemplateArgumentsBuilder.WithUtmParameters(templateArgs, utmParams);

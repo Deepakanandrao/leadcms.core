@@ -52,7 +52,7 @@ public class SubscribesController : Controller
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public virtual async Task<ActionResult> Subscribe([FromBody] SubscribeDto subscribeDto)
+    public virtual async Task<ActionResult> Subscribe([FromBody] SiteSubscribeDto subscribeDto)
     {
         var group = string.IsNullOrWhiteSpace(subscribeDto.Group) ? DefaultGroup : subscribeDto.Group;
 
@@ -73,9 +73,9 @@ public class SubscribesController : Controller
             { "confirmationUrl", confirmationUrl },
         };
 
-        var utmParams = UtmParametersBuilder.Create()
+        var utmParams = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "subscription_confirmation", Content = "confirm_email" })
+            .WithContext(new Utms { Campaign = "subscription_confirmation", Content = "confirm_email" })
             .Build();
 
         TemplateArgumentsBuilder.WithUtmParameters(subscriptionArgs, utmParams);
@@ -130,9 +130,9 @@ public class SubscribesController : Controller
 
         var confirmArgs = new Dictionary<string, object> { { "email", contact.Email } };
 
-        var confirmUtmParams = UtmParametersBuilder.Create()
+        var confirmUtmParams = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "subscription_confirmed", Content = "welcome" })
+            .WithContext(new Utms { Campaign = "subscription_confirmed", Content = "welcome" })
             .Build();
 
         TemplateArgumentsBuilder.WithUtmParameters(confirmArgs, confirmUtmParams);
@@ -152,7 +152,7 @@ public class SubscribesController : Controller
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public virtual async Task<ActionResult> Unsubscribe([FromBody] UnsubscribeDto unsubscribeDto)
+    public virtual async Task<ActionResult> Unsubscribe([FromBody] SiteUnsubscribeDto unsubscribeDto)
     {
         var contact = await FindOrThrowNotFound(unsubscribeDto.Email);
 

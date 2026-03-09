@@ -9,7 +9,7 @@ using LeadCMS.Models;
 namespace LeadCMS.Tests;
 
 /// <summary>
-/// Unit tests for <see cref="UtmParameters"/>, <see cref="UtmParametersBuilder"/>,
+/// Unit tests for <see cref="Utms"/>, <see cref="UtmsBuilder"/>,
 /// and the <see cref="TemplateArgumentsBuilder.WithUtmParameters"/> integration.
 /// </summary>
 public class UtmParametersTests
@@ -21,7 +21,7 @@ public class UtmParametersTests
     [Fact]
     public void ToDictionary_AllFieldsPopulated_ReturnsAllKeys()
     {
-        var utm = new UtmParameters
+        var utm = new Utms
         {
             Source = "sendgrid",
             Medium = "email",
@@ -45,7 +45,7 @@ public class UtmParametersTests
     [Fact]
     public void ToDictionary_PartialFields_OmitsEmpty()
     {
-        var utm = new UtmParameters
+        var utm = new Utms
         {
             Source = "leadcms",
             Medium = "email",
@@ -64,7 +64,7 @@ public class UtmParametersTests
     [Fact]
     public void ToDictionary_Empty_ReturnsEmptyDictionary()
     {
-        var utm = new UtmParameters();
+        var utm = new Utms();
 
         var dict = utm.ToDictionary();
 
@@ -74,7 +74,7 @@ public class UtmParametersTests
     [Fact]
     public void ToQueryString_TypicalEmail_ReturnsWellFormedString()
     {
-        var utm = new UtmParameters
+        var utm = new Utms
         {
             Source = "leadcms",
             Medium = "email",
@@ -90,7 +90,7 @@ public class UtmParametersTests
     [Fact]
     public void ToQueryString_SpecialCharacters_UrlEncodesValues()
     {
-        var utm = new UtmParameters
+        var utm = new Utms
         {
             Source = "lead cms",
             Campaign = "spring & summer",
@@ -105,7 +105,7 @@ public class UtmParametersTests
     [Fact]
     public void ToQueryString_Empty_ReturnsEmptyString()
     {
-        var utm = new UtmParameters();
+        var utm = new Utms();
 
         utm.ToQueryString().Should().BeEmpty();
     }
@@ -113,15 +113,15 @@ public class UtmParametersTests
     [Fact]
     public void HasValues_WhenAtLeastOneField_ReturnsTrue()
     {
-        new UtmParameters { Campaign = "test" }.HasValues.Should().BeTrue();
-        new UtmParameters { Source = "x" }.HasValues.Should().BeTrue();
+        new Utms { Campaign = "test" }.HasValues.Should().BeTrue();
+        new Utms { Source = "x" }.HasValues.Should().BeTrue();
     }
 
     [Fact]
     public void HasValues_WhenAllEmpty_ReturnsFalse()
     {
-        new UtmParameters().HasValues.Should().BeFalse();
-        new UtmParameters { Source = string.Empty, Medium = null }.HasValues.Should().BeFalse();
+        new Utms().HasValues.Should().BeFalse();
+        new Utms { Source = string.Empty, Medium = null }.HasValues.Should().BeFalse();
     }
 
     // ────────────────────────────────────────────────────────
@@ -131,7 +131,7 @@ public class UtmParametersTests
     [Fact]
     public void Build_DefaultsOnly_SetsSourceAndMedium()
     {
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
             .Build();
 
@@ -143,7 +143,7 @@ public class UtmParametersTests
     [Fact]
     public void Build_DefaultsWithCustomValues_OverridesStandardDefaults()
     {
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults(source: "sendgrid", medium: "sms")
             .Build();
 
@@ -154,9 +154,9 @@ public class UtmParametersTests
     [Fact]
     public void Build_ContextOverridesDefaults()
     {
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "spring_sale", Content = "hero_button" })
+            .WithContext(new Utms { Campaign = "spring_sale", Content = "hero_button" })
             .Build();
 
         utm.Source.Should().Be("leadcms");
@@ -168,9 +168,9 @@ public class UtmParametersTests
     [Fact]
     public void Build_ContextCanOverrideDefaultSource()
     {
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Source = "newsletter" })
+            .WithContext(new Utms { Source = "newsletter" })
             .Build();
 
         utm.Source.Should().Be("newsletter");
@@ -180,10 +180,10 @@ public class UtmParametersTests
     [Fact]
     public void Build_OverridesWinOverContextAndDefaults()
     {
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "spring_sale", Content = "hero_button" })
-            .WithOverrides(new UtmParameters { Campaign = "user_campaign", Source = "custom_source" })
+            .WithContext(new Utms { Campaign = "spring_sale", Content = "hero_button" })
+            .WithOverrides(new Utms { Campaign = "user_campaign", Source = "custom_source" })
             .Build();
 
         utm.Source.Should().Be("custom_source");
@@ -195,9 +195,9 @@ public class UtmParametersTests
     [Fact]
     public void Build_NullOverrides_DoNotClearLowerLayers()
     {
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "spring_sale" })
+            .WithContext(new Utms { Campaign = "spring_sale" })
             .WithOverrides(null)
             .Build();
 
@@ -208,10 +208,10 @@ public class UtmParametersTests
     [Fact]
     public void Build_EmptyStringOverrides_DoNotClearLowerLayers()
     {
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "spring_sale" })
-            .WithOverrides(new UtmParameters { Campaign = string.Empty })
+            .WithContext(new Utms { Campaign = "spring_sale" })
+            .WithOverrides(new Utms { Campaign = string.Empty })
             .Build();
 
         utm.Campaign.Should().Be("spring_sale");
@@ -220,7 +220,7 @@ public class UtmParametersTests
     [Fact]
     public void Build_NoLayers_ReturnsEmptyParameters()
     {
-        var utm = UtmParametersBuilder.Create().Build();
+        var utm = UtmsBuilder.Create().Build();
 
         utm.HasValues.Should().BeFalse();
     }
@@ -232,7 +232,7 @@ public class UtmParametersTests
     [Fact]
     public void Merge_BothNull_ReturnsEmpty()
     {
-        var result = UtmParametersBuilder.Merge(null, null);
+        var result = UtmsBuilder.Merge(null, null);
 
         result.HasValues.Should().BeFalse();
     }
@@ -240,9 +240,9 @@ public class UtmParametersTests
     [Fact]
     public void Merge_LowerNull_ClonesHigher()
     {
-        var higher = new UtmParameters { Source = "x", Campaign = "y" };
+        var higher = new Utms { Source = "x", Campaign = "y" };
 
-        var result = UtmParametersBuilder.Merge(null, higher);
+        var result = UtmsBuilder.Merge(null, higher);
 
         result.Source.Should().Be("x");
         result.Campaign.Should().Be("y");
@@ -254,10 +254,10 @@ public class UtmParametersTests
     [Fact]
     public void Merge_HigherOverridesLower()
     {
-        var lower = new UtmParameters { Source = "leadcms", Medium = "email", Campaign = "default" };
-        var higher = new UtmParameters { Campaign = "override" };
+        var lower = new Utms { Source = "leadcms", Medium = "email", Campaign = "default" };
+        var higher = new Utms { Campaign = "override" };
 
-        var result = UtmParametersBuilder.Merge(lower, higher);
+        var result = UtmsBuilder.Merge(lower, higher);
 
         result.Source.Should().Be("leadcms");
         result.Medium.Should().Be("email");
@@ -267,10 +267,10 @@ public class UtmParametersTests
     [Fact]
     public void Merge_DoesNotMutateInputs()
     {
-        var lower = new UtmParameters { Campaign = "original" };
-        var higher = new UtmParameters { Campaign = "override" };
+        var lower = new Utms { Campaign = "original" };
+        var higher = new Utms { Campaign = "override" };
 
-        UtmParametersBuilder.Merge(lower, higher);
+        UtmsBuilder.Merge(lower, higher);
 
         lower.Campaign.Should().Be("original");
         higher.Campaign.Should().Be("override");
@@ -290,7 +290,7 @@ public class UtmParametersTests
             ["unrelatedKey"] = "ignored",
         };
 
-        var utm = UtmParametersBuilder.FromDictionary(dict);
+        var utm = UtmsBuilder.FromDictionary(dict);
 
         utm.Should().NotBeNull();
         utm!.Source.Should().Be("sendgrid");
@@ -301,8 +301,8 @@ public class UtmParametersTests
     [Fact]
     public void FromDictionary_NullOrEmpty_ReturnsNull()
     {
-        UtmParametersBuilder.FromDictionary(null).Should().BeNull();
-        UtmParametersBuilder.FromDictionary(new Dictionary<string, object>()).Should().BeNull();
+        UtmsBuilder.FromDictionary(null).Should().BeNull();
+        UtmsBuilder.FromDictionary(new Dictionary<string, object>()).Should().BeNull();
     }
 
     [Fact]
@@ -314,7 +314,7 @@ public class UtmParametersTests
             ["email"] = "alice@test.com",
         };
 
-        UtmParametersBuilder.FromDictionary(dict).Should().BeNull();
+        UtmsBuilder.FromDictionary(dict).Should().BeNull();
     }
 
     [Fact]
@@ -326,7 +326,7 @@ public class UtmParametersTests
             ["utm_campaign"] = "valid",
         };
 
-        var utm = UtmParametersBuilder.FromDictionary(dict);
+        var utm = UtmsBuilder.FromDictionary(dict);
 
         utm.Should().NotBeNull();
         utm!.Source.Should().BeNull();
@@ -345,7 +345,7 @@ public class UtmParametersTests
             ["firstName"] = "Alice",
         };
 
-        var utm = new UtmParameters
+        var utm = new Utms
         {
             Source = "leadcms",
             Medium = "email",
@@ -383,7 +383,7 @@ public class UtmParametersTests
             ["firstName"] = "Alice",
         };
 
-        TemplateArgumentsBuilder.WithUtmParameters(args, new UtmParameters());
+        TemplateArgumentsBuilder.WithUtmParameters(args, new Utms());
 
         args.Should().HaveCount(1);
     }
@@ -392,7 +392,7 @@ public class UtmParametersTests
     public void WithUtmParameters_ReturnsSameDictionary()
     {
         var args = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-        var utm = new UtmParameters { Source = "x" };
+        var utm = new Utms { Source = "x" };
 
         var result = TemplateArgumentsBuilder.WithUtmParameters(args, utm);
 
@@ -406,9 +406,9 @@ public class UtmParametersTests
     [Fact]
     public void EndToEnd_BuilderToTemplateArgs_ProducesExpectedKeys()
     {
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "onboarding_day_3" })
+            .WithContext(new Utms { Campaign = "onboarding_day_3" })
             .Build();
 
         var args = TemplateArgumentsBuilder.FromContact(null);
@@ -426,15 +426,15 @@ public class UtmParametersTests
     [Fact]
     public void EndToEnd_ThreeLayerOverride_HighestPriorityWins()
     {
-        var userOverride = new UtmParameters
+        var userOverride = new Utms
         {
             Campaign = "user_custom_campaign",
             Content = "user_cta",
         };
 
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "system_campaign", Content = "system_cta" })
+            .WithContext(new Utms { Campaign = "system_campaign", Content = "system_cta" })
             .WithOverrides(userOverride)
             .Build();
 
@@ -450,7 +450,7 @@ public class UtmParametersTests
     [Fact]
     public void ToDictionary_UtmQueryContainsAllPopulatedFields()
     {
-        var utm = new UtmParameters
+        var utm = new Utms
         {
             Source = "leadcms",
             Medium = "email",
@@ -475,7 +475,7 @@ public class UtmParametersTests
     [Fact]
     public void CampaignOverride_FullOverride_ReplacesAllDefaults()
     {
-        var campaignUtm = new UtmParameters
+        var campaignUtm = new Utms
         {
             Source = "partner_site",
             Medium = "sponsored",
@@ -485,9 +485,9 @@ public class UtmParametersTests
             Id = "camp_42",
         };
 
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "ignored_context" })
+            .WithContext(new Utms { Campaign = "ignored_context" })
             .WithOverrides(campaignUtm)
             .Build();
 
@@ -502,15 +502,15 @@ public class UtmParametersTests
     [Fact]
     public void CampaignOverride_PartialOverride_PreservesNonOverriddenValues()
     {
-        var campaignUtm = new UtmParameters
+        var campaignUtm = new Utms
         {
             Campaign = "spring_sale_2026",
             Content = "promo_header",
         };
 
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "original_campaign_name" })
+            .WithContext(new Utms { Campaign = "original_campaign_name" })
             .WithOverrides(campaignUtm)
             .Build();
 
@@ -524,11 +524,11 @@ public class UtmParametersTests
     [Fact]
     public void CampaignOverride_NullUtmParameters_FallsBackToContextAndDefaults()
     {
-        UtmParameters? campaignUtm = null;
+        Utms? campaignUtm = null;
 
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "winter_promo" })
+            .WithContext(new Utms { Campaign = "winter_promo" })
             .WithOverrides(campaignUtm)
             .Build();
 
@@ -540,14 +540,14 @@ public class UtmParametersTests
     [Fact]
     public void CampaignOverride_OnlyCampaignName_OverridesContextCampaign()
     {
-        var campaignUtm = new UtmParameters
+        var campaignUtm = new Utms
         {
             Campaign = "custom_campaign_slug",
         };
 
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "My Campaign Name" })
+            .WithContext(new Utms { Campaign = "My Campaign Name" })
             .WithOverrides(campaignUtm)
             .Build();
 
@@ -559,14 +559,14 @@ public class UtmParametersTests
     [Fact]
     public void CampaignOverride_SourceOverride_ChangesTrafficAttribution()
     {
-        var campaignUtm = new UtmParameters
+        var campaignUtm = new Utms
         {
             Source = "partner_newsletter",
         };
 
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "co_branded_promo" })
+            .WithContext(new Utms { Campaign = "co_branded_promo" })
             .WithOverrides(campaignUtm)
             .Build();
 
@@ -578,15 +578,15 @@ public class UtmParametersTests
     [Fact]
     public void CampaignOverride_EmptyStrings_DoNotClearLowerLayers()
     {
-        var campaignUtm = new UtmParameters
+        var campaignUtm = new Utms
         {
             Source = string.Empty,
             Campaign = string.Empty,
         };
 
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "context_campaign" })
+            .WithContext(new Utms { Campaign = "context_campaign" })
             .WithOverrides(campaignUtm)
             .Build();
 
@@ -597,15 +597,15 @@ public class UtmParametersTests
     [Fact]
     public void CampaignOverride_EndToEnd_ProducesCorrectTemplateArgs()
     {
-        var campaignUtm = new UtmParameters
+        var campaignUtm = new Utms
         {
             Campaign = "holiday_promo_2026",
             Content = "main_cta",
         };
 
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "Original Campaign" })
+            .WithContext(new Utms { Campaign = "Original Campaign" })
             .WithOverrides(campaignUtm)
             .Build();
 
@@ -636,9 +636,9 @@ public class UtmParametersTests
     [InlineData("  Extra   Spaces  ", "extra_spaces")]
     public void Build_SlugifiesCampaign(string rawCampaign, string expected)
     {
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = rawCampaign })
+            .WithContext(new Utms { Campaign = rawCampaign })
             .Build();
 
         utm.Campaign.Should().Be(expected);
@@ -651,9 +651,9 @@ public class UtmParametersTests
     [InlineData("already_correct", "already_correct")]
     public void Build_SlugifiesContent(string rawContent, string expected)
     {
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Content = rawContent })
+            .WithContext(new Utms { Content = rawContent })
             .Build();
 
         utm.Content.Should().Be(expected);
@@ -662,9 +662,9 @@ public class UtmParametersTests
     [Fact]
     public void Build_SlugifiesCampaignFromOverrides()
     {
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithOverrides(new UtmParameters { Campaign = "Holiday Promo 2026" })
+            .WithOverrides(new Utms { Campaign = "Holiday Promo 2026" })
             .Build();
 
         utm.Campaign.Should().Be("holiday_promo_2026");
@@ -673,9 +673,9 @@ public class UtmParametersTests
     [Fact]
     public void Build_SlugifiesNonAsciiCampaign()
     {
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "Распродажа весна" })
+            .WithContext(new Utms { Campaign = "Распродажа весна" })
             .Build();
 
         utm.Campaign.Should().Be("rasprodazha_vesna");
@@ -684,7 +684,7 @@ public class UtmParametersTests
     [Fact]
     public void Build_SlugifiesSourceAndMedium()
     {
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults(source: "My Source", medium: "My Medium")
             .Build();
 
@@ -695,9 +695,9 @@ public class UtmParametersTests
     [Fact]
     public void Build_SlugifiesTermAndId()
     {
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Term = "Paid Search", Id = "Camp 42" })
+            .WithContext(new Utms { Term = "Paid Search", Id = "Camp 42" })
             .Build();
 
         utm.Term.Should().Be("paid_search");
@@ -707,7 +707,7 @@ public class UtmParametersTests
     [Fact]
     public void Build_NullCampaignAndContent_RemainNull()
     {
-        var utm = UtmParametersBuilder.Create()
+        var utm = UtmsBuilder.Create()
             .WithDefaults()
             .Build();
 
@@ -838,9 +838,9 @@ public class UtmParametersTests
     {
         var args = TemplateArgumentsBuilder.FromContact(null);
 
-        var utmParams = UtmParametersBuilder.Create()
+        var utmParams = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "test" })
+            .WithContext(new Utms { Campaign = "test" })
             .Build();
         TemplateArgumentsBuilder.WithUtmParameters(args, utmParams);
 

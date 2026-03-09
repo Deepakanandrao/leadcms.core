@@ -6,14 +6,14 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace LeadCMS.Migrations
 {
     /// <inheritdoc />
-    public partial class AddCampaignUtmParameters : Migration
+    public partial class AddUtmsToContact : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<Utms>(
-                name: "utm_parameters",
-                table: "campaign",
+                name: "utms",
+                table: "contact",
                 type: "jsonb",
                 nullable: true);
         }
@@ -22,8 +22,8 @@ namespace LeadCMS.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(
-                name: "utm_parameters",
-                table: "campaign");
+                name: "utms",
+                table: "contact");
         }
     }
 }

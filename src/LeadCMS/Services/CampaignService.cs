@@ -46,9 +46,9 @@ public class CampaignService : ICampaignService
         var template = await dbContext.EmailTemplates!.FindAsync(dto.EmailTemplateId)
             ?? throw new KeyNotFoundException($"Email template with id {dto.EmailTemplateId} not found.");
 
-        var campaignUtm = UtmParametersBuilder.Create()
+        var campaignUtm = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "campaign_preview" })
+            .WithContext(new Utms { Campaign = "campaign_preview" })
             .WithOverrides(dto.UtmParameters)
             .Build();
 
@@ -368,9 +368,9 @@ public class CampaignService : ICampaignService
             {
                 var templateArgs = FromContact(contact);
 
-                var utmParams = UtmParametersBuilder.Create()
+                var utmParams = UtmsBuilder.Create()
                     .WithDefaults()
-                    .WithContext(new UtmParameters { Campaign = campaign.Name })
+                    .WithContext(new Utms { Campaign = campaign.Name })
                     .WithOverrides(campaign.UtmParameters)
                     .Build();
 

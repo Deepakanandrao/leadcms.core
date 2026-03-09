@@ -57,7 +57,7 @@ public class CampaignCreateDto
     /// Gets or sets optional UTM parameter overrides for this campaign.
     /// Any non-null values here override the system defaults and context-derived UTM parameters.
     /// </summary>
-    public UtmParameters? UtmParameters { get; set; }
+    public Utms? UtmParameters { get; set; }
 }
 
 public class CampaignUpdateDto : IPatchDto
@@ -89,7 +89,7 @@ public class CampaignUpdateDto : IPatchDto
     /// Gets or sets optional UTM parameter overrides for this campaign.
     /// Any non-null values here override the system defaults and context-derived UTM parameters.
     /// </summary>
-    public UtmParameters? UtmParameters { get; set; }
+    public Utms? UtmParameters { get; set; }
 }
 
 public class CampaignDetailsDto : CampaignCreateDto
@@ -260,7 +260,7 @@ public class CampaignPreviewRequestDto
     /// These values override system defaults and context-derived UTM parameters.
     /// When null, defaults (<c>utm_source=leadcms</c>, <c>utm_medium=email</c>) are still injected.
     /// </summary>
-    public UtmParameters? UtmParameters { get; set; }
+    public Utms? UtmParameters { get; set; }
 }
 
 public class CampaignPreviewResultDto

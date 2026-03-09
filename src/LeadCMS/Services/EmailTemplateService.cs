@@ -50,9 +50,9 @@ public class EmailTemplateService : IEmailTemplateService
         var customTemplateArgs = ConvertCustomTemplateParameters(dto.CustomTemplateParameters);
         templateArgs = Merge(templateArgs, customTemplateArgs);
 
-        var utmParams = UtmParametersBuilder.Create()
+        var utmParams = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "preview" })
+            .WithContext(new Utms { Campaign = "preview" })
             .WithOverrides(dto.UtmParameters)
             .Build();
 
@@ -93,9 +93,9 @@ public class EmailTemplateService : IEmailTemplateService
         var customTemplateArgs = ConvertCustomTemplateParameters(dto.CustomTemplateParameters);
         templateArgs = Merge(templateArgs, customTemplateArgs);
 
-        var testUtmParams = UtmParametersBuilder.Create()
+        var testUtmParams = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "test_send" })
+            .WithContext(new Utms { Campaign = "test_send" })
             .Build();
 
         WithUtmParameters(templateArgs, testUtmParams);

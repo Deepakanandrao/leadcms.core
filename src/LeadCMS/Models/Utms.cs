@@ -1,4 +1,4 @@
-// <copyright file="UtmParameters.cs" company="WavePoint Co. Ltd.">
+// <copyright file="Utms.cs" company="WavePoint Co. Ltd.">
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
@@ -18,10 +18,10 @@ namespace LeadCMS.Models;
 ///   <item><description>Context — set by business-logic context such as campaign name or template name.</description></item>
 ///   <item><description>Overrides — explicit values from user/plugin/API input that take highest priority.</description></item>
 /// </list>
-/// Merging is handled by <see cref="LeadCMS.Helpers.UtmParametersBuilder"/>.
+/// Merging is handled by <see cref="LeadCMS.Helpers.UtmsBuilder"/>.
 /// </para>
 /// </summary>
-public class UtmParameters
+public class Utms
 {
     /// <summary>
     /// Gets or sets <c>utm_source</c> — identifies where the traffic comes from

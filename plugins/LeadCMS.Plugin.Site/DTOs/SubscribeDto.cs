@@ -6,7 +6,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace LeadCMS.Plugin.Site.DTOs;
 
-public class SubscribeDto : ClientLocaleAwareDto
+public class SiteSubscribeDto : ClientLocaleAwareDto
 {
     private string email = string.Empty;
 
@@ -28,7 +28,7 @@ public class SubscribeDto : ClientLocaleAwareDto
     public string Group { get; set; } = "SubscriberNewsletters";
 }
 
-public class UnsubscribeDto : ClientLocaleAwareDto
+public class SiteUnsubscribeDto : ClientLocaleAwareDto
 {
     [Required]
     [EmailAddress]

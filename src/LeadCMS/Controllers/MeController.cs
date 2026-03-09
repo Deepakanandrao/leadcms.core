@@ -87,9 +87,9 @@ public class MeController : ControllerBase
                     ["Password"] = password,
                 };
 
-                var utmParams = UtmParametersBuilder.Create()
+                var utmParams = UtmsBuilder.Create()
                     .WithDefaults()
-                    .WithContext(new UtmParameters { Campaign = "password_updated" })
+                    .WithContext(new Utms { Campaign = "password_updated" })
                     .Build();
 
                 TemplateArgumentsBuilder.WithUtmParameters(args, utmParams);

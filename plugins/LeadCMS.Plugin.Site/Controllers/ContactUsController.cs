@@ -166,7 +166,8 @@ public class ContactUsController : Controller
             contact,
             contactUsDto.Language,
             utcOffset,
-            contactUsDto.Tags);
+            contactUsDto.Tags,
+            contactUsDto.Utms);
 
         var attachmentFiles = new List<AttachmentDto>();
 
@@ -201,9 +202,9 @@ public class ContactUsController : Controller
             TemplateArgumentsBuilder.Merge(templateArgs, leadInfo.ToTemplateArguments());
             leadNotificationMessageBuilder.EnrichTemplateArguments(templateArgs, leadInfo);
 
-            var utmParams = UtmParametersBuilder.Create()
+            var utmParams = UtmsBuilder.Create()
                 .WithDefaults()
-                .WithContext(new UtmParameters { Campaign = acknowledgmentTemplate.ToLowerInvariant(), Content = "acknowledgment" })
+                .WithContext(new Utms { Campaign = acknowledgmentTemplate.ToLowerInvariant(), Content = "acknowledgment" })
                 .Build();
 
             TemplateArgumentsBuilder.WithUtmParameters(templateArgs, utmParams);

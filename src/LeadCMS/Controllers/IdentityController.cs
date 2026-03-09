@@ -130,9 +130,9 @@ public class IdentityController : ControllerBase
             ["UserName"] = user.UserName ?? string.Empty,
         };
 
-        var utmParams = UtmParametersBuilder.Create()
+        var utmParams = UtmsBuilder.Create()
             .WithDefaults()
-            .WithContext(new UtmParameters { Campaign = "password_reset", Content = "reset_link" })
+            .WithContext(new Utms { Campaign = "password_reset", Content = "reset_link" })
             .Build();
 
         TemplateArgumentsBuilder.WithUtmParameters(templateArgs, utmParams);

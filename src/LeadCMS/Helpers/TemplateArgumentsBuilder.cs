@@ -72,6 +72,17 @@ public static class TemplateArgumentsBuilder
         args["Tags"] = contact.Tags?.ToList() ?? new List<string>();
         args["SocialMedia"] = contact.SocialMedia ?? new Dictionary<string, string>();
 
+        // UTM acquisition parameters (first-touch attribution)
+        if (contact.Utms != null && contact.Utms.HasValues)
+        {
+            AddIfHasValue(args, "contact_utm_source", contact.Utms.Source);
+            AddIfHasValue(args, "contact_utm_medium", contact.Utms.Medium);
+            AddIfHasValue(args, "contact_utm_campaign", contact.Utms.Campaign);
+            AddIfHasValue(args, "contact_utm_content", contact.Utms.Content);
+            AddIfHasValue(args, "contact_utm_term", contact.Utms.Term);
+            AddIfHasValue(args, "contact_utm_id", contact.Utms.Id);
+        }
+
         // Account fields (flattened for backwards compatibility + nested object)
         AddIfHasValue(args, "AccountName", contact.Account?.Name);
         AddIfHasValue(args, "AccountSiteUrl", contact.Account?.SiteUrl);
@@ -146,7 +157,7 @@ public static class TemplateArgumentsBuilder
     /// <returns>The same <paramref name="args"/> dictionary with UTM values merged in, for fluent chaining.</returns>
     public static Dictionary<string, object> WithUtmParameters(
         Dictionary<string, object> args,
-        UtmParameters? utmParams)
+        Utms? utmParams)
     {
         if (utmParams == null || !utmParams.HasValues)
         {

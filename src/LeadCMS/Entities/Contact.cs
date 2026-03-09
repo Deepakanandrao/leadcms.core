@@ -6,6 +6,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 using LeadCMS.DataAnnotations;
 using LeadCMS.Geography;
+using LeadCMS.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Entities;
@@ -100,6 +101,13 @@ public class Contact : BaseEntity, ICommentable
     [Searchable]
     [Column(TypeName = "jsonb")]
     public string[]? Tags { get; set; }
+
+    /// <summary>
+    /// Gets or sets UTM acquisition parameters captured on first contact creation.
+    /// First-touch only: once set, subsequent submissions do not overwrite.
+    /// </summary>
+    [Column(TypeName = "jsonb")]
+    public Utms? Utms { get; set; }
 
     public int DealsCount { get; set; }
 

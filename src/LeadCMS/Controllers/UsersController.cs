@@ -118,9 +118,9 @@ public class UsersController : ControllerBase
                 ["Password"] = password,
             };
 
-            var utmParams = UtmParametersBuilder.Create()
+            var utmParams = UtmsBuilder.Create()
                 .WithDefaults()
-                .WithContext(new UtmParameters { Campaign = "account_created" })
+                .WithContext(new Utms { Campaign = "account_created" })
                 .Build();
 
             TemplateArgumentsBuilder.WithUtmParameters(args, utmParams);
@@ -173,9 +173,9 @@ public class UsersController : ControllerBase
                     ["Password"] = password,
                 };
 
-                var utmParams = UtmParametersBuilder.Create()
+                var utmParams = UtmsBuilder.Create()
                     .WithDefaults()
-                    .WithContext(new UtmParameters { Campaign = "password_updated" })
+                    .WithContext(new Utms { Campaign = "password_updated" })
                     .Build();
 
                 TemplateArgumentsBuilder.WithUtmParameters(args, utmParams);
