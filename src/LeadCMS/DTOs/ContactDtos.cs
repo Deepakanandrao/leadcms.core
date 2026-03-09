@@ -9,6 +9,7 @@ using LeadCMS.DataAnnotations;
 using LeadCMS.Entities;
 using LeadCMS.Geography;
 using LeadCMS.Infrastructure;
+using LeadCMS.Models;
 
 namespace LeadCMS.DTOs;
 
@@ -111,6 +112,8 @@ public class ContactDetailsDto : ContactCreateDto
     public int Id { get; set; }
 
     public string? FullName { get; set; }
+
+    public Utms? Utms { get; set; }
 
     public string AvatarUrl { get; set; } = string.Empty;
 
