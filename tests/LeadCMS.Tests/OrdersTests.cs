@@ -11,6 +11,8 @@ public class OrdersTests : TableWithFKTests<Order, TestOrder, OrderUpdateDto, IE
     public OrdersTests()
         : base("/api/orders")
     {
+        TrackEntityType<Contact>();
+        TrackEntityType<Domain>();
     }
 
     [Fact]

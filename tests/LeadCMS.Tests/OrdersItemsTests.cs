@@ -11,6 +11,8 @@ public class OrdersItemsTests : TableWithFKTests<OrderItem, TestOrderItem, Order
     public OrdersItemsTests()
         : base("/api/order-items")
     {
+        TrackEntityType<Contact>();
+        TrackEntityType<Domain>();
     }
 
     [Fact]

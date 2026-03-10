@@ -20,6 +20,8 @@ namespace LeadCMS.Infrastructure
     public enum WOperand
     {
         Equal = 0,
+        IsEmpty = 1,
+        IsNotEmpty = 2,
         GreaterThan = 3,
         GreaterThanOrEqualTo = 4,
         LessThan = 5,
@@ -49,6 +51,8 @@ namespace LeadCMS.Infrastructure
         public static Dictionary<string, WOperand> OperandMappings { get; } = new Dictionary<string, WOperand>()
         {
             { "eq", WOperand.Equal },
+            { "isempty", WOperand.IsEmpty },
+            { "isnotempty", WOperand.IsNotEmpty },
             { "gt", WOperand.GreaterThan },
             { "gte", WOperand.GreaterThanOrEqualTo },
             { "lt", WOperand.LessThan },

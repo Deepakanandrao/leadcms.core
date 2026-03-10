@@ -8,6 +8,12 @@ public class ContactFullNameTests : BaseTestAutoLogin
 {
     private const string ContactsUrl = "/api/contacts";
 
+    public ContactFullNameTests()
+    {
+        TrackEntityType<Contact>();
+        TrackEntityType<Domain>();
+    }
+
     [Fact]
     public async Task FullName_ComputesWithAllNameParts()
     {

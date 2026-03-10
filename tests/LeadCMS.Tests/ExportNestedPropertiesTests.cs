@@ -15,6 +15,8 @@ public class ExportNestedPropertiesTests : TableWithFKTests<Order, TestOrder, Or
     public ExportNestedPropertiesTests()
         : base("/api/orders")
     {
+        TrackEntityType<Contact>();
+        TrackEntityType<Domain>();
     }
 
     /// <summary>

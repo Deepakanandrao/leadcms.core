@@ -332,8 +332,6 @@ namespace LeadCMS.Infrastructure
 
         private Expression ParseWhereCommand(ParameterExpression expressionParameter, QueryModelBuilder<T>.WhereUnitData cmd)
         {
-            Expression outputExpression;
-
             // Add includes for nested properties
             if (cmd.PropertyPath.IsNested)
             {
@@ -344,11 +342,24 @@ namespace LeadCMS.Infrastructure
                 }
             }
 
+            if (typeof(T) == typeof(Contact) && cmd.PropertyPath.ContainsCollectionNavigation)
+            {
+                return BuildCollectionNavigationWhereExpression(expressionParameter, cmd.PropertyPath.Properties, 0, cmd);
+            }
+
             var parameterPropertyExpression = BuildNestedPropertyExpression(expressionParameter, cmd.PropertyPath);
+
+            return ApplyWhereOperator(cmd, parameterPropertyExpression);
+        }
+
+        private Expression ApplyWhereOperator(QueryModelBuilder<T>.WhereUnitData cmd, Expression parameterPropertyExpression)
+        {
+            Expression outputExpression;
 
             Expression CreateEqualExpression(QueryModelBuilder<T>.WhereUnitData cmd, Expression parameter)
             {
                 Expression orExpression = Expression.Constant(false);
+                var hasComparableValue = false;
                 var stringValues = cmd.ParseStringValues();
                 var parsedValues = cmd.ParseValues(stringValues);
 
@@ -356,7 +367,7 @@ namespace LeadCMS.Infrastructure
                 {
                     if (value == null && !cmd.IsNullableProperty())
                     {
-                        return Expression.Constant(false);
+                        continue;
                     }
                     else
                     {
@@ -375,11 +386,12 @@ namespace LeadCMS.Infrastructure
                             eqExpression = Expression.Equal(parameter, valueParameterExpression);
                         }
 
+                        hasComparableValue = true;
                         orExpression = Expression.Or(orExpression, eqExpression);
                     }
                 }
 
-                return orExpression;
+                return hasComparableValue ? orExpression : Expression.Constant(false);
             }
 
             Expression CreateNEqualExpression(QueryModelBuilder<T>.WhereUnitData cmd, Expression parameter)
@@ -504,12 +516,56 @@ namespace LeadCMS.Infrastructure
                 return Expression.Call(parameter, method!, value, comparison);
             }
 
+            Expression CreateIsEmptyExpression(QueryModelBuilder<T>.WhereUnitData cmd, Expression parameter)
+            {
+                var propertyType = cmd.PropertyPath.LeafProperty.PropertyType;
+
+                if (propertyType == typeof(string))
+                {
+                    return Expression.OrElse(
+                        Expression.Equal(parameter, Expression.Constant(null, typeof(string))),
+                        Expression.Equal(parameter, Expression.Constant(string.Empty, typeof(string))));
+                }
+
+                if (Nullable.GetUnderlyingType(propertyType) != null)
+                {
+                    return Expression.Equal(parameter, Expression.Constant(null, propertyType));
+                }
+
+                throw new QueryException(cmd.Cmd.Source, "IsEmpty operand is only supported for string or nullable properties");
+            }
+
+            Expression CreateIsNotEmptyExpression(QueryModelBuilder<T>.WhereUnitData cmd, Expression parameter)
+            {
+                var propertyType = cmd.PropertyPath.LeafProperty.PropertyType;
+
+                if (propertyType == typeof(string))
+                {
+                    return Expression.AndAlso(
+                        Expression.NotEqual(parameter, Expression.Constant(null, typeof(string))),
+                        Expression.NotEqual(parameter, Expression.Constant(string.Empty, typeof(string))));
+                }
+
+                if (Nullable.GetUnderlyingType(propertyType) != null)
+                {
+                    return Expression.NotEqual(parameter, Expression.Constant(null, propertyType));
+                }
+
+                throw new QueryException(cmd.Cmd.Source, "IsNotEmpty operand is only supported for string or nullable properties");
+            }
+
             try
             {
                 switch (cmd.Operation)
                 {
                     case WOperand.Equal:
                         outputExpression = CreateEqualExpression(cmd, parameterPropertyExpression);
+                        break;
+                    case WOperand.IsEmpty:
+                        outputExpression = CreateIsEmptyExpression(cmd, parameterPropertyExpression);
+                        break;
+                    case WOperand.IsNotEmpty:
+                        outputExpression = CreateIsNotEmptyExpression(cmd, parameterPropertyExpression);
                         break;
                     case WOperand.NotEqual:
                         outputExpression = CreateNEqualExpression(cmd, parameterPropertyExpression);
@@ -544,6 +600,80 @@ namespace LeadCMS.Infrastructure
             }
 
             return outputExpression;
+        }
+
+        private Expression BuildCollectionNavigationWhereExpression(
+            Expression parentExpression,
+            IReadOnlyList<PropertyInfo> properties,
+            int index,
+            QueryModelBuilder<T>.WhereUnitData cmd)
+        {
+            var property = properties[index];
+            var propertyExpression = Expression.Property(parentExpression, property);
+
+            if (TryGetCollectionElementType(property.PropertyType, out var elementType))
+            {
+                if (index >= properties.Count - 1)
+                {
+                    throw new QueryException(cmd.Cmd.Source, $"Collection navigation '{property.Name}' must end in a scalar property.");
+                }
+
+                var elementParameter = Expression.Parameter(elementType, char.ToLowerInvariant(elementType.Name[0]).ToString());
+                var innerExpression = BuildCollectionNavigationWhereExpression(elementParameter, properties, index + 1, cmd);
+                var anyMethod = typeof(Enumerable).GetMethods()
+                    .First(m => m.Name == nameof(Enumerable.Any) && m.GetParameters().Length == 2)
+                    .MakeGenericMethod(elementType);
+
+                return Expression.Call(anyMethod, propertyExpression, Expression.Lambda(innerExpression, elementParameter));
+            }
+
+            if (index < properties.Count - 1)
+            {
+                return BuildCollectionNavigationWhereExpression(parentExpression: propertyExpression, properties, index + 1, cmd);
+            }
+
+            return ApplyWhereOperator(cmd, propertyExpression);
+        }
+
+        private bool TryGetCollectionElementType(Type propertyType, out Type elementType)
+        {
+            elementType = null!;
+
+            if (propertyType == typeof(string))
+            {
+                return false;
+            }
+
+            if (propertyType.IsArray)
+            {
+                elementType = propertyType.GetElementType()!;
+                return true;
+            }
+
+            if (propertyType.IsGenericType && propertyType.GetGenericArguments().Length == 1)
+            {
+                var genericDefinition = propertyType.GetGenericTypeDefinition();
+                if (genericDefinition == typeof(ICollection<>)
+                    || genericDefinition == typeof(IEnumerable<>)
+                    || genericDefinition == typeof(IList<>)
+                    || genericDefinition == typeof(List<>))
+                {
+                    elementType = propertyType.GetGenericArguments()[0];
+                    return true;
+                }
+            }
+
+            var enumerableInterface = propertyType
+                .GetInterfaces()
+                .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>));
+
+            if (enumerableInterface != null)
+            {
+                elementType = enumerableInterface.GetGenericArguments()[0];
+                return true;
+            }
+
+            return false;
         }
 
         private Expression CreateInListExpression(QueryModelBuilder<T>.WhereUnitData cmd, Expression parameter)

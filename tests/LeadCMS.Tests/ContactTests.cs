@@ -246,6 +246,584 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
     }
 
     [Fact]
+    public async Task GetContacts_FilterByOrderItemProductName_ReturnsMatchingContact()
+    {
+        var dbContext = App.GetDbContext()!;
+        var marker = $"contact-orderitem-{Guid.NewGuid().ToString()[..8]}";
+        var matchingProductName = $"AutomationSuite-{marker}";
+
+        var domain = new Domain { Name = $"{marker}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var matchingContact = new Contact
+        {
+            Email = $"match-{marker}@example.test",
+            FirstName = "OrderItemMatch",
+            DomainId = domain.Id,
+            Language = "en",
+        };
+        var otherContact = new Contact
+        {
+            Email = $"other-{marker}@example.test",
+            FirstName = "OrderItemOther",
+            DomainId = domain.Id,
+            Language = "en",
+        };
+
+        dbContext.Contacts!.AddRange(matchingContact, otherContact);
+        await dbContext.SaveChangesAsync();
+
+        var matchingOrder = new Order
+        {
+            ContactId = matchingContact.Id,
+            RefNo = $"REF-{marker}-1",
+            Currency = "USD",
+            ExchangeRate = 1,
+            Status = OrderStatus.Paid,
+        };
+        var otherOrder = new Order
+        {
+            ContactId = otherContact.Id,
+            RefNo = $"REF-{marker}-2",
+            Currency = "USD",
+            ExchangeRate = 1,
+            Status = OrderStatus.Paid,
+        };
+
+        dbContext.Orders!.AddRange(matchingOrder, otherOrder);
+        await dbContext.SaveChangesAsync();
+
+        dbContext.OrderItems!.AddRange(
+            new OrderItem
+            {
+                OrderId = matchingOrder.Id,
+                LineNumber = 1,
+                ProductName = matchingProductName,
+                Currency = "USD",
+                Quantity = 1,
+                UnitPrice = 99.99m,
+            },
+            new OrderItem
+            {
+                OrderId = otherOrder.Id,
+                LineNumber = 1,
+                ProductName = "Basic Widget",
+                Currency = "USD",
+                Quantity = 1,
+                UnitPrice = 9.99m,
+            });
+        await dbContext.SaveChangesAsync();
+
+        var contacts = await GetTest<List<ContactDetailsDto>>(
+            $"{itemsUrl}?filter[where][orders.orderItems.productName][eq]={matchingProductName}");
+
+        contacts.Should().NotBeNull();
+        var contactsList = contacts ?? throw new InvalidOperationException("Expected contacts payload.");
+        contactsList.Should().ContainSingle();
+        contactsList[0].Id.Should().Be(matchingContact.Id);
+        contactsList[0].FirstName.Should().Be("OrderItemMatch");
+    }
+
+    [Fact]
+    public async Task GetContacts_FilterByEmailLogSubject_ReturnsMatchingContact()
+    {
+        var dbContext = App.GetDbContext()!;
+        var marker = $"contact-emaillog-{Guid.NewGuid().ToString()[..8]}";
+        var matchingSubject = $"LaunchPlan-{marker}";
+
+        var domain = new Domain { Name = $"{marker}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var matchingContact = new Contact
+        {
+            Email = $"match-{marker}@example.test",
+            FirstName = "EmailLogMatch",
+            DomainId = domain.Id,
+            Language = "en",
+        };
+        var otherContact = new Contact
+        {
+            Email = $"other-{marker}@example.test",
+            FirstName = "EmailLogOther",
+            DomainId = domain.Id,
+            Language = "en",
+        };
+
+        dbContext.Contacts!.AddRange(matchingContact, otherContact);
+        await dbContext.SaveChangesAsync();
+
+        await dbContext.EmailLogs!.AddRangeAsync(
+            new EmailLog
+            {
+                ContactId = matchingContact.Id,
+                Subject = matchingSubject,
+                Recipients = matchingContact.Email!,
+                FromEmail = "marketing@example.test",
+                MessageId = $"msg-{marker}-1",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow,
+            },
+            new EmailLog
+            {
+                ContactId = otherContact.Id,
+                Subject = "General update",
+                Recipients = otherContact.Email!,
+                FromEmail = "marketing@example.test",
+                MessageId = $"msg-{marker}-2",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow,
+            });
+        await dbContext.SaveChangesAsync();
+
+        var contacts = await GetTest<List<ContactDetailsDto>>(
+            $"{itemsUrl}?filter[where][emailLogs.subject][eq]={matchingSubject}");
+
+        contacts.Should().NotBeNull();
+        var contactsList = contacts ?? throw new InvalidOperationException("Expected contacts payload.");
+        contactsList.Should().ContainSingle();
+        contactsList[0].Id.Should().Be(matchingContact.Id);
+        contactsList[0].FirstName.Should().Be("EmailLogMatch");
+    }
+
+    [Fact]
+    public async Task GetContacts_FilterByOrderItemProductNameContains_ReturnsMatchingContact()
+    {
+        var dbContext = App.GetDbContext()!;
+        var marker = $"contact-orderitem-contains-{Guid.NewGuid().ToString()[..8]}";
+        var matchingProductName = $"Automation Suite {marker}";
+
+        var domain = new Domain { Name = $"{marker}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var matchingContact = new Contact
+        {
+            Email = $"match-{marker}@example.test",
+            FirstName = "OrderItemContainsMatch",
+            DomainId = domain.Id,
+            Language = "en",
+        };
+        var otherContact = new Contact
+        {
+            Email = $"other-{marker}@example.test",
+            FirstName = "OrderItemContainsOther",
+            DomainId = domain.Id,
+            Language = "en",
+        };
+
+        dbContext.Contacts!.AddRange(matchingContact, otherContact);
+        await dbContext.SaveChangesAsync();
+
+        var matchingOrder = new Order
+        {
+            ContactId = matchingContact.Id,
+            RefNo = $"REF-{marker}-1",
+            Currency = "USD",
+            ExchangeRate = 1,
+            Status = OrderStatus.Paid,
+        };
+        var otherOrder = new Order
+        {
+            ContactId = otherContact.Id,
+            RefNo = $"REF-{marker}-2",
+            Currency = "USD",
+            ExchangeRate = 1,
+            Status = OrderStatus.Paid,
+        };
+
+        dbContext.Orders!.AddRange(matchingOrder, otherOrder);
+        await dbContext.SaveChangesAsync();
+
+        dbContext.OrderItems!.AddRange(
+            new OrderItem
+            {
+                OrderId = matchingOrder.Id,
+                LineNumber = 1,
+                ProductName = matchingProductName,
+                Currency = "USD",
+                Quantity = 1,
+                UnitPrice = 99.99m,
+            },
+            new OrderItem
+            {
+                OrderId = otherOrder.Id,
+                LineNumber = 1,
+                ProductName = "Basic Widget",
+                Currency = "USD",
+                Quantity = 1,
+                UnitPrice = 9.99m,
+            });
+        await dbContext.SaveChangesAsync();
+
+        var contacts = await GetTest<List<ContactDetailsDto>>(
+            $"{itemsUrl}?filter[where][orders.orderItems.productName][contains]=*{marker}*");
+
+        contacts.Should().NotBeNull();
+        var contactsList = contacts ?? throw new InvalidOperationException("Expected contacts payload.");
+        contactsList.Should().ContainSingle();
+        contactsList[0].Id.Should().Be(matchingContact.Id);
+        contactsList[0].FirstName.Should().Be("OrderItemContainsMatch");
+    }
+
+    [Fact]
+    public async Task GetContacts_FilterByWrappedQuerySegmentIdAndOrderItemProductNameContains_ReturnsMatchingContact()
+    {
+        TrackEntityType<Segment>();
+
+        var dbContext = App.GetDbContext()!;
+        var marker = $"contact-orderitem-wrapped-{Guid.NewGuid().ToString()[..8]}";
+        var matchingProductName = $"DataPrep {marker}";
+
+        var domain = new Domain { Name = $"{marker}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var matchingContact = new Contact
+        {
+            Email = $"match-{marker}@example.test",
+            FirstName = "WrappedOrderItemMatch",
+            DomainId = domain.Id,
+            Language = "en",
+        };
+        var sameSegmentNonMatchContact = new Contact
+        {
+            Email = $"segment-other-{marker}@example.test",
+            FirstName = "WrappedOrderItemOther",
+            DomainId = domain.Id,
+            Language = "en",
+        };
+        var outsideSegmentContact = new Contact
+        {
+            Email = $"outside-{marker}@example.test",
+            FirstName = "WrappedOrderItemOutside",
+            DomainId = domain.Id,
+            Language = "en",
+        };
+
+        dbContext.Contacts!.AddRange(matchingContact, sameSegmentNonMatchContact, outsideSegmentContact);
+        await dbContext.SaveChangesAsync();
+
+        var matchingOrder = new Order
+        {
+            ContactId = matchingContact.Id,
+            RefNo = $"REF-{marker}-1",
+            Currency = "USD",
+            ExchangeRate = 1,
+            Status = OrderStatus.Paid,
+        };
+        var sameSegmentOtherOrder = new Order
+        {
+            ContactId = sameSegmentNonMatchContact.Id,
+            RefNo = $"REF-{marker}-2",
+            Currency = "USD",
+            ExchangeRate = 1,
+            Status = OrderStatus.Paid,
+        };
+        var outsideSegmentOrder = new Order
+        {
+            ContactId = outsideSegmentContact.Id,
+            RefNo = $"REF-{marker}-3",
+            Currency = "USD",
+            ExchangeRate = 1,
+            Status = OrderStatus.Paid,
+        };
+
+        dbContext.Orders!.AddRange(matchingOrder, sameSegmentOtherOrder, outsideSegmentOrder);
+        await dbContext.SaveChangesAsync();
+
+        dbContext.OrderItems!.AddRange(
+            new OrderItem
+            {
+                OrderId = matchingOrder.Id,
+                LineNumber = 1,
+                ProductName = matchingProductName,
+                Currency = "USD",
+                Quantity = 1,
+                UnitPrice = 99.99m,
+            },
+            new OrderItem
+            {
+                OrderId = sameSegmentOtherOrder.Id,
+                LineNumber = 1,
+                ProductName = "Basic Widget",
+                Currency = "USD",
+                Quantity = 1,
+                UnitPrice = 9.99m,
+            },
+            new OrderItem
+            {
+                OrderId = outsideSegmentOrder.Id,
+                LineNumber = 1,
+                ProductName = matchingProductName,
+                Currency = "USD",
+                Quantity = 1,
+                UnitPrice = 29.99m,
+            });
+        await dbContext.SaveChangesAsync();
+
+        var segmentId = await CreateSegmentAsync(new SegmentCreateDto
+        {
+            Name = $"Wrapped order item filter {Guid.NewGuid():N}",
+            Type = SegmentType.Static,
+            ContactIds = new[] { matchingContact.Id, sameSegmentNonMatchContact.Id },
+        });
+
+        var wrappedQuery = HttpUtility.UrlEncode(
+            $"&filter[limit]=10&filter[order]=totalRevenue desc&filter[skip]=0&filter[where][orders.orderItems.productName][contains]=*DataPrep*&filter[include]=Account&filter[include]=Domain");
+
+        var contacts = await GetTest<List<ContactDetailsDto>>(
+            $"{itemsUrl}?query={wrappedQuery}&segmentId={segmentId}");
+
+        contacts.Should().NotBeNull();
+        var contactsList = contacts ?? throw new InvalidOperationException("Expected contacts payload.");
+        contactsList.Should().ContainSingle();
+        contactsList[0].Id.Should().Be(matchingContact.Id);
+        contactsList[0].FirstName.Should().Be("WrappedOrderItemMatch");
+    }
+
+    [Fact]
+    public async Task GetContacts_FilterByEmailLogSubjectEmpty_ReturnsMatchingContact()
+    {
+        var dbContext = App.GetDbContext()!;
+        var marker = $"contact-emaillog-empty-{Guid.NewGuid().ToString()[..8]}";
+
+        var domain = new Domain { Name = $"{marker}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var matchingContact = new Contact
+        {
+            Email = $"match-{marker}@example.test",
+            FirstName = "EmailLogEmptyMatch",
+            DomainId = domain.Id,
+            Language = "en",
+        };
+        var otherContact = new Contact
+        {
+            Email = $"other-{marker}@example.test",
+            FirstName = "EmailLogEmptyOther",
+            DomainId = domain.Id,
+            Language = "en",
+        };
+
+        dbContext.Contacts!.AddRange(matchingContact, otherContact);
+        await dbContext.SaveChangesAsync();
+
+        await dbContext.EmailLogs!.AddRangeAsync(
+            new EmailLog
+            {
+                ContactId = matchingContact.Id,
+                Subject = string.Empty,
+                Recipients = matchingContact.Email!,
+                FromEmail = "marketing@example.test",
+                MessageId = $"msg-{marker}-1",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow,
+            },
+            new EmailLog
+            {
+                ContactId = otherContact.Id,
+                Subject = "Has subject",
+                Recipients = otherContact.Email!,
+                FromEmail = "marketing@example.test",
+                MessageId = $"msg-{marker}-2",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow,
+            });
+        await dbContext.SaveChangesAsync();
+
+        var contacts = await GetTest<List<ContactDetailsDto>>(
+            $"{itemsUrl}?filter[where][emailLogs.subject][eq]=");
+
+        contacts.Should().NotBeNull();
+        var contactsList = contacts ?? throw new InvalidOperationException("Expected contacts payload.");
+        contactsList.Should().Contain(c => c.Id == matchingContact.Id);
+        contactsList.Should().NotContain(c => c.Id == otherContact.Id);
+    }
+
+    [Fact]
+    public async Task GetContacts_FilterByEmailLogSubjectNotEmpty_ReturnsMatchingContact()
+    {
+        var dbContext = App.GetDbContext()!;
+        var marker = $"contact-emaillog-notempty-{Guid.NewGuid().ToString()[..8]}";
+
+        var domain = new Domain { Name = $"{marker}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var matchingContact = new Contact
+        {
+            Email = $"match-{marker}@example.test",
+            FirstName = "EmailLogNotEmptyMatch",
+            DomainId = domain.Id,
+            Language = "en",
+        };
+        var otherContact = new Contact
+        {
+            Email = $"other-{marker}@example.test",
+            FirstName = "EmailLogNotEmptyOther",
+            DomainId = domain.Id,
+            Language = "en",
+        };
+
+        dbContext.Contacts!.AddRange(matchingContact, otherContact);
+        await dbContext.SaveChangesAsync();
+
+        await dbContext.EmailLogs!.AddRangeAsync(
+            new EmailLog
+            {
+                ContactId = matchingContact.Id,
+                Subject = "Has subject",
+                Recipients = matchingContact.Email!,
+                FromEmail = "marketing@example.test",
+                MessageId = $"msg-{marker}-1",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow,
+            },
+            new EmailLog
+            {
+                ContactId = otherContact.Id,
+                Subject = string.Empty,
+                Recipients = otherContact.Email!,
+                FromEmail = "marketing@example.test",
+                MessageId = $"msg-{marker}-2",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow,
+            });
+        await dbContext.SaveChangesAsync();
+
+        var contacts = await GetTest<List<ContactDetailsDto>>(
+            $"{itemsUrl}?filter[where][emailLogs.subject][neq]=");
+
+        contacts.Should().NotBeNull();
+        var contactsList = contacts ?? throw new InvalidOperationException("Expected contacts payload.");
+        contactsList.Should().Contain(c => c.Id == matchingContact.Id);
+        contactsList.Should().NotContain(c => c.Id == otherContact.Id);
+    }
+
+    [Fact]
+    public async Task GetContacts_FilterByEmailLogSubjectIsEmpty_ReturnsMatchingContact()
+    {
+        var dbContext = App.GetDbContext()!;
+        var marker = $"contact-emaillog-isempty-{Guid.NewGuid().ToString()[..8]}";
+
+        var domain = new Domain { Name = $"{marker}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var matchingContact = new Contact
+        {
+            Email = $"match-{marker}@example.test",
+            FirstName = "EmailLogIsEmptyMatch",
+            DomainId = domain.Id,
+            Language = "en",
+        };
+        var otherContact = new Contact
+        {
+            Email = $"other-{marker}@example.test",
+            FirstName = "EmailLogIsEmptyOther",
+            DomainId = domain.Id,
+            Language = "en",
+        };
+
+        dbContext.Contacts!.AddRange(matchingContact, otherContact);
+        await dbContext.SaveChangesAsync();
+
+        await dbContext.EmailLogs!.AddRangeAsync(
+            new EmailLog
+            {
+                ContactId = matchingContact.Id,
+                Subject = string.Empty,
+                Recipients = matchingContact.Email!,
+                FromEmail = "marketing@example.test",
+                MessageId = $"msg-{marker}-1",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow,
+            },
+            new EmailLog
+            {
+                ContactId = otherContact.Id,
+                Subject = "Has subject",
+                Recipients = otherContact.Email!,
+                FromEmail = "marketing@example.test",
+                MessageId = $"msg-{marker}-2",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow,
+            });
+        await dbContext.SaveChangesAsync();
+
+        var contacts = await GetTest<List<ContactDetailsDto>>(
+            $"{itemsUrl}?filter[where][emailLogs.subject][isempty]=true");
+
+        contacts.Should().NotBeNull();
+        var contactsList = contacts ?? throw new InvalidOperationException("Expected contacts payload.");
+        contactsList.Should().Contain(c => c.Id == matchingContact.Id);
+        contactsList.Should().NotContain(c => c.Id == otherContact.Id);
+    }
+
+    [Fact]
+    public async Task GetContacts_FilterByEmailLogSubjectIsNotEmpty_ReturnsMatchingContact()
+    {
+        var dbContext = App.GetDbContext()!;
+        var marker = $"contact-emaillog-isnotempty-{Guid.NewGuid().ToString()[..8]}";
+
+        var domain = new Domain { Name = $"{marker}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        var matchingContact = new Contact
+        {
+            Email = $"match-{marker}@example.test",
+            FirstName = "EmailLogIsNotEmptyMatch",
+            DomainId = domain.Id,
+            Language = "en",
+        };
+        var otherContact = new Contact
+        {
+            Email = $"other-{marker}@example.test",
+            FirstName = "EmailLogIsNotEmptyOther",
+            DomainId = domain.Id,
+            Language = "en",
+        };
+
+        dbContext.Contacts!.AddRange(matchingContact, otherContact);
+        await dbContext.SaveChangesAsync();
+
+        await dbContext.EmailLogs!.AddRangeAsync(
+            new EmailLog
+            {
+                ContactId = matchingContact.Id,
+                Subject = "Has subject",
+                Recipients = matchingContact.Email!,
+                FromEmail = "marketing@example.test",
+                MessageId = $"msg-{marker}-1",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow,
+            },
+            new EmailLog
+            {
+                ContactId = otherContact.Id,
+                Subject = string.Empty,
+                Recipients = otherContact.Email!,
+                FromEmail = "marketing@example.test",
+                MessageId = $"msg-{marker}-2",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow,
+            });
+        await dbContext.SaveChangesAsync();
+
+        var contacts = await GetTest<List<ContactDetailsDto>>(
+            $"{itemsUrl}?filter[where][emailLogs.subject][isnotempty]=true");
+
+        contacts.Should().NotBeNull();
+        var contactsList = contacts ?? throw new InvalidOperationException("Expected contacts payload.");
+        contactsList.Should().Contain(c => c.Id == matchingContact.Id);
+        contactsList.Should().NotContain(c => c.Id == otherContact.Id);
+    }
+
+    [Fact]
     public async Task CheckInsertedItemDomain()
     {
         var testCreateItem = await CreateItem();

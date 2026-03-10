@@ -11,6 +11,14 @@ namespace LeadCMS.Tests;
 
 public class OrderAggregatesTests : BaseTest
 {
+    public OrderAggregatesTests()
+    {
+        TrackEntityType<Contact>();
+        TrackEntityType<Domain>();
+        TrackEntityType<Account>();
+        TrackEntityType<Order>();
+    }
+
     [Fact]
     public void Contact_order_aggregates_are_updated_by_triggers()
     {

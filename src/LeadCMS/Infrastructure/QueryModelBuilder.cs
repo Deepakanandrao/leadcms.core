@@ -21,6 +21,8 @@ namespace LeadCMS.Infrastructure
     {
         public List<PropertyInfo> Properties { get; set; } = new List<PropertyInfo>();
 
+        public bool ContainsCollectionNavigation { get; set; }
+
         public PropertyInfo LeafProperty => Properties.Last();
 
         public bool IsNested => Properties.Count > 1;
@@ -34,12 +36,106 @@ namespace LeadCMS.Infrastructure
         {
             Properties = properties;
         }
+
+        public PropertyPath(List<PropertyInfo> properties, bool containsCollectionNavigation)
+        {
+            Properties = properties;
+            ContainsCollectionNavigation = containsCollectionNavigation;
+        }
     }
 
     public class QueryModelBuilder<T>
         where T : BaseEntityWithId
     {
         private readonly PgDbContext dbContext;
+
+        private static PropertyPath ParsePropertyPath(string propertyName, QueryCommand cmd, bool allowCollectionNavigations)
+        {
+            var parts = propertyName.Split('.');
+            var properties = new List<PropertyInfo>();
+            Type currentType = typeof(T);
+            var containsCollectionNavigation = false;
+
+            for (int i = 0; i < parts.Length; i++)
+            {
+                var part = parts[i];
+                var typeProperties = currentType.GetProperties();
+                var property = typeProperties.FirstOrDefault(p => p.Name.ToLowerInvariant() == part.ToLowerInvariant());
+
+                if (property == null)
+                {
+                    throw new QueryException(cmd.Source, $"No such property '{part}' on type '{currentType.Name}'");
+                }
+
+                properties.Add(property);
+
+                if (i >= parts.Length - 1)
+                {
+                    continue;
+                }
+
+                if (TryGetCollectionElementType(property.PropertyType, out var elementType))
+                {
+                    if (!allowCollectionNavigations)
+                    {
+                        throw new QueryException(cmd.Source, $"Collection navigation '{property.Name}' is not supported in this query.");
+                    }
+
+                    containsCollectionNavigation = true;
+                    currentType = elementType;
+                    continue;
+                }
+
+                currentType = property.PropertyType;
+                if (Nullable.GetUnderlyingType(currentType) != null)
+                {
+                    currentType = Nullable.GetUnderlyingType(currentType)!;
+                }
+            }
+
+            return new PropertyPath(properties, containsCollectionNavigation);
+        }
+
+        private static bool TryGetCollectionElementType(Type propertyType, out Type elementType)
+        {
+            elementType = null!;
+
+            if (propertyType == typeof(string))
+            {
+                return false;
+            }
+
+            if (propertyType.IsArray)
+            {
+                elementType = propertyType.GetElementType()!;
+                return true;
+            }
+
+            if (propertyType.IsGenericType && propertyType.GetGenericArguments().Length == 1)
+            {
+                var genericDefinition = propertyType.GetGenericTypeDefinition();
+                if (genericDefinition == typeof(ICollection<>)
+                    || genericDefinition == typeof(IEnumerable<>)
+                    || genericDefinition == typeof(IList<>)
+                    || genericDefinition == typeof(List<>))
+                {
+                    elementType = propertyType.GetGenericArguments()[0];
+                    return true;
+                }
+            }
+
+            var enumerableInterface = propertyType
+                .GetInterfaces()
+                .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>));
+
+            if (enumerableInterface != null)
+            {
+                elementType = enumerableInterface.GetGenericArguments()[0];
+                return true;
+            }
+
+            return false;
+        }
 
         public QueryModelBuilder(List<QueryCommand> commands, int maxLimitSize, PgDbContext dbContext)
         {
@@ -349,36 +445,7 @@ namespace LeadCMS.Infrastructure
 
         private PropertyPath ParseNestedPropertyPath(string propertyName, QueryCommand cmd)
         {
-            var parts = propertyName.Split('.');
-            var properties = new List<PropertyInfo>();
-            Type currentType = typeof(T);
-
-            for (int i = 0; i < parts.Length; i++)
-            {
-                var part = parts[i];
-                var typeProperties = currentType.GetProperties();
-                var property = typeProperties.FirstOrDefault(p => p.Name.ToLowerInvariant() == part.ToLowerInvariant());
-
-                if (property == null)
-                {
-                    throw new QueryException(cmd.Source, $"No such property '{part}' on type '{currentType.Name}'");
-                }
-
-                properties.Add(property);
-
-                // If not the last part, navigate to the property's type
-                if (i < parts.Length - 1)
-                {
-                    currentType = property.PropertyType;
-                    // Handle nullable types
-                    if (Nullable.GetUnderlyingType(currentType) != null)
-                    {
-                        currentType = Nullable.GetUnderlyingType(currentType)!;
-                    }
-                }
-            }
-
-            return new PropertyPath(properties);
+            return ParsePropertyPath(propertyName, cmd, allowCollectionNavigations: false);
         }
 
         private void AddAutomaticIncludesForNestedSelects()
@@ -463,36 +530,7 @@ namespace LeadCMS.Infrastructure
 
             private PropertyPath InitPropertyPath(string propertyName)
             {
-                var parts = propertyName.Split('.');
-                var properties = new List<PropertyInfo>();
-                Type currentType = typeof(T);
-
-                for (int i = 0; i < parts.Length; i++)
-                {
-                    var part = parts[i];
-                    var typeProperties = currentType.GetProperties();
-                    var property = typeProperties.FirstOrDefault(p => p.Name.ToLowerInvariant() == part.ToLowerInvariant());
-
-                    if (property == null)
-                    {
-                        throw new QueryException(string.Empty, $"No such property '{part}' on type '{currentType.Name}'");
-                    }
-
-                    properties.Add(property);
-
-                    // If not the last part, navigate to the property's type
-                    if (i < parts.Length - 1)
-                    {
-                        currentType = property.PropertyType;
-                        // Handle nullable types
-                        if (Nullable.GetUnderlyingType(currentType) != null)
-                        {
-                            currentType = Nullable.GetUnderlyingType(currentType)!;
-                        }
-                    }
-                }
-
-                return new PropertyPath(properties);
+                return ParsePropertyPath(propertyName, new QueryCommand { Source = propertyName }, allowCollectionNavigations: false);
             }
         }
 
@@ -546,47 +584,21 @@ namespace LeadCMS.Infrastructure
 
                 var propertyName = cmd.Props.ElementAtOrDefault(indexOffset);
                 var rawOperation = cmd.Props.ElementAtOrDefault(indexOffset + 1);
-                PropertyPath = ParsePropertyPath(propertyName, cmd);
+                PropertyPath = ResolvePropertyPath(propertyName, cmd);
                 Operation = ParseOperation(rawOperation, cmd);
             }
 
-            private PropertyPath ParsePropertyPath(string? propertyName, QueryCommand cmd)
+            private PropertyPath ResolvePropertyPath(string? propertyName, QueryCommand cmd)
             {
                 if (propertyName == null || string.IsNullOrWhiteSpace(propertyName))
                 {
                     throw new QueryException(cmd.Source, "Property field not found");
                 }
 
-                var parts = propertyName.Split('.');
-                var properties = new List<PropertyInfo>();
-                Type currentType = typeof(T);
-
-                for (int i = 0; i < parts.Length; i++)
-                {
-                    var part = parts[i];
-                    var typeProperties = currentType.GetProperties();
-                    var property = typeProperties.FirstOrDefault(p => p.Name.ToLowerInvariant() == part.ToLowerInvariant());
-
-                    if (property == null)
-                    {
-                        throw new QueryException(cmd.Source, $"No such property '{part}' on type '{currentType.Name}'");
-                    }
-
-                    properties.Add(property);
-
-                    // If not the last part, navigate to the property's type
-                    if (i < parts.Length - 1)
-                    {
-                        currentType = property.PropertyType;
-                        // Handle nullable types
-                        if (Nullable.GetUnderlyingType(currentType) != null)
-                        {
-                            currentType = Nullable.GetUnderlyingType(currentType)!;
-                        }
-                    }
-                }
-
-                return new PropertyPath(properties);
+                return QueryModelBuilder<T>.ParsePropertyPath(
+                    propertyName,
+                    cmd,
+                    allowCollectionNavigations: typeof(T) == typeof(Contact));
             }
 
             public enum ContainsType
