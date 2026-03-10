@@ -3,6 +3,7 @@
 // </copyright>
 
 using System.Text.Json;
+using System.Web;
 using LeadCMS.Infrastructure;
 
 namespace LeadCMS.Tests;
@@ -133,6 +134,115 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
         result = await GetTest<List<Contact>>(itemsUrl + "?query=Some");
         result.Should().NotBeNull();
         result!.Count.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task GetContacts_WithStaticSegmentId_FiltersContactsAndPreservesAdditionalFilters()
+    {
+        TrackEntityType<Segment>();
+
+        var firstId = await CreateContactForSegmentAsync("segment-static-1@test.net", "Static", "One");
+        var secondId = await CreateContactForSegmentAsync("segment-static-2@test.net", "Static", "Two");
+        await CreateContactForSegmentAsync("outside-segment@test.net", "Outside", "User");
+
+        var segmentId = await CreateSegmentAsync(new SegmentCreateDto
+        {
+            Name = $"Static contacts filter {Guid.NewGuid():N}",
+            Type = SegmentType.Static,
+            ContactIds = new[] { firstId, secondId },
+        });
+
+        var contacts = await GetTest<List<ContactDetailsDto>>($"{itemsUrl}?segmentId={segmentId}&filter[where][email][eq]=segment-static-2@test.net");
+
+        contacts.Should().NotBeNull();
+        var contactsList = contacts ?? throw new InvalidOperationException("Expected contacts payload.");
+        contactsList.Should().ContainSingle();
+        contactsList[0].Id.Should().Be(secondId);
+        contactsList[0].Email.Should().Be("segment-static-2@test.net");
+    }
+
+    [Fact]
+    public async Task GetContacts_WithDynamicSegmentId_FiltersContacts()
+    {
+        TrackEntityType<Segment>();
+
+        var includedId = await CreateContactForSegmentAsync("vip-segment@test.net", "Vip", "Included");
+        await CreateContactForSegmentAsync("regular-segment@test.net", "Regular", "Excluded");
+
+        var segmentId = await CreateSegmentAsync(new SegmentCreateDto
+        {
+            Name = $"Dynamic contacts filter {Guid.NewGuid():N}",
+            Type = SegmentType.Dynamic,
+            Definition = new SegmentDefinition
+            {
+                IncludeRules = new RuleGroup
+                {
+                    Connector = RuleConnector.And,
+                    Rules = new List<SegmentRule>
+                    {
+                        new() { FieldId = "email", Operator = FieldOperator.Contains, Value = "vip-" },
+                    },
+                },
+            },
+        });
+
+        var contacts = await GetTest<List<ContactDetailsDto>>($"{itemsUrl}?segmentId={segmentId}");
+
+        contacts.Should().NotBeNull();
+        var contactsList = contacts ?? throw new InvalidOperationException("Expected contacts payload.");
+        contactsList.Select(c => c.Id).Should().BeEquivalentTo(new[] { includedId });
+    }
+
+    [Fact]
+    public async Task GetContacts_WithWrappedQueryParameterAndSegmentId_AppliesEmbeddedFilters()
+    {
+        TrackEntityType<Segment>();
+
+        var includedId = await CreateContactForSegmentAsync("wrapped-filter@test.net", "Wrapped", "Included");
+        await CreateContactForSegmentAsync("wrapped-other@test.net", "Wrapped", "Other");
+
+        var segmentId = await CreateSegmentAsync(new SegmentCreateDto
+        {
+            Name = $"Wrapped contacts filter {Guid.NewGuid():N}",
+            Type = SegmentType.Static,
+            ContactIds = new[] { includedId },
+        });
+
+        var wrappedQuery = HttpUtility.UrlEncode("filter[where][email][eq]=wrapped-filter@test.net&filter[order]=Id DESC");
+
+        var contacts = await GetTest<List<ContactDetailsDto>>($"{itemsUrl}?query={wrappedQuery}&segmentId={segmentId}");
+
+        contacts.Should().NotBeNull();
+        var contactsList = contacts ?? throw new InvalidOperationException("Expected contacts payload.");
+        contactsList.Should().ContainSingle();
+        contactsList[0].Id.Should().Be(includedId);
+        contactsList[0].Email.Should().Be("wrapped-filter@test.net");
+    }
+
+    [Fact]
+    public async Task GetContacts_WithLeadingAmpersandWrappedQueryAndSegmentId_StillWorks()
+    {
+        TrackEntityType<Segment>();
+
+        var includedId = await CreateContactForSegmentAsync("wrapped-amp@test.net", "Wrapped", "AmpIncluded");
+        var otherId = await CreateContactForSegmentAsync("wrapped-amp-other@test.net", "Wrapped", "AmpOther");
+
+        var segmentId = await CreateSegmentAsync(new SegmentCreateDto
+        {
+            Name = $"Wrapped ampersand contacts filter {Guid.NewGuid():N}",
+            Type = SegmentType.Static,
+            ContactIds = new[] { includedId },
+        });
+
+        var wrappedQuery = HttpUtility.UrlEncode($"&filter[where][firstName][eq]=Wrapped&filter[ids]={includedId},{otherId}&filter[order]=Id DESC");
+
+        var contacts = await GetTest<List<ContactDetailsDto>>($"{itemsUrl}?query={wrappedQuery}&segmentId={segmentId}");
+
+        contacts.Should().NotBeNull();
+        var contactsList = contacts ?? throw new InvalidOperationException("Expected contacts payload.");
+        contactsList.Should().ContainSingle();
+        contactsList[0].Id.Should().Be(includedId);
+        contactsList[0].Email.Should().Be("wrapped-amp@test.net");
     }
 
     [Fact]
@@ -578,5 +688,24 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
         var dbDomain = dbContext!.Domains!.Where(domainDb => domainDb.Name == domain).Select(domainDb => domainDb.Name).FirstOrDefault();
 
         return dbDomain!;
+    }
+
+    private async Task<int> CreateContactForSegmentAsync(string email, string firstName, string lastName)
+    {
+        var location = await PostTest(itemsUrl, new ContactCreateDto
+        {
+            Email = email,
+            FirstName = firstName,
+            LastName = lastName,
+            Language = "en",
+        });
+
+        return int.Parse(location.Split('/').Last());
+    }
+
+    private async Task<int> CreateSegmentAsync(SegmentCreateDto dto)
+    {
+        var location = await PostTest("/api/segments", dto);
+        return int.Parse(location.Split('/').Last());
     }
 }

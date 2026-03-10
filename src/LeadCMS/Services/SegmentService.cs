@@ -56,6 +56,33 @@ public class SegmentService : ISegmentService
         return 0;
     }
 
+    public async Task<List<int>> GetSegmentContactIdsAsync(int segmentId)
+    {
+        var segment = await dbContext.Segments!
+            .Where(s => s.Id == segmentId)
+            .FirstOrDefaultAsync();
+
+        if (segment == null)
+        {
+            throw new EntityNotFoundException("Segment", segmentId.ToString());
+        }
+
+        if (segment.Type == SegmentType.Static)
+        {
+            return (segment.ContactIds ?? Array.Empty<int>()).Distinct().ToList();
+        }
+
+        if (segment.Type == SegmentType.Dynamic && segment.Definition != null)
+        {
+            return await BuildDynamicSegmentQuery(segment.Definition)
+                .Select(c => c.Id)
+                .Distinct()
+                .ToListAsync();
+        }
+
+        return new List<int>();
+    }
+
     public async Task<List<Contact>> GetSegmentContactsAsync(int segmentId, string? query = null, int? limit = null)
     {
         var segment = await dbContext.Segments!

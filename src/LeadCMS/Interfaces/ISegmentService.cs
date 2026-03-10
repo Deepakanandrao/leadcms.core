@@ -11,6 +11,8 @@ public interface ISegmentService
 {
     Task<int> CalculateContactCountAsync(Segment segment);
 
+    Task<List<int>> GetSegmentContactIdsAsync(int segmentId);
+
     Task<List<Contact>> GetSegmentContactsAsync(int segmentId, string? query = null, int? limit = null);
 
     Task<SegmentPreviewResultDto> PreviewSegmentAsync(SegmentDefinition definition, int limit = 100);

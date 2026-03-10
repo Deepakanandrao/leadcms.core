@@ -532,6 +532,7 @@ public class Program
             config.OperationFilter<MediaResolutionHeaderOperationFilter>();
             config.OperationFilter<Swagger.IncludeTranslationsOperationFilter>();
             config.OperationFilter<Swagger.IncludeBaseOperationFilter>();
+            config.OperationFilter<Swagger.SegmentIdOperationFilter>();
 
             foreach (var swaggerConfigurator in swaggerConfigurators)
             {

@@ -2,7 +2,9 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Net;
 using AutoMapper;
+using LeadCMS.Attributes;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
@@ -11,6 +13,7 @@ using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LeadCMS.Controllers;
@@ -22,12 +25,14 @@ public class ContactsController : BaseControllerWithImport<Contact, ContactCreat
     private readonly IContactService contactService;
     private readonly IContactEmailCommunicationService contactEmailCommunicationService;
     private readonly CommentableControllerExtension commentableControllerExtension;
+    private readonly ISegmentService segmentService;
 
     public ContactsController(
         PgDbContext dbContext,
         IMapper mapper,
         IContactService contactService,
         IContactEmailCommunicationService contactEmailCommunicationService,
+        ISegmentService segmentService,
         EsDbContext esDbContext,
         QueryProviderFactory<Contact> queryProviderFactory,
         CommentableControllerExtension commentableControllerExtension,
@@ -37,6 +42,7 @@ public class ContactsController : BaseControllerWithImport<Contact, ContactCreat
         this.contactService = contactService;
         this.contactEmailCommunicationService = contactEmailCommunicationService;
         this.commentableControllerExtension = commentableControllerExtension;
+        this.segmentService = segmentService;
     }
 
     [HttpGet("{id}")]
@@ -56,13 +62,14 @@ public class ContactsController : BaseControllerWithImport<Contact, ContactCreat
     }
 
     [HttpGet]
+    [SegmentIdParameter]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public override async Task<ActionResult<List<ContactDetailsDto>>> Get([FromQuery] string? query)
     {
-        var returnedItems = (await base.Get(query)).Result;
+        var returnedItems = (await ExecuteWithSegmentFilterAsync(() => base.Get(query))).Result;
 
         var items = (List<ContactDetailsDto>)((ObjectResult)returnedItems!).Value!;
 
@@ -72,6 +79,16 @@ public class ContactsController : BaseControllerWithImport<Contact, ContactCreat
         });
 
         return Ok(items);
+    }
+
+    [HttpGet("export")]
+    [SegmentIdParameter]
+    [Produces("text/csv", "text/json")]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public override Task<ActionResult<List<ContactDetailsDto>>> Export([FromQuery] string? query)
+    {
+        return ExecuteWithSegmentFilterAsync(() => base.Export(query));
     }
 
     [HttpPost]
@@ -210,6 +227,7 @@ public class ContactsController : BaseControllerWithImport<Contact, ContactCreat
 
     /// <inheritdoc/>
     [HttpGet("sync")]
+    [SegmentIdParameter]
     [ProducesResponseType(typeof(SyncResponseDto<ContactDetailsDto, int>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -217,11 +235,141 @@ public class ContactsController : BaseControllerWithImport<Contact, ContactCreat
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public override Task<IActionResult> Sync([FromQuery] string? syncToken = null, [FromQuery] string? query = null)
     {
-        return base.Sync(syncToken, query);
+        return ExecuteWithSegmentFilterAsync(() => base.Sync(syncToken, query));
     }
 
     protected override async Task SaveRangeAsync(List<Contact> newRecords)
     {
         await contactService.SaveRangeAsync(newRecords);
+    }
+
+    private async Task<TResult> ExecuteWithSegmentFilterAsync<TResult>(Func<Task<TResult>> action)
+    {
+        if (!TryGetSegmentId(out var segmentId))
+        {
+            return await action();
+        }
+
+        var originalQueryString = Request.QueryString;
+        var segmentContactIds = await segmentService.GetSegmentContactIdsAsync(segmentId);
+        Request.QueryString = BuildSegmentFilteredQueryString(segmentContactIds);
+
+        try
+        {
+            return await action();
+        }
+        finally
+        {
+            Request.QueryString = originalQueryString;
+        }
+    }
+
+    private bool TryGetSegmentId(out int segmentId)
+    {
+        segmentId = 0;
+
+        if (!Request.Query.TryGetValue("segmentId", out var segmentIdValues)
+            || string.IsNullOrWhiteSpace(segmentIdValues.FirstOrDefault()))
+        {
+            return false;
+        }
+
+        if (int.TryParse(segmentIdValues.First(), out segmentId))
+        {
+            return true;
+        }
+
+        throw new QueryException("segmentId", $"Failed to parse number '{segmentIdValues.First()}'");
+    }
+
+    private QueryString BuildSegmentFilteredQueryString(IEnumerable<int> segmentContactIds)
+    {
+        var normalizedParameters = GetNormalizedQueryParameters();
+        var segmentIds = segmentContactIds.Distinct().ToHashSet();
+        var existingIds = ParseFilterIds(normalizedParameters);
+        var effectiveIds = existingIds.Count > 0
+            ? segmentIds.Intersect(existingIds).ToArray()
+            : segmentIds.ToArray();
+
+        var queryBuilder = new QueryBuilder();
+        foreach (var parameter in normalizedParameters)
+        {
+            if (string.Equals(parameter.Key, "segmentId", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(parameter.Key, "filter[ids]", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            queryBuilder.Add(parameter.Key, parameter.Value);
+        }
+
+        queryBuilder.Add("filter[ids]", effectiveIds.Length > 0 ? string.Join(',', effectiveIds) : "-1");
+
+        return queryBuilder.ToQueryString();
+    }
+
+    private List<KeyValuePair<string, string>> GetNormalizedQueryParameters()
+    {
+        var normalizedParameters = new List<KeyValuePair<string, string>>();
+
+        foreach (var parameter in Request.Query)
+        {
+            foreach (var value in parameter.Value)
+            {
+                if (string.Equals(parameter.Key, "query", StringComparison.OrdinalIgnoreCase)
+                    && TryExpandEmbeddedQueryParameters(value, out var embeddedParameters))
+                {
+                    normalizedParameters.AddRange(embeddedParameters);
+                    continue;
+                }
+
+                normalizedParameters.Add(new KeyValuePair<string, string>(parameter.Key, value ?? string.Empty));
+            }
+        }
+
+        return normalizedParameters;
+    }
+
+    private HashSet<int> ParseFilterIds(IEnumerable<KeyValuePair<string, string>> parameters)
+    {
+        return parameters
+            .Where(parameter => string.Equals(parameter.Key, "filter[ids]", StringComparison.OrdinalIgnoreCase))
+            .Select(parameter => parameter.Value)
+            .SelectMany(value => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Select(value => int.TryParse(value, out var parsedValue) ? (int?)parsedValue : null)
+            .Where(value => value.HasValue)
+            .Select(value => value!.Value)
+            .ToHashSet();
+    }
+
+    private bool TryExpandEmbeddedQueryParameters(string? queryValue, out List<KeyValuePair<string, string>> parameters)
+    {
+        parameters = new List<KeyValuePair<string, string>>();
+
+        if (string.IsNullOrWhiteSpace(queryValue))
+        {
+            return false;
+        }
+
+        var normalizedQuery = queryValue.Trim().TrimStart('?', '&');
+        if (!normalizedQuery.Contains("filter[", StringComparison.OrdinalIgnoreCase) || !normalizedQuery.Contains('='))
+        {
+            return false;
+        }
+
+        foreach (var pair in normalizedQuery.Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var parts = pair.Split('=', 2);
+            if (parts.Length != 2 || string.IsNullOrWhiteSpace(parts[0]))
+            {
+                continue;
+            }
+
+            parameters.Add(new KeyValuePair<string, string>(
+                WebUtility.UrlDecode(parts[0]),
+                WebUtility.UrlDecode(parts[1])));
+        }
+
+        return parameters.Count > 0;
     }
 }
