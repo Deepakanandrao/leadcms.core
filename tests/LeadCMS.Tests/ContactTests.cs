@@ -107,6 +107,53 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
     }
 
     [Fact]
+    public async Task GetOne_ExposesIpAddressAndUserDeviceSummary()
+    {
+        var dbContext = App.GetDbContext()!;
+        var contact = new Contact
+        {
+            Email = $"device-summary-{Guid.NewGuid():N}@test.net",
+            FirstName = "Device",
+            LastName = "Summary",
+            CreatedByIp = "198.51.100.10",
+            CreatedByUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        };
+
+        dbContext.Contacts!.Add(contact);
+        await dbContext.SaveChangesAsync();
+
+        var result = await GetTest<ContactDetailsDto>($"{itemsUrl}/{contact.Id}");
+
+        result.Should().NotBeNull();
+        result!.IpAddress.Should().Be("198.51.100.10");
+        result.UserDeviceSummary.Should().Contain("Chrome 122");
+        result.UserDeviceSummary.Should().Contain("Mac");
+    }
+
+    [Fact]
+    public async Task GetList_DoesNotExposeUserDeviceSummary()
+    {
+        var dbContext = App.GetDbContext()!;
+        var email = $"device-summary-list-{Guid.NewGuid():N}@test.net";
+        var contact = new Contact
+        {
+            Email = email,
+            FirstName = "Device",
+            LastName = "List",
+            CreatedByUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        };
+
+        dbContext.Contacts!.Add(contact);
+        await dbContext.SaveChangesAsync();
+
+        var result = await GetTest<List<ContactDetailsDto>>($"{itemsUrl}?filter[where][email][eq]={Uri.EscapeDataString(email)}");
+
+        result.Should().NotBeNull();
+        var singleResult = result!.Should().ContainSingle().Subject;
+        singleResult.UserDeviceSummary.Should().BeNull();
+    }
+
+    [Fact]
 
     public async Task GetWithSearchEmailTest()
     {

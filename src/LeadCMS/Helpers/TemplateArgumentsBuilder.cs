@@ -65,6 +65,10 @@ public static class TemplateArgumentsBuilder
         AddIfHasValue(args, "Timezone", contact.Timezone?.ToString());
         AddIfHasValue(args, "TimezoneFormatted", formattedTimezone);
         AddIfHasValue(args, "IpAddress", contact.UpdatedByIp ?? contact.CreatedByIp);
+        AddIfHasValue(
+            args,
+            "UserDeviceSummary",
+            UserAgentDeviceSummaryHelper.Parse(contact.UpdatedByUserAgent ?? contact.CreatedByUserAgent));
         args["DealsCount"] = contact.DealsCount;
         args["OrdersCount"] = contact.OrdersCount;
         AddIfHasValue(args, "LastOrderDate", contact.LastOrderDate?.ToString("yyyy-MM-dd"));

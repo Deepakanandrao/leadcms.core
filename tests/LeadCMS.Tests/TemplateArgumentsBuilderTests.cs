@@ -25,6 +25,24 @@ public class TemplateArgumentsBuilderTests
     }
 
     [Fact]
+    public void FromContact_WithUpdatedByUserAgent_AddsPreferredUserDeviceSummary()
+    {
+        var contact = new Contact
+        {
+            Email = "test@example.com",
+            CreatedByUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            UpdatedByUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        };
+
+        var args = TemplateArgumentsBuilder.FromContact(contact);
+
+        args.Should().ContainKey("UserDeviceSummary");
+        args["UserDeviceSummary"].Should().BeOfType<string>();
+        args["UserDeviceSummary"].ToString().Should().Contain("Chrome 122");
+        args["UserDeviceSummary"].ToString().Should().Contain("Mac");
+    }
+
+    [Fact]
     public void FromContact_WithoutUpdatedByIp_FallsBackToCreatedIpAddress()
     {
         var contact = new Contact

@@ -22,6 +22,6 @@ public class DefaultLeadNotificationMessageBuilderTests
         builder.EnrichTemplateArguments(args, leadInfo);
 
         args.Should().ContainKey("UserAgent").WhoseValue.Should().Be(leadInfo.UserAgent);
-        args.Should().ContainKey("userDeviceSummary");
+        args.Should().ContainKey("UserDeviceSummary");
     }
 }

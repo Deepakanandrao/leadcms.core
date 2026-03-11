@@ -7,7 +7,7 @@
     <RootNamespace>LeadCMS</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <UserSecretsId>98270385-43f2-4d3c-11d5-02d0d77fc2d9</UserSecretsId>
-    <ReleaseVersion>1.4.14-pre</ReleaseVersion>
+    <ReleaseVersion>1.4.15-pre</ReleaseVersion>
     <AssemblyName>LeadCMS</AssemblyName>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageId>LeadCMS</PackageId>
@@ -46,7 +46,7 @@
     <PackageReference Include="HtmlAgilityPack" Version="1.11.60" />
     <PackageReference Include="libphonenumber-csharp" Version="9.0.25" />
     <PackageReference Include="MailKit" Version="4.9.0" />
-    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.10.3" />
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.10.4" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.11" />
     <PackageReference Include="Microsoft.Identity.Web" Version="3.8.4" />
@@ -74,6 +74,7 @@
     <PackageReference Include="CsvHelper" Version="31.0.4" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.9.0" />
     <PackageReference Include="System.Linq.Dynamic.Core" Version="1.6.0" />
+    <PackageReference Include="UAParser" Version="3.1.47" />
     <PackageReference Include="Unidecode.NET" Version="2.1.0" />
   </ItemGroup>
 

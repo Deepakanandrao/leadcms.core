@@ -57,6 +57,7 @@ public class ContactsController : BaseControllerWithImport<Contact, ContactCreat
         var singleItem = (ContactDetailsDto)((ObjectResult)returnedSingleItem!).Value!;
 
         singleItem!.AvatarUrl = GravatarHelper.EmailToGravatarUrl(singleItem.Email);
+        singleItem.UserDeviceSummary = UserAgentDeviceSummaryHelper.Parse(singleItem.UpdatedByUserAgent ?? singleItem.CreatedByUserAgent);
 
         return Ok(singleItem!);
     }

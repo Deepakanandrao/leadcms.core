@@ -5,6 +5,7 @@
 using AutoMapper;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
+using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
 
 namespace LeadCMS.Configuration;
@@ -104,6 +105,10 @@ public class AutoMapperProfiles : Profile
         CreateMap<Contact, ContactUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<Contact, ContactDetailsDto>()
+            .AfterMap((source, destination) =>
+            {
+                destination.IpAddress = source.UpdatedByIp ?? source.CreatedByIp;
+            })
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<ContactImportDto, Contact>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));

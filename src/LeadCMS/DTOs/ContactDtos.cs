@@ -113,6 +113,18 @@ public class ContactDetailsDto : ContactCreateDto
 
     public string? FullName { get; set; }
 
+    [Ignore]
+    [JsonIgnore]
+    public string? CreatedByUserAgent { get; set; }
+
+    [Ignore]
+    [JsonIgnore]
+    public string? UpdatedByUserAgent { get; set; }
+
+    public string? IpAddress { get; set; }
+
+    public string? UserDeviceSummary { get; set; }
+
     public Utms? Utms { get; set; }
 
     public string AvatarUrl { get; set; } = string.Empty;
