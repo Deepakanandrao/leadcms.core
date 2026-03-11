@@ -92,9 +92,9 @@ public class LeadNotificationInfo
     public int? Timezone { get; set; }
 
     /// <summary>
-    /// Gets or sets the user's IP address.
+    /// Gets or sets the user's IPv4 address.
     /// </summary>
-    public string? IpAddress { get; set; }
+    public string? IpAddressV4 { get; set; }
 
     /// <summary>
     /// Gets or sets the user's user-agent string.
@@ -148,7 +148,7 @@ public class LeadNotificationInfo
         AddIfHasValue(args, "Phone", Phone);
         AddIfHasValue(args, "CompanyName", CompanyName);
         AddIfHasValue(args, "Language", Language);
-        AddIfHasValue(args, "IpAddress", IpAddress);
+        AddIfHasValue(args, "IpAddress", IpAddressV4);
         AddIfHasValue(args, "UserAgent", UserAgent);
         AddIfHasValue(args, "ContactId", ContactId?.ToString());
 

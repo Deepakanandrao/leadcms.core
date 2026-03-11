@@ -100,7 +100,7 @@ public class ContactUsController : Controller
             [
                 new KeyValuePair<string, string>("secret", pluginSettings.RecaptchaSecretKey),
                 new KeyValuePair<string, string>("response", contactUsDto.RecaptchaToken),
-                new KeyValuePair<string, string>("remoteip", httpContextHelper?.IpAddress ?? string.Empty),
+                new KeyValuePair<string, string>("remoteip", httpContextHelper?.IpAddressV4 ?? string.Empty),
             ]);
             var response = await client.PostAsync("https://www.google.com/recaptcha/api/siteverify", postData);
             if (!response.IsSuccessStatusCode)
@@ -122,7 +122,7 @@ public class ContactUsController : Controller
 
         var utcOffset = TimezoneHelper.NormalizeToUtcOffset(contactUsDto.TimeZoneOffset, contactUsDto.TimezoneFormat);
 
-        var ip = httpContextHelper?.IpAddress;
+        var ip = httpContextHelper?.IpAddressV4;
         var ua = httpContextHelper?.UserAgent;
 
         if (!string.IsNullOrWhiteSpace(contactUsDto.Email) || !string.IsNullOrWhiteSpace(contactUsDto.Phone))
@@ -239,7 +239,7 @@ public class ContactUsController : Controller
             ExtraData = contactUsDto.ExtraData,
             Attachments = attachmentFiles.Count > 0 ? attachmentFiles : null,
             Timezone = utcOffset,
-            IpAddress = httpContextHelper?.IpAddress,
+            IpAddressV4 = httpContextHelper?.IpAddressV4,
             UserAgent = httpContextHelper?.UserAgent,
             ContactId = contactId,
         };

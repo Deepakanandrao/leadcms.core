@@ -18,7 +18,7 @@ public class LeadNotificationInfoTemplateArgumentsTests
             FirstName = "Ada",
             LastName = "Lovelace",
             Timezone = -300,
-            IpAddress = "198.51.100.10",
+            IpAddressV4 = "198.51.100.10",
         };
 
         var args = leadInfo.ToTemplateArguments();

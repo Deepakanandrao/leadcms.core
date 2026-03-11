@@ -105,7 +105,7 @@ public class SubscribesController : Controller
 
         var contact = await contactService.FindOrCreate(
             payload.Email,
-            httpContextHelper?.IpAddress,
+            httpContextHelper?.IpAddressV4,
             httpContextHelper?.UserAgent);
 
         // Email confirmation proves ownership — apply all fields directly.

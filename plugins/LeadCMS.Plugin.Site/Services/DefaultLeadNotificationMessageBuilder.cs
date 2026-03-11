@@ -104,9 +104,9 @@ public class DefaultLeadNotificationMessageBuilder : ILeadNotificationMessageBui
             sb.AppendLine($"✔️ Language: {leadInfo.Language}");
         }
 
-        if (!string.IsNullOrWhiteSpace(leadInfo.IpAddress))
+        if (!string.IsNullOrWhiteSpace(leadInfo.IpAddressV4))
         {
-            sb.AppendLine($"✔️ IP: {leadInfo.IpAddress}");
+            sb.AppendLine($"✔️ IP: {leadInfo.IpAddressV4}");
         }
 
         foreach (var item in leadInfo.ExtraData)

@@ -92,7 +92,7 @@ public sealed class VstoFileProvider : IFileProvider
             fileType = VstoFileType.None;
         }
 
-        ipAddress = httpContextHelper.IpAddress!;
+        ipAddress = httpContextHelper.IpAddressV4!;
         version = string.Empty;
         subfolder = string.Empty;
 
@@ -158,7 +158,7 @@ public sealed class VstoFileProvider : IFileProvider
             }
             else
             {
-                // If version was empty or time expired 
+                // If version was empty or time expired
                 // just set raw sub path
                 // to avoid duplicate like '/pro/en/pro/en/XLTools.vsto' as before.
                 //                          ^^^^^^^
