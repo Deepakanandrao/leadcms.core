@@ -23,7 +23,7 @@ namespace LeadCMS.Migrations
             // Backfill translation_key for existing rows that have a null value
             migrationBuilder.Sql(@"
                 UPDATE comment
-                SET translation_key = 'comment_' || commentable_type || '_' || commentable_id
+                SET translation_key = 'comment_' || lower(commentable_type) || '_' || commentable_id
                     || '_' || encode(substring(sha256(convert_to(to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD""T""HH24:MI:SS.US0000""Z""'), 'UTF8')) from 1 for 4), 'hex')
                     || '_' || encode(substring(sha256(convert_to(COALESCE(body, ''), 'UTF8')) from 1 for 4), 'hex')
                 WHERE translation_key IS NULL;
@@ -36,6 +36,9 @@ namespace LeadCMS.Migrations
             migrationBuilder.DropColumn(
                 name: "published_at",
                 table: "comment");
+
+            // Reset backfilled translation_key values
+            migrationBuilder.Sql("UPDATE comment SET translation_key = NULL WHERE translation_key LIKE 'comment_%';");
         }
     }
 }

@@ -511,6 +511,43 @@ public class CommentsTests : TableWithFKTests<Comment, TestComment, CommentUpdat
         comment!.PublishedAt.Should().BeNull();
     }
 
+    [Fact]
+    public async Task CreatedComment_ShouldPreserveProvidedPublishedAt()
+    {
+        await CreateFKItemsWithUid();
+
+        var publishedAt = DateTime.Parse("2024-05-12T10:15:30Z").ToUniversalTime();
+        var testComment = new TestComment(string.Empty, 1)
+        {
+            PublishedAt = publishedAt,
+        };
+
+        var commentUrl = await PostTest(itemsUrl, testComment);
+        var comment = await GetTest<CommentDetailsDto>(commentUrl);
+
+        comment.Should().NotBeNull();
+        comment!.PublishedAt.Should().Be(publishedAt);
+    }
+
+    [Fact]
+    public async Task PatchComment_ShouldUpdatePublishedAt()
+    {
+        await CreateFKItemsWithUid();
+
+        var commentUrl = await PostTest(itemsUrl, new TestComment(string.Empty, 1));
+        var publishedAt = DateTime.Parse("2024-06-01T08:30:00Z").ToUniversalTime();
+
+        await PatchTest(commentUrl, new CommentUpdateDto
+        {
+            PublishedAt = publishedAt,
+        });
+
+        var comment = await GetTest<CommentDetailsDto>(commentUrl);
+
+        comment.Should().NotBeNull();
+        comment!.PublishedAt.Should().Be(publishedAt);
+    }
+
     protected override void MustBeEquivalent(object? expected, object? result)
     {
         result.Should().BeEquivalentTo(expected, options => options

@@ -16,7 +16,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LeadCMS.Migrations
 {
     [DbContext(typeof(PgDbContext))]
-    [Migration("20260315172746_AddCommentPublishedAtAndBackfillTranslationKey")]
+    [Migration("20260315174229_AddCommentPublishedAtAndBackfillTranslationKey")]
     partial class AddCommentPublishedAtAndBackfillTranslationKey
     {
         /// <inheritdoc />

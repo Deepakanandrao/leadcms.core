@@ -44,6 +44,8 @@ public class CommentCreateBaseDto
 
     public string Language { get; set; } = string.Empty;
 
+    public DateTime? PublishedAt { get; set; }
+
     public string? TranslationKey { get; set; }
 
     public string[]? Tags { get; set; }
@@ -86,6 +88,8 @@ public class CommentUpdateDto : IPatchDto
     }
 
     public string? Language { get; set; }
+
+    public DateTime? PublishedAt { get; set; }
 
     public CommentStatus? Status { get; set; }
 
@@ -180,6 +184,9 @@ public class CommentImportDto : BaseImportDto
 
     [Optional]
     public string? Language { get; set; }
+
+    [Optional]
+    public DateTime? PublishedAt { get; set; }
 
     [Optional]
     public string? TranslationKey { get; set; }
