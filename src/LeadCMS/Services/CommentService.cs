@@ -2,6 +2,8 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Security.Cryptography;
+using System.Text;
 using LeadCMS.Data;
 using LeadCMS.Entities;
 using LeadCMS.Interfaces;
@@ -30,6 +32,7 @@ public class CommentService : ICommentService
         }
         else
         {
+            EnsureTranslationKey(comment);
             await pgDbContext.Comments!.AddAsync(comment);
         }
     }
@@ -48,6 +51,11 @@ public class CommentService : ICommentService
             }
             else
             {
+                foreach (var comment in group)
+                {
+                    EnsureTranslationKey(comment);
+                }
+
                 await pgDbContext.AddRangeAsync(group.ToList());
             }
         }
@@ -57,6 +65,27 @@ public class CommentService : ICommentService
     {
         this.pgDbContext = pgDbContext;
         contactsService.SetDBContext(pgDbContext);
+    }
+
+    internal static void EnsureTranslationKey(Comment comment)
+    {
+        if (!string.IsNullOrEmpty(comment.TranslationKey))
+        {
+            return;
+        }
+
+        var createdAt = comment.CreatedAt == default ? DateTime.UtcNow : comment.CreatedAt;
+        var createdAtHash = ComputeShortHash(createdAt.ToString("O"));
+        var bodyHash = ComputeShortHash(comment.Body ?? string.Empty);
+        var contentType = string.IsNullOrEmpty(comment.CommentableType) ? "general" : comment.CommentableType.ToLowerInvariant();
+
+        comment.TranslationKey = $"comment_{contentType}_{comment.CommentableId}_{createdAtHash}_{bodyHash}";
+    }
+
+    private static string ComputeShortHash(string input)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(input));
+        return Convert.ToHexString(hash, 0, 4).ToLowerInvariant();
     }
 
     private async Task EnrichWithContactId(Comment comment)

@@ -91,8 +91,6 @@ public class CommentUpdateDto : IPatchDto
 
     public AnswerStatus? AnswerStatus { get; set; }
 
-    public string? TranslationKey { get; set; }
-
     public string[]? Tags { get; set; }
 }
 
@@ -109,6 +107,8 @@ public class AnonymousCommentDetailsDto
     public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }
+
+    public DateTime? PublishedAt { get; set; }
 
     public int CommentableId { get; set; }
 

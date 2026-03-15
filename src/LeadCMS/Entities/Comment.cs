@@ -94,6 +94,8 @@ public class Comment : BaseEntity, ITranslatable
     [Column(TypeName = "jsonb")]
     public string[]? Tags { get; set; }
 
+    public DateTime? PublishedAt { get; set; }
+
     /// <summary>
     /// Gets or sets the answer status of the comment.
     /// </summary>

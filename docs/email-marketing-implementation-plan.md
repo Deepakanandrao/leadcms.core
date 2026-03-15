@@ -1,556 +1,606 @@
-# Email Marketing Platform — Implementation Plan
+# Email Marketing Platform — Current State and Next Steps
 
-Date: 2026-02-21
-
----
-
-## 1. Vision & Scope
-
-Build a marketing email platform within LeadCMS that handles the three fundamental email marketing patterns every SaaS needs:
-
-| Pattern              | Industry Term                | Example                                                   |
-| -------------------- | ---------------------------- | --------------------------------------------------------- |
-| **Sequences**        | Drip / Automation / Journey  | Onboarding series, trial nurture, post-purchase follow-up |
-| **One-time sends**   | Campaign / Broadcast / Blast | Product launch announcement, holiday sale, feature update |
-| **Subscriber sends** | Newsletter / Mailing list    | Weekly digest, monthly product news, changelog updates    |
-
-The plan is designed to be **incremental** — each phase produces a working, testable, shippable feature that builds toward the full vision without requiring throw-away work.
+Date: 2026-03-12
 
 ---
 
-## 2. Architectural Decisions & Rationale
+## 1. Purpose
 
-### 2.1 What stays and why
+This document reflects the actual current state of LeadCMS email marketing capabilities and reframes the next implementation priorities based on:
 
-| Current Asset                      | Verdict                                   | Reason                                                                                                                                             |
-| ---------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **EmailTemplate**                  | Keep as-is                                | Strong reusable content primitive. HTML + Liquid rendering pipeline is solid. Templates are content — they should remain decoupled from execution. |
-| **EmailGroup**                     | Keep, but **redefine its role** (see 2.2) | Currently blurs the line between "content folder" and "sequence definition". Needs clarity.                                                        |
-| **Segment**                        | Keep as-is                                | Dynamic and static segments with rule engine — fully sufficient as the audience system. No changes needed.                                         |
-| **Contact**                        | Keep as-is                                | Good CRM contact model with language, timezone, tags, unsubscribe link.                                                                            |
-| **Unsubscribe**                    | Keep + extend later                       | Works for global opt-out. Will need list-level unsubscribe in Phase 4.                                                                             |
-| **EmailLog**                       | Keep as-is                                | Solid audit trail. All future sending continues logging here.                                                                                      |
-| **IEmailFromTemplateService**      | Keep as-is                                | Template resolution, HTML rendering, Liquid processing, send + log — reused by all new sending paths.                                              |
-| **Background task infrastructure** | Keep as-is                                | BaseTask, cron-based scheduling, TaskExecutionLog — solid foundation for new tasks.                                                                |
+- the platform capabilities already implemented,
+- the existing architecture and delivery model,
+- the first marketing demo and feedback collected on 2026-03-11.
 
-### 2.2 What changes and why
-
-**EmailGroup needs a role clarification.** Today it serves two purposes simultaneously:
-
-1. A **content organiser** — grouping related templates by topic (e.g., "Onboarding Emails" folder).
-2. A **sequence definition** — the ordered list of templates that ContactScheduledEmailTask walks through.
-
-This dual role creates problems:
-
-- Ordering is implicit (by template Id), making reordering impossible.
-- The schedule belongs to the group, not to individual steps, so you cannot say "wait 3 days after the previous email".
-- Adding a template to the group silently changes the sequence for in-progress contacts.
-- There is no way to use the same template in multiple sequences.
-
-**Decision: Separate content organisation from execution orchestration.**
-
-- **EmailGroup** remains a **content library organiser**. Templates still belong to groups by topic. This relationship is purely taxonomic — it helps humans find and manage templates. No execution logic lives here.
-- A new **Sequence** concept owns the execution orchestration: step order, per-step delays, audience binding, enrolment tracking.
-- A new **Campaign** concept handles one-time sends.
-
-This is the standard industry separation (Mailchimp: "Templates" vs "Journeys" vs "Campaigns"; HubSpot: "Templates" vs "Sequences" vs "Marketing Emails"; ActiveCampaign: "Templates" vs "Automations" vs "Campaigns").
-
-### 2.3 What gets created and why
-
-| New Concept            | Purpose                                                               | Why it can't be avoided                                                                                                                                    |
-| ---------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Campaign**           | One-time email send to audience                                       | Current system has no concept of a broadcast. Forcing a campaign through the sequence pipeline adds unnecessary complexity and confusing semantics.        |
-| **Campaign Recipient** | Per-contact delivery record for a campaign                            | Required for progress tracking, retry, and idempotency. Without it, you cannot show "45,000 sent / 3 failed / 200 skipped".                                |
-| **Sequence**           | Ordered, event-triggered series of email steps                        | The current EmailGroup+EmailSchedule conflation cannot support per-step delays, explicit ordering, or retroactive policies. A dedicated concept is needed. |
-| **Sequence Step**      | Individual email within a sequence + its timing and eligibility rules | Required for per-step delay control, reordering, and retroactive send policy.                                                                              |
-| **Sequence Enrolment** | Per-contact membership in a running sequence                          | Replaces ContactEmailSchedule with richer state tracking (current step, exit reason, etc.).                                                                |
-| **Sequence Delivery**  | Per-contact per-step send record                                      | Idempotency ("never send the same step to the same contact twice") and granular tracking.                                                                  |
-| **Mailing List**       | Named subscription channel for newsletters                            | Global unsubscribe is not sufficient for newsletters — contacts must be able to subscribe to Topic A but not Topic B.                                      |
-| **Subscription**       | Per-contact membership in a mailing list                              | Tracks opt-in state, confirmation, and list-level unsubscribe.                                                                                             |
-
-### 2.4 Backward compatibility strategy
-
-- **No existing entities are removed or renamed.** EmailGroup, EmailTemplate, EmailSchedule, and ContactEmailSchedule remain in the schema.
-- **Existing drip functionality continues to work** during and after migration. ContactScheduledEmailTask keeps running. Once Sequences are built, existing drips can be migrated to the new model as a data migration — but there is no urgency; both can coexist.
-- **EmailTemplate.EmailGroupId** continues to work as the content taxonomy relationship. New sequence steps link to templates independently.
-- All existing API endpoints remain stable. New endpoints are additive.
-
-### 2.5 Key architectural principles (industry standard)
-
-1. **Content and orchestration are separate.** A template is a reusable asset. A sequence step or campaign references a template but owns the scheduling, targeting, and eligibility rules.
-
-2. **Idempotent delivery.** No contact should ever receive the same email twice from the same campaign or sequence step. Enforced by unique constraints at the database level.
-
-3. **Audience snapshot at execution time.** When a campaign launches, the segment is evaluated and contacts are materialised as recipient records. This ensures auditability ("who was in the audience?") and prevents mid-send audience drift.
-
-4. **Compliance gates before every send.** Every send path must check: global unsubscribe → list-level unsubscribe → suppression (bounce/complaint) → template validity. In that order.
-
-5. **Observability.** Every campaign and sequence produces counters: queued, sent, failed, skipped (with reason). These feed dashboards and diagnostics.
+The goal is not to describe code-level implementation details. The goal is to define the business-level model, clarify what is already working, highlight the gaps that matter most to marketing, and align the next work with the current architecture instead of planning from a blank slate.
 
 ---
 
-## 3. Business Concepts & Behaviour Specifications
+## 2. Executive Summary
 
-### 3.1 Sequences (Drip Campaigns / Automations)
+LeadCMS already has a strong foundation for email marketing:
 
-A **Sequence** is an ordered set of email steps that a contact progresses through over time after an enrolment trigger.
+- AI-assisted email template generation, editing, and translation are in place.
+- Client-aware template rendering with rich contact data is in place.
+- Dynamic and static segmentation is in place and already powerful.
+- One-time campaigns are already implemented and support real audience selection, previewing, scheduling, timezone-aware delivery, and recipient tracking.
+- Contacts already carry useful marketing context such as tags, language, timezone, UTM acquisition data, and communication history.
 
-#### Core behaviours
+The main gap is no longer content creation or one-time sending. The main gap is orchestration.
 
-**Creating a sequence:**
+The next priority should therefore be to introduce a first-class sequence and automation layer that can:
 
-- Admin names the sequence, optionally adds a description.
-- Admin adds steps, each step consists of: which template to send, when to send (delay from previous step or specific weekday/time constraints), and an eligibility policy (explained below).
-- Steps have an explicit sort order. Admin can drag/drop to reorder.
+- subscribe contacts to a sequence of emails,
+- trigger sends based on business criteria and customer behaviour,
+- support follow-up logic such as "new lead, interested in X, wait N days, then send Y",
+- support more personal, context-aware outreach instead of only branded broadcast-style messaging.
 
-**Enrolment triggers:**
+In short:
 
-- Segment-based: "Enrol all contacts in Segment X" — evaluated periodically, new contacts entering the segment are auto-enrolled.
-- Event-based: API call enrols a specific contact (e.g., after signup, after purchase).
-- Manual: Admin bulk-enrols contacts from a segment or selection.
-
-**Step timing:**
-
-- Each step defines a delay relative to the previous step (e.g., "3 days after Step 1", "immediately", "7 days").
-- Optional weekday/time constraints (e.g., "only send on Tue/Thu at 10:00 in the contact's timezone").
-- First step can fire immediately upon enrolment or with a delay.
-
-**Progression:**
-
-- The background task evaluates each enrolled contact, finds the next unsent step, checks if the timing condition is met, and sends if so.
-- If a contact unsubscribes mid-sequence, their enrolment is marked as exited (reason: unsubscribed) and no further steps are sent.
-- If sending fails and retries are exhausted, the step is marked as failed. The sequence can continue to the next step or halt — this should be a configurable sequence-level setting ("continue on failure" vs "halt on failure").
-
-**Adding steps to an active sequence — the retroactive eligibility policy:**
-
-This is the critical feature. When a step is added to a sequence that already has enrolled contacts, the system needs to know what to do. Each step carries an **eligibility policy**, chosen at the time of adding:
-
-| Policy                  | Behaviour                                                                                                                                                                                                                                   |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **New enrolments only** | Only contacts enrolled after this step was added will receive it. Contacts who are mid-sequence and have already passed this position or completed the sequence are not affected. This is the safest default.                               |
-| **Include in-progress** | Contacts who are currently progressing through the sequence and have not yet reached or passed this step's position will receive it as part of their normal progression. Contacts who have already completed the sequence are not affected. |
-| **Include all**         | All contacts enrolled in the sequence — including those who have already completed it — will receive this email. Completed enrolments are reopened. This is for important announcements or corrections.                                     |
-
-When a step is inserted in the middle (not appended at the end), the same policies apply relative to each contact's current position in the sequence.
-
-**Removing steps from an active sequence:**
-
-- The step is removed from the sequence definition. Contacts who have already received it are not affected. Contacts who have not yet reached it simply skip over it. Pending deliveries for this step are cancelled.
-
-**Reordering steps in an active sequence:**
-
-- For contacts who have not yet reached the affected steps, the new order takes effect.
-- For contacts who have already passed the affected region, no change occurs.
-- A safety warning should be shown to the admin explaining the impact.
-
-#### Example scenario
-
-> **Onboarding Sequence** (triggered by: contact enters "Trial Users" segment)
->
-> 1. Welcome email — immediately
-> 2. Getting started guide — 2 days later
-> 3. Feature highlight — 5 days later
-> 4. Case study — 10 days later
-> 5. Trial ending reminder — 12 days later
->
-> 500 contacts are enrolled. 200 have completed the sequence.
->
-> Admin adds Step 3.5: "New feature announcement" between steps 3 and 4,
-> with policy "Include in-progress".
->
-> Result: The ~100 contacts currently between steps 1-3 will receive the new
-> email as part of their normal progression. The 200 completed contacts and
-> ~200 contacts already past step 3 are not affected.
-
-### 3.2 Campaigns (One-Time Sends / Broadcasts)
-
-A **Campaign** is a one-time email send to a defined audience.
-
-#### Core behaviours
-
-**Creating a campaign:**
-
-- Admin creates a campaign with a name, selects a template, and selects one or more segments as the audience.
-- Optionally selects exclusion segments (contacts who match the audience but should be excluded).
-- Chooses send timing: send immediately, or schedule for a specific date/time (with timezone).
-
-**Audience resolution:**
-
-- When the campaign transitions from Draft to Sending (either immediately or at the scheduled time), the system **snapshots** the audience by evaluating all included segments, subtracting excluded segments, subtracting globally unsubscribed contacts, and deduplicating.
-- Each resolved contact becomes a recipient record with a status: Pending → Sent / Failed / Skipped.
-- The snapshot is immutable — if the segment changes after the campaign starts, it does not affect in-progress delivery.
-
-**Send distribution (throttling):**
-
-- For large audiences, sending should be distributed over time to avoid overwhelming the mail server and to maintain deliverability reputation.
-- Configurable sending rate (e.g., "500 emails per 5 minutes").
-- Industry standard: stagger sends in batches rather than all-at-once.
-
-**Tracking:**
-
-- Total recipients, sent count, failed count, skipped count (with breakdown of skip reasons: unsubscribed, duplicate, suppressed).
-- When integrated with a provider like SendGrid: opens, clicks, bounces, complaints as event webhooks update the delivery records.
-
-**Campaign statuses:**
-
-- Draft → Scheduled → Sending → Sent
-- Draft → Sending → Sent (for immediate sends)
-- Scheduled → Cancelled (admin cancellation before send time)
-- Sending → Paused → Sending → Sent (admin can pause mid-send for large campaigns)
-
-**Preventing duplicate campaigns:**
-
-- It should not be possible to send the exact same template to the exact same segment twice without explicit confirmation. This is a guardrail, not a hard block — sometimes you do want to resend.
-
-#### Example scenario
-
-> **Product Launch Campaign**
->
-> Template: "Introducing Feature X"
-> Audience: Segment "Active Users" (12,000 contacts) + Segment "Trial Users" (3,000)
-> Exclude: Segment "Churned Users" (500 overlap)
->
-> Resolved audience: 14,500 unique contacts (after dedup + exclusion)
-> Send rate: 500/minute → full send completes in ~29 minutes
->
-> Results: 14,320 sent, 80 skipped (unsubscribed), 100 failed (invalid email)
-
-### 3.3 Newsletters (Mailing Lists & Subscriptions)
-
-A **Newsletter** (or Mailing List) is a subscription-based channel where contacts opt in to receive ongoing content.
-
-#### Core behaviours
-
-**Mailing lists:**
-
-- Admin creates named mailing lists (e.g., "Product Updates", "Engineering Blog", "Weekly Digest").
-- Each list has its own subscriber base, independent of CRM segments.
-- A contact can be subscribed to multiple lists.
-
-**Subscription management:**
-
-- Contacts subscribe via: public signup form (website), admin manual enrolment, bulk import, or API call.
-- Industry standard: **double opt-in** — contact receives a confirmation email with a link; subscription is only active after confirmation. This is legally recommended (GDPR) and required in some jurisdictions.
-- Subscription states: Pending (awaiting confirmation) → Active → Unsubscribed.
-- Contacts can unsubscribe from a specific list without affecting other lists or their CRM contact status.
-
-**Sending a newsletter issue:**
-
-- Admin selects a mailing list and a template, then sends. This is conceptually similar to a campaign, but the audience is derived from the subscription list rather than a segment.
-- Alternatively, for recurring newsletters, the system can detect new templates added to a designated group and automatically dispatch to all subscribers.
-- Deduplication and unsubscribe checks apply as with campaigns.
-
-**Unsubscribe hierarchy:**
-
-This is critical for compliance and user experience. The system must support:
-
-| Level                      | Effect                                                                                                                                                                 |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Global unsubscribe**     | Contact receives no marketing emails at all — no campaigns, no sequences, no newsletters. Transactional emails (password reset, order confirmation) can still be sent. |
-| **List-level unsubscribe** | Contact stops receiving emails from one specific mailing list. All other lists, campaigns, and sequences continue.                                                     |
-| **Sequence exit**          | Contact exits one specific sequence. All other activity continues.                                                                                                     |
-
-Every marketing email must include a one-click unsubscribe link and a link to a preference centre where the contact can manage their list subscriptions and global opt-out.
-
-**Relationship between mailing lists and segments:**
-
-- They are complementary, not competing. Segments are CRM constructs based on contact properties. Mailing lists are explicit opt-in lists based on contact preference.
-- You can use a segment to bulk-subscribe contacts to a mailing list (e.g., "subscribe all contacts tagged 'interested-in-blog' to the Blog list").
-- A campaign can target a segment. A newsletter issue targets a mailing list.
-- Segments CAN be built that reference subscription state (e.g., a dynamic segment "all contacts who are subscribed to the Product Updates list") — this requires subscription data to be queryable.
+- Content layer: strong
+- Audience layer: strong
+- One-time send layer: strong enough to use now
+- Automation / journey layer: still immature and should be the next focus
 
 ---
 
-## 4. Suppression & Compliance Model
+## 3. Current Platform State
 
-This section applies across all three patterns.
+### 3.1 What is already operational
 
-### 4.1 Suppression checks before every send
+#### A. Email templates and AI-assisted content operations
 
-Every send path — sequence step, campaign recipient, newsletter issue — must pass through these gates before dispatching:
+The platform already supports a mature template workflow:
 
-1. **Global unsubscribe?** → Skip (reason: globally unsubscribed)
-2. **List-level unsubscribe?** → Skip if sending from that list (reason: list unsubscribed)
-3. **Suppressed email?** → Skip if contact's email has hard-bounced or filed a complaint (reason: suppressed)
-4. **Already sent this exact step/campaign?** → Skip (reason: duplicate, idempotency guard)
-5. **Contact email valid?** → Skip if email is empty/invalid (reason: invalid recipient)
+- email templates grouped by topic and language,
+- AI generation of new templates from prompts,
+- AI editing of existing templates,
+- AI translation of templates into other languages,
+- previewing templates with realistic contact data,
+- sending test emails,
+- category-based template styles, including more plain, personal-looking email formats.
 
-### 4.2 Bounce and complaint handling
+This means the platform already solves the authoring problem reasonably well. Marketing can create and refine content without engineering involvement for each template.
 
-- **Hard bounce** (permanent delivery failure): Immediately suppress the email address from all future sends. Mark the contact. Decrement counts.
-- **Soft bounce** (temporary failure): Retry according to retry policy. After N consecutive soft bounces, promote to hard bounce.
-- **Spam complaint**: Immediately suppress and globally unsubscribe the contact. This is a legal requirement under CAN-SPAM.
+#### B. Contact-aware rendering and personalization
 
-These events typically arrive via webhooks from the email provider (e.g., SendGrid event webhooks, which already have a plugin in your system).
+Templates can already render against rich contact context. The available data model supports:
 
-### 4.3 Preference centre
+- basic contact identity,
+- company and account context,
+- tags,
+- language,
+- timezone,
+- orders and deal-related aggregates,
+- communication history,
+- UTM acquisition context,
+- custom template parameters.
 
-A public-facing page where contacts can:
+From a business perspective, this means the platform is already capable of personalized messaging. The remaining challenge is deciding when and why to send, not whether the system can render personalized content.
 
-- See which mailing lists they are subscribed to, and toggle each.
-- Set a global opt-out.
-- View why they are receiving emails (e.g., "You are receiving this because you signed up on our website on Jan 15, 2026").
+#### C. Segments and targeting
 
-This page is accessed via a unique, signed URL included in every email footer.
+Segments are already a major strength of the platform.
 
----
+Current capabilities include:
 
-## 5. Incremental Implementation Plan
+- dynamic segments,
+- static segments,
+- nested include/exclude logic,
+- contact filtering using many fields and operators,
+- use of tags and behavioural/relational attributes,
+- previewing and counting segment members.
 
-Each phase is a shippable increment with clear acceptance criteria.
+This is already sufficient as the main audience selection layer for campaigns and future automations.
 
-### Phase 1: Campaign Foundation
+#### D. One-time campaigns
 
-**Goal:** Enable one-time email sends to segments with progress tracking.
+One-time sends are no longer just planned. They are already implemented as a first-class capability.
 
-**Deliverables:**
+Current campaign capabilities include:
 
-1. Campaign entity with lifecycle states (Draft, Scheduled, Sending, Sent, Cancelled, Paused).
-2. Campaign recipient entity tracking per-contact delivery status (Pending, Sent, Failed, Skipped).
-3. Campaign CRUD API — create, update, list, get details with statistics.
-4. Campaign launch action — "send now" or "schedule for datetime".
-5. Background task that: picks up Scheduled campaigns at their send time, resolves the segment audience (snapshot), creates recipient records, and sends in batches through existing IEmailFromTemplateService.
-6. Deduplication across segments (no contact receives the same campaign twice).
-7. Global unsubscribe check during send (skip unsubscribed contacts).
-8. Campaign statistics endpoint: total, sent, failed, skipped counts.
+- draft, scheduled, sending, paused, sent, and cancelled states,
+- audience definition via include and exclude segments,
+- audience preview before send,
+- snapshotting recipients at launch time,
+- send-now and scheduled sends,
+- per-contact timezone-aware sending,
+- recipient-level status tracking,
+- sent / failed / skipped counters,
+- pause and resume operations.
 
-**Acceptance criteria:**
+This is enough to support real broadcast use cases now, including newsletters, announcements, one-off outreach, and controlled tests with marketing.
 
-- Admin can create a campaign, pick a template and segment, and send immediately. The system sends to all contacts in the segment, logs each send, and reports completion with counts.
-- Admin can schedule a campaign for a future time. The system sends at that time.
-- Unsubscribed contacts are skipped.
-- Two overlapping segments do not cause duplicate sends.
-- Campaign can be cancelled before send time.
+#### E. Contact profile quality for marketing use cases
 
-**What to verify:**
+The contact model already supports most of what marketing requested during the demo:
 
-- Create campaign with a test segment of 10 contacts → all 10 receive the email.
-- Create campaign with 2 overlapping segments → contacts in both segments receive only 1 email.
-- Create campaign, unsubscribe 2 contacts → those 2 are skipped, count shows correctly.
-- Schedule campaign for 5 minutes from now → campaign sends at the right time.
-- Cancel a scheduled campaign → nothing is sent.
+- tags for interests or source classification,
+- language and timezone,
+- UTM origin data,
+- communication history,
+- account and order context,
+- unsubscribe state.
 
----
+This is an important point: the system already stores the building blocks needed for intent-based marketing and personalized follow-up.
 
-### Phase 2: Sequence Engine (Replaces Current Drip System)
+#### F. Existing scheduled drip capability
 
-**Goal:** Build the new sequence engine that supports explicit ordering, per-step delays, and segment-based enrolment.
+There is already an older sequence-like mechanism in the platform. It supports a practical subset of drip behaviour and is currently used for some existing flows.
 
-> **Note:** This phase runs **alongside** the existing ContactScheduledEmailTask. Both systems coexist. Existing drip sequences continue to operate. New sequences use the new engine.
+This legacy mechanism can:
 
-**Deliverables:**
+- associate a group of templates with a schedule,
+- send emails to contacts over time,
+- retry failed sends,
+- stop sending after unsubscribe,
+- handle timezone-aware delivery.
 
-1. Sequence entity (name, description, status: Draft/Active/Paused/Archived, settings like "halt on failure" vs "continue on failure").
-2. Sequence step entity (template reference, sort order, delay configuration — offset minutes from previous step, optional weekday/time constraints).
-3. Sequence enrolment entity (contact reference, enrolment source, current state: Active/Completed/Exited, exit reason if applicable, reference to last completed step).
-4. Sequence delivery entity (contact + step reference, status: Pending/Scheduled/Sent/Failed/Skipped, scheduled timestamp, unique constraint on contact+step for idempotency).
-5. Sequence CRUD API — create, update steps (add/remove/reorder), activate, pause, archive.
-6. Enrolment API — enrol single contact, bulk-enrol from segment.
-7. Segment-based auto-enrolment: link a segment to a sequence, periodically evaluate the segment and auto-enrol new contacts.
-8. Background task that: for each active sequence, evaluates pending deliveries, checks timing conditions, and sends due emails via IEmailFromTemplateService.
-9. Unsubscribe and suppression checks.
-10. Sequence and step statistics: enrolments, active/completed/exited counts, per-step sent/pending/failed.
-
-**Acceptance criteria:**
-
-- Admin creates a 3-step sequence with delays of 0, 2 days, and 5 days. Enrols a contact. Contact receives step 1 immediately, step 2 two days later, step 3 five days later. Enrolment status is Completed.
-- Admin links a segment to a sequence. A new contact enters the segment. System auto-enrols them.
-- Contact unsubscribes mid-sequence. No further steps are sent. Enrolment shows as exited.
-- Admin pauses a sequence. No delivery processing occurs. Admin resumes, processing continues.
-
-**What to verify:**
-
-- Enrol 5 contacts into a 3-step sequence → each receives all 3 emails on the correct schedule.
-- Unsubscribe 1 contact after step 1 → that contact receives no further emails, others continue.
-- Pause sequence after step 1 is sent → no step 2 sends until resumed.
-- Two contacts, same sequence step — only 1 delivery each (idempotency).
+So the platform does already have working scheduled-email behaviour. The issue is not absence of scheduling. The issue is that the current model is too rigid and too difficult to manage as a real marketing automation product.
 
 ---
 
-### Phase 3: Retroactive Step Management
+### 3.2 What the current architecture already gives us
 
-**Goal:** Enable adding, removing, and reordering steps in active sequences with control over what happens to existing enrolments.
+From a business and architecture perspective, the current system already has four valuable layers:
 
-**Deliverables:**
+#### A. Content layer
 
-1. Eligibility policy field on each sequence step: "New enrolments only", "Include in-progress", "Include all".
-2. When a step is added to an active sequence with "Include in-progress" or "Include all" policy, the system generates appropriate delivery records for affected enrolments.
-3. When a step is removed, pending deliveries for that step are cancelled.
-4. When steps are reordered, the system recalculates next-step for in-progress contacts who have not yet reached the affected region.
-5. Admin UI warning when modifying an active sequence with enrolled contacts, showing impact preview: "This change will affect X of Y enrolled contacts."
+Reusable email templates, AI assistance, previewing, translation, and test sending.
 
-**Acceptance criteria:**
+#### B. Audience layer
 
-- Active sequence with 3 steps, 100 enrolled contacts (50 completed, 30 on step 2, 20 on step 1). Admin adds step 4 with "Include all" policy → all 100 contacts will eventually receive step 4, including the 50 who had completed.
-- Same scenario, "New enrolments only" policy → 50 completed stay completed, 30 and 20 continue normally and receive step 4 as part of their progression.
-- Admin removes step 2 from an active sequence → contacts on step 1 skip directly to step 3 (now step 2). Contacts who already sent step 2 are unaffected.
+Contacts, tags, segments, language, timezone, and intent-related metadata.
 
-**What to verify:**
+#### C. Delivery layer
 
-- Add step with "Include all" to sequence where 10 contacts have completed → those 10 receive the new email.
-- Add step with "New enrolments only" → existing contacts (any state) do not receive it, new enrolment does.
-- Add step to middle of sequence with "Include in-progress" → contact that hasn't reached that position yet receives it in order, contact that has already passed it does not.
-- Remove a step → pending deliveries cancelled, no orphaned data.
+Email rendering, sending, send logging, scheduling support, background task execution, and per-recipient tracking for campaigns.
+
+#### D. History and observability layer
+
+Email logs, communication history, campaign counters, and enough tracking structure to support richer analytics later.
+
+Because these layers already exist, the next work should not rebuild them. The next work should add a proper orchestration layer on top of them.
 
 ---
 
-### Phase 4: Newsletter / Mailing List System
+## 4. Key Structural Gap
 
-**Goal:** Implement subscription-based mailing lists and newsletter dispatch.
+The current structural gap is a missing first-class automation model.
 
-**Deliverables:**
+Today the platform has:
 
-1. Mailing list entity (name, description, default from email/name, active status, subscriber count).
-2. Subscription entity (contact + list reference, status: Pending/Active/Unsubscribed, confirmation token, confirmed at, source — "website form", "admin import", "API", etc.).
-3. Mailing list CRUD API.
-4. Subscription management API — subscribe, confirm (double opt-in), unsubscribe, bulk-subscribe from segment.
-5. Public subscription endpoints (no auth, token-based): subscribe form submission, confirmation link, one-click unsubscribe.
-6. Double opt-in flow: subscribe request → confirmation email → click to confirm → subscription active.
-7. Newsletter send action: select a list and a template → system sends to all active subscribers. This reuses the campaign sending engine (audience = list subscribers instead of segment contacts).
-8. Extend unsubscribe model: support list-level unsubscribe separate from global unsubscribe.
-9. List subscriber count maintenance (increment on subscribe, decrement on unsubscribe).
-10. Newsletter history: list of past issues sent to a mailing list, with per-issue delivery statistics.
+- reusable content,
+- strong targeting,
+- working campaigns,
+- a legacy scheduled drip mechanism.
 
-**Acceptance criteria:**
+What it does not yet have is a clean business model for:
 
-- Admin creates a mailing list. 50 contacts subscribe. Admin sends a newsletter issue → all 50 receive it.
-- A contact subscribes via public endpoint with double opt-in → confirmation email is sent, contact clicks, subscription becomes Active.
-- A contact unsubscribes from one list → they stop receiving that list's newsletters, but continue receiving campaigns and other lists.
-- A globally unsubscribed contact is skipped even if they are subscribed to a list.
-- Subscriber count reflects current active subscriptions.
+- sequences as a managed marketing asset,
+- enrolment into those sequences,
+- event- or criteria-based triggers,
+- stopping or branching rules,
+- reusable follow-up logic,
+- marketer-friendly control over when a contact enters, exits, or pauses a journey.
 
-**What to verify:**
-
-- Subscribe 10 contacts to a list, send newsletter → 10 receive it.
-- Unsubscribe 2 → send another newsletter → 8 receive it.
-- Subscribe via public endpoint without confirming → contact does NOT receive newsletter (pending status).
-- Subscribe via public endpoint, confirm, then send → contact receives it.
-- Global unsubscribe trumps list subscription.
+This is the main architectural and product priority.
 
 ---
 
-### Phase 5: Preference Centre & Enhanced Compliance
+## 5. Demo Insights and What They Mean
 
-**Goal:** Public-facing subscription management and full compliance infrastructure.
+The first marketing demo was valuable because it clarified not just feature requests, but the kind of marketing behaviour the team actually wants.
 
-**Deliverables:**
+### 5.1 Main insights from the demo
 
-1. Preference centre page (public, token-authenticated): contact sees all mailing lists, can toggle subscriptions, can opt out globally.
-2. One-click unsubscribe header (RFC 8058 List-Unsubscribe-Post) — automatically included in every marketing email.
-3. Unsubscribe link in every email footer pointing to preference centre.
-4. Bounce and complaint webhook handler: process bounce/complaint events from email provider (e.g., SendGrid), update suppression status, globally unsubscribe on complaint.
-5. Suppression list management API: view suppressed contacts, reason, date. Manual re-enable with confirmation.
-6. Audit trail: every subscription change, unsubscribe, and suppression event is logged with timestamp and reason.
+#### A. The team wants personal-looking outreach more than classic marketing blasts
 
-**Acceptance criteria:**
+The strongest signal from the discussion is that the marketing team does not primarily want more branded, heavily designed emails. They want the platform to support communication that feels:
 
-- Contact clicks unsubscribe link → preference centre opens showing their subscriptions. They can unsubscribe from one list or opt out globally.
-- Gmail/Yahoo one-click unsubscribe button works (RFC 8058 header present).
-- Hard bounce event from SendGrid → contact is suppressed from all future sends automatically.
-- Spam complaint event → contact is globally unsubscribed automatically.
-- Admin can view suppression list and see reason/date for each entry.
+- personal,
+- contextual,
+- relevant to a specific lead situation,
+- close to a real human email thread.
 
-**What to verify:**
+This especially applies to webinar follow-up, reactivation, and lead nurturing.
 
-- Send campaign email, inspect headers → List-Unsubscribe and List-Unsubscribe-Post headers present.
-- Click unsubscribe link → preference centre loads with correct subscription state.
-- Simulate hard bounce webhook → contact marked as suppressed, subsequent campaigns skip them.
-- Simulate complaint webhook → contact globally unsubscribed.
+Implication:
 
----
+The roadmap should prioritize orchestration and contextual personalization over more template-design complexity.
 
-### Phase 6: Sending Optimisation & Analytics
+#### B. Template generation is useful, but strategy selection is still manual
 
-**Goal:** Smart sending, deliverability management, and engagement analytics.
+The current AI support helps create emails. That is good, but the demo showed a different need:
 
-**Deliverables:**
+- deciding what kind of follow-up should happen,
+- for which audience,
+- after which event,
+- with which tone,
+- after which delay.
 
-1. **Send throttling**: configurable rate limiting per campaign/sequence (e.g., max 500 emails per minute). Distribute large sends over time windows.
-2. **Timezone-aware sending**: for sequences and campaigns, optionally send at a specific local time for each contact (e.g., "send at 10:00 AM in each contact's timezone").
-3. **Quiet hours**: configurable time windows during which no marketing emails are sent (e.g., no sends between 10 PM and 8 AM in the contact's timezone). Emails due during quiet hours are deferred to the next send window.
-4. **Engagement tracking**: open tracking (tracking pixel), click tracking (link rewriting through tracking URLs). Store events on per-email-log level.
-5. **Campaign analytics**: open rate, click rate, unsubscribe rate, bounce rate. Per-campaign and trend-over-time.
-6. **Sequence analytics**: per-step open/click rates, drop-off between steps, completion rate, average time to completion.
+Implication:
 
-**Acceptance criteria:**
+The next step is not just "more AI templates". It is configurable automation logic and, later, AI-assisted campaign or follow-up recommendations.
 
-- A campaign to 50,000 contacts with 500/min throttle takes ~100 minutes to complete.
-- A sequence step set to "10:00 AM contact local time" sends to a UTC+2 contact at 08:00 UTC and a UTC-5 contact at 15:00 UTC.
-- Email sent during quiet hours is held and sent at next allowed window.
-- Clicking a tracked link records a click event associated with the email log and contact.
+#### C. Raw behavioural data is only useful if it becomes actionable
 
----
+The team reacted positively to having website interest data, tags, and UTM context. At the same time, there was clear concern that raw activity data can be too large and noisy for a human to interpret directly.
 
-### Phase 7: Migration of Existing Drip System
+Implication:
 
-**Goal:** Migrate existing EmailGroup/EmailSchedule/ContactEmailSchedule-based drips to the new Sequence engine, then deprecate the old system.
+The platform should not force marketers to manually reason from raw page views and tags. It should let them convert that data into business triggers such as:
 
-> **This phase is intentionally last.** The old system continues to work throughout Phases 1-6. This phase is about consolidation, not urgency.
+- entered segment "interested in webinar topic X",
+- downloaded asset Y,
+- submitted form for content Z,
+- became dormant for N days,
+- viewed high-intent pages but did not convert.
 
-**Deliverables:**
+#### D. The highest-value scenarios are trigger-based follow-up scenarios
 
-1. Data migration tool: converts each EmailGroup (that is being used as a sequence) into a Sequence + Steps, maps ContactEmailSchedule records to Sequence Enrolments, and maps historical EmailLog data to Sequence Deliveries.
-2. Validation report: before migration, generate a report showing what will be migrated and any edge cases.
-3. Side-by-side verification: run both old and new systems, compare behaviour on test data.
-4. Deprecation: once migrated, mark old ContactScheduledEmailTask, EmailSchedule, and ContactEmailSchedule as deprecated. Keep entities in schema for historical queries.
+The demo repeatedly returned to a small set of practical use cases:
 
-**Acceptance criteria:**
+- follow-up after webinar attendance or registration,
+- follow-up after lead capture with a delay,
+- follow-up based on content interest,
+- reactivation after no movement,
+- sending a lead magnet or presentation after a form submission,
+- capillary or drip-style outreach that nudges leads over time.
 
-- All active drip sequences are migrated to the new Sequence model.
-- Contacts who were mid-sequence continue from where they left off.
-- Historical email logs remain accessible.
-- Old task can be disabled in configuration without data loss.
+Implication:
 
----
+The next platform capability should be defined around trigger-based automation scenarios, not only around generic sequence editing.
 
-## 6. Features You May Want to Consider
+#### E. Sender identity matters and should be chosen by use case
 
-Based on industry standards and common SaaS marketing needs, here are additional capabilities that are not in your three original requirements but are worth discussing. Let me know which of these, if any, you would like factored into the plan:
+The demo also surfaced an operational point: there is a meaningful distinction between:
 
-1. **A/B testing (split testing)** — Send variant A to 20% of the audience, variant B to 20%, then send the winner to the remaining 60%. Common for campaigns and newsletter subject line optimisation.
+- mass or semi-mass sends through a marketing sender,
+- smaller, more personal sends that should look like a real employee email.
 
-2. **Smart resend to non-openers** — Automatically resend a campaign to contacts who did not open the first send, optionally with a different subject line, after a configurable delay (e.g., 3 days).
+Implication:
 
-3. **Send time optimisation (STO)** — Instead of one send time, let the system learn the best time for each contact based on their historical open patterns. This is an advanced feature that platforms like Mailchimp and HubSpot offer.
+The future automation model should include sender strategy as a business-level decision, not only a template property.
 
-4. **Dynamic content blocks** — Within a single template, show different content sections to different contacts based on segment membership or contact properties (e.g., show different hero image to "Enterprise" vs "Startup" contacts in the same campaign).
+#### F. Reply-aware behaviour matters
 
-5. **Conditional sequence branching** — Instead of purely linear sequences, allow branching: "If contact opened Step 2, send Step 3A; otherwise, send Step 3B." This turns sequences into automations/workflows. Significantly more complex but very powerful.
+The team expects personal outreach flows to behave like real communication. If a recipient replies, the automation should not continue blindly.
 
-6. **Contact scoring / lead scoring** — Assign points for opens, clicks, page visits, etc. Use score thresholds to trigger sequences or segment contacts into "hot lead" / "cold lead" segments. Often a companion feature to email marketing.
+Implication:
 
-7. **Sender domain management and warming** — When using a new sending domain, gradually increase volume to build reputation. The system would manage warming schedules and monitor deliverability metrics.
-
-8. **Multi-channel sequences** — Extend sequences beyond email to include SMS steps, in-app messages, or webhook triggers. Your existing SMS plugin suggests this might be a future direction.
+Response-aware exit conditions should be part of the future sequence model, even if not in the first iteration.
 
 ---
 
-## 7. Summary of Entities (All Phases)
+## 6. Current Limitations of the Legacy Drip Model
 
-| Entity                         | Phase | New/Modified                           |
-| ------------------------------ | ----- | -------------------------------------- |
-| Campaign                       | 1     | New                                    |
-| CampaignRecipient              | 1     | New                                    |
-| Sequence                       | 2     | New                                    |
-| SequenceStep                   | 2     | New                                    |
-| SequenceEnrolment              | 2     | New                                    |
-| SequenceDelivery               | 2     | New                                    |
-| SequenceStep.EligibilityPolicy | 3     | Modified (add field)                   |
-| MailingList                    | 4     | New                                    |
-| Subscription                   | 4     | New                                    |
-| Unsubscribe (add list-level)   | 4     | Modified (add nullable list reference) |
-| Contact suppression state      | 5     | Modified or new                        |
-| EmailLog engagement events     | 6     | Modified (add open/click tracking)     |
+The current scheduled-email model is useful as a stopgap, but it is not a good long-term automation model.
+
+From a business perspective, its main limitations are:
+
+### 6.1 Email group is doing two jobs at once
+
+Today the same grouping concept is effectively used for:
+
+- organizing related templates,
+- defining the set of templates to be sent as a sequence.
+
+This makes the system harder to understand and harder to evolve.
+
+### 6.2 Sequence order is implicit rather than explicit
+
+The current order of sends is derived indirectly rather than managed as an intentional journey definition.
+
+Business impact:
+
+- hard to reorder,
+- hard to explain to marketers,
+- risky to modify while contacts are already in progress.
+
+### 6.3 Timing is attached to the schedule, not to meaningful journey steps
+
+The current model separates the content set from timing rules, but not in a marketer-friendly way.
+
+Business impact:
+
+- hard to express a journey as "welcome immediately, follow-up in 3 days, reminder in 7 days",
+- hard to evolve per-step rules,
+- hard to attach trigger conditions to specific messages.
+
+### 6.4 There is no first-class enrolment model
+
+The current model does not present a clear business concept of:
+
+- why a contact entered the flow,
+- where they are in the flow,
+- why they exited,
+- what should happen if the flow changes.
+
+### 6.5 The same template is not clearly reusable across multiple automation contexts
+
+This makes content reuse and long-term maintenance weaker than it should be.
 
 ---
 
-## 8. Risk Considerations
+## 7. Recommended Product Direction
 
-| Risk                                                | Mitigation                                                                                                                                                                          |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Large send volumes overwhelming SMTP                | Phase 6 introduces throttling. In the interim, use reasonable batch sizes in campaigns.                                                                                             |
-| Timezone calculation errors                         | Invest in thorough testing with contacts in diverse timezones. Use UTC internally, convert only at send-time evaluation.                                                            |
-| Retroactive step policies corrupting sequence state | Phase 3 includes preview/impact analysis before applying. Eligibility policy is immutable once set on a step.                                                                       |
-| Dual system (old drip + new sequence) confusion     | Clear naming in admin UI. "Legacy Sequences" label for old system. Phase 7 provides migration path.                                                                                 |
-| GDPR/CAN-SPAM non-compliance                        | Phase 5 addresses compliance comprehensively. Until then, global unsubscribe (already working) provides the minimum legal baseline.                                                 |
-| Newsletter without double opt-in                    | Implement double opt-in from day one in Phase 4. Do not allow Active subscription without confirmation for public signups. Admin imports can bypass (with explicit acknowledgment). |
+### 7.1 Keep the current foundations
+
+The existing system already provides enough stable foundations that the next phase should extend, not replace, the architecture.
+
+The following should remain foundational:
+
+- email templates as reusable content assets,
+- email groups as content organization,
+- segments as the main audience-definition mechanism,
+- campaigns as the one-time send engine,
+- contacts as the core personalization profile,
+- send logs and campaign recipients as the delivery audit trail.
+
+### 7.2 Add a first-class orchestration layer
+
+The missing layer is a business-level orchestration model for journeys.
+
+This layer should introduce two core concepts:
+
+#### A. Sequences
+
+An intentional series of messages with clear order, timing, and progression rules.
+
+#### B. Automation triggers
+
+Rules that decide when a contact should:
+
+- receive a one-time email,
+- be enrolled into a sequence,
+- be excluded from a sequence,
+- stop receiving future steps.
+
+This is the natural next layer on top of what already exists.
+
+---
+
+## 8. Priority Roadmap
+
+## Priority 1: First-Class Sequences
+
+### Business goal
+
+Allow marketing to define a reusable sequence of emails as a business asset rather than relying on the current hardcoded or indirectly configured drip model.
+
+### Business requirements
+
+- Create and name a sequence.
+- Add explicit steps in a defined order.
+- Define delay and send timing per step.
+- Pause, resume, archive, and inspect a sequence.
+- Understand where contacts are in the sequence.
+- Preserve the ability to personalize each step using the existing template system.
+
+### Architecture fit
+
+This should sit on top of the existing template, segment, contact, send, and logging infrastructure.
+
+It should not replace campaigns.
+
+- Campaign = one-time send to an audience snapshot.
+- Sequence = managed multi-step journey over time.
+
+### Why this is first
+
+This directly addresses the most important gap in the current platform and the clearest next need voiced during the demo.
+
+---
+
+## Priority 2: Trigger- and Criteria-Based Automation
+
+### Business goal
+
+Allow the system to automatically decide when to send a one-time email or enrol a contact into a sequence based on business signals.
+
+### Business requirements
+
+The trigger model should support scenarios such as:
+
+- new lead created,
+- contact entered a dynamic segment,
+- contact submitted a specific form,
+- contact requested or downloaded a specific asset,
+- contact registered for or attended a webinar,
+- contact showed interest in a content topic,
+- contact became inactive for a defined period,
+- contact matched CRM or funnel criteria once more CRM data is synchronized.
+
+Each trigger should be able to perform actions such as:
+
+- send a single email after a delay,
+- enrol into a sequence,
+- notify an internal owner,
+- stop or suppress another automation.
+
+### Architecture fit
+
+This should use the existing segment and contact infrastructure as much as possible.
+
+Where practical, dynamic segments should remain the primary criteria engine, with automation triggers consuming segment entry or other business events rather than inventing a completely separate audience logic model.
+
+### Why this is second
+
+Sequences by themselves solve structured nurture. Trigger-based automation turns them into a real marketing operating model.
+
+---
+
+## Priority 3: Personal Outreach Workflows
+
+### Business goal
+
+Support highly personal-looking lead nurturing that behaves more like thoughtful manual follow-up and less like a bulk marketing blast.
+
+### Business requirements
+
+- Use plaintext or low-design templates where appropriate.
+- Select sender strategy based on send type and volume.
+- Allow workflows to stop when a lead replies.
+- Allow workflows to stop when the lead progresses or becomes irrelevant.
+- Make communication history available as usable context for message generation and personalization.
+
+### Architecture fit
+
+The current platform already has enough contact context and communication history to support this direction. What is missing is the workflow logic that determines when to use it and when to stop.
+
+### Why this matters
+
+This was one of the clearest points from the demo: the team believes realistic personal outreach may outperform more conventional marketing emails for several important use cases.
+
+---
+
+## Priority 4: Lead Magnet and Asset Delivery Flows
+
+### Business goal
+
+Support the pattern where a user submits a form and receives a promised presentation, document, guide, or other asset, while also entering an appropriate follow-up path.
+
+### Business requirements
+
+- Connect landing forms to fulfilment emails.
+- Deliver an asset by attachment or controlled link.
+- Associate that action with the contact profile.
+- Optionally enrol the contact into a relevant follow-up sequence.
+- Keep this easy for marketing to configure.
+
+### Architecture fit
+
+This should reuse the existing template system, contact creation/update flow, and campaign or sequence delivery capabilities.
+
+### Why this matters
+
+This came up directly in the demo and is likely to be a practical early business win once automation primitives exist.
+
+---
+
+## Priority 5: Analytics, Operational Controls, and Deliverability
+
+### Business goal
+
+Give marketing enough visibility and control to confidently run and improve automations.
+
+### Business requirements
+
+- clear sent / failed / skipped reporting,
+- better visibility into replies and outcomes,
+- open and click analytics where appropriate,
+- deliverability-aware send controls,
+- the ability to understand which sequence or trigger is performing.
+
+### Notes
+
+Some of this already exists for campaigns at a basic operational level. The next step is to extend that visibility to automations and make it useful for business decisions.
+
+---
+
+## Priority 6: Mailing Lists, Preferences, and Newsletter Operations
+
+### Business goal
+
+Support explicit subscription-based newsletter operations when the business needs them.
+
+### Business requirements
+
+- list-level subscription management,
+- preference centre,
+- list-specific unsubscribe,
+- newsletter history and issue management.
+
+### Priority assessment
+
+This remains important, but based on the demo it does not appear to be the most urgent next investment. The stronger short-term value appears to be in sequences and trigger-based lead follow-up.
+
+---
+
+## 9. Product Principles Going Forward
+
+The following principles should guide the next phase.
+
+### 9.1 Content and orchestration must stay separate
+
+Templates are reusable content assets.
+
+Sequences and automations should reference templates, but should own:
+
+- timing,
+- trigger conditions,
+- sender strategy,
+- progression and exit logic.
+
+### 9.2 Raw customer data should be turned into actionable intent
+
+Tags, UTM data, browsing behaviour, and CRM state are valuable inputs. They should feed:
+
+- segments,
+- triggers,
+- recommendations,
+- personalization.
+
+They should not become a manual cognitive burden for marketers.
+
+### 9.3 Marketing needs both scale and realism
+
+The platform must support both:
+
+- scalable broadcast-style communication,
+- low-volume personal-looking communication.
+
+These are not competing needs. They are different operating modes that should coexist.
+
+### 9.4 Reply and progression should matter
+
+Future automations should not behave as if sending exists in isolation.
+
+If a lead replies, progresses, opts out, or becomes ineligible, the automation should react accordingly.
+
+### 9.5 Existing infrastructure should be leveraged, not bypassed
+
+The current campaign engine, segment model, template model, and contact profile are already strong enough to serve as the foundation. New work should compose with them rather than creating parallel concepts unless there is a clear business reason.
+
+---
+
+## 10. Recommended Scope Decisions
+
+To keep the next phase focused, the following scope decisions are recommended:
+
+### Do now
+
+- Formalize sequences as a first-class concept.
+- Introduce trigger-based automation rules.
+- Support practical follow-up scenarios around new leads, webinar flows, content interest, and delayed reactivation.
+- Support more personal outreach-style automation behaviour.
+
+### Do soon after
+
+- Add response-aware stopping rules.
+- Add lead magnet and asset fulfilment flows.
+- Improve analytics and operational visibility for automations.
+
+### Do later
+
+- AI recommendations for what campaign or follow-up should be suggested automatically.
+- Deeper behavioural scoring.
+- Full preference-centre and newsletter/list product maturity, unless business priority changes.
+
+---
+
+## 11. Summary
+
+LeadCMS already has a strong email marketing base. The business is no longer blocked on templates, personalization primitives, audience segmentation, or one-time campaign delivery.
+
+The most important next step is to close the orchestration gap.
+
+That means:
+
+- making sequences first-class,
+- making sends configurable from business criteria and events,
+- making outreach feel contextual and personal where needed,
+- using existing contact and behavioural data as automation input rather than just as stored metadata.
+
+If the next phase is built this way, it will fit naturally into the current architecture and directly address the feedback from the first marketing demo.
