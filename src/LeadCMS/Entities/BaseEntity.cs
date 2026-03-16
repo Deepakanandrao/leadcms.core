@@ -43,6 +43,7 @@ public class BaseEntityWithId
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    [Searchable]
     public int Id { get; set; }
 
     [Searchable]

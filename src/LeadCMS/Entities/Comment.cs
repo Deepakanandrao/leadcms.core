@@ -71,7 +71,6 @@ public class Comment : BaseEntity, ITranslatable
     [Required]
     public string Language { get; set; } = string.Empty;
 
-    [Searchable]
     public string? TranslationKey { get; set; }
 
     public CommentStatus Status { get; set; } = CommentStatus.NotApproved;
