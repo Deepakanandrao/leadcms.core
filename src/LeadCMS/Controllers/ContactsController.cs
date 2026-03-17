@@ -145,11 +145,6 @@ public class ContactsController : BaseControllerWithImport<Contact, ContactCreat
         var records = result.Records ?? new List<EmailLog>();
         var mappedItems = mapper.Map<List<ContactEmailCommunicationListItemDto>>(records);
 
-        for (var i = 0; i < records.Count; i++)
-        {
-            mappedItems[i].Body = contactEmailCommunicationService.PrepareBody(records[i]);
-        }
-
         Response.Headers.Append(ResponseHeaderNames.TotalCount, result.TotalCount.ToString());
         Response.Headers.Append(ResponseHeaderNames.AccessControlExposeHeader, ResponseHeaderNames.TotalCount);
 
@@ -167,7 +162,6 @@ public class ContactsController : BaseControllerWithImport<Contact, ContactCreat
 
         var emailLog = await contactEmailCommunicationService.GetCommunicationAsync(id, emailLogId);
         var dto = mapper.Map<ContactEmailCommunicationDetailsDto>(emailLog);
-        dto.Body = contactEmailCommunicationService.PrepareBody(emailLog);
         return Ok(dto);
     }
 

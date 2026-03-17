@@ -13,7 +13,5 @@ public interface IContactEmailCommunicationService
 
     Task<EmailLog> GetCommunicationAsync(int contactId, int emailLogId);
 
-    string? PrepareBody(EmailLog emailLog);
-
     Task<ContactEmailCommunicationStatsDto> GetStatsAsync(int contactId, DateTime? from, DateTime? to, EmailCommunicationStatsGroupBy groupBy);
 }

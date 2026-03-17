@@ -8,6 +8,7 @@ using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
+using LeadCMS.Services;
 
 namespace LeadCMS.Configuration;
 
@@ -215,8 +216,16 @@ public class AutoMapperProfiles : Profile
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
 
         CreateMap<EmailLog, ContactEmailCommunicationListItemDto>()
+            .AfterMap((source, destination) =>
+            {
+                destination.Body = ContactEmailCommunicationService.PrepareBody(source);
+            })
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<EmailLog, ContactEmailCommunicationDetailsDto>()
+            .AfterMap((source, destination) =>
+            {
+                destination.Body = ContactEmailCommunicationService.PrepareBody(source);
+            })
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
 
         CreateMap<Unsubscribe, UnsubscribeDto>().ReverseMap();

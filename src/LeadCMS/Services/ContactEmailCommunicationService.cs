@@ -44,6 +44,21 @@ public class ContactEmailCommunicationService : IContactEmailCommunicationServic
         this.apiSettings = apiSettings.Value;
     }
 
+    public static string? PrepareBody(EmailLog emailLog)
+    {
+        if (!string.IsNullOrWhiteSpace(emailLog.HtmlBody))
+        {
+            return StripQuotedThreadHtml(emailLog.HtmlBody);
+        }
+
+        if (!string.IsNullOrWhiteSpace(emailLog.TextBody))
+        {
+            return StripQuotedThreadText(emailLog.TextBody);
+        }
+
+        return null;
+    }
+
     public async Task<QueryResult<EmailLog>> GetCommunicationsAsync(int contactId, string queryString, bool applyDefaultOrder = true)
     {
         var rawQuery = NormalizeQueryString(queryString);
@@ -74,21 +89,6 @@ public class ContactEmailCommunicationService : IContactEmailCommunicationServic
         }
 
         return emailLog;
-    }
-
-    public string? PrepareBody(EmailLog emailLog)
-    {
-        if (!string.IsNullOrWhiteSpace(emailLog.HtmlBody))
-        {
-            return StripQuotedThreadHtml(emailLog.HtmlBody);
-        }
-
-        if (!string.IsNullOrWhiteSpace(emailLog.TextBody))
-        {
-            return StripQuotedThreadText(emailLog.TextBody);
-        }
-
-        return null;
     }
 
     public async Task<ContactEmailCommunicationStatsDto> GetStatsAsync(int contactId, DateTime? from, DateTime? to, EmailCommunicationStatsGroupBy groupBy)
