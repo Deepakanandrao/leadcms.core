@@ -42,6 +42,7 @@ Each step card should show:
 Between steps, the component should show the delay or timing relationship in a human-readable way, for example:
 
 - Immediately
+- Next 4:00 PM local time
 - After 2 days
 - After 5 days at 10:00 local time
 
@@ -115,6 +116,7 @@ Examples:
 
 - missing template,
 - invalid timing,
+- ambiguous same-day versus next-day send behaviour,
 - unresolved warning.
 
 The user should be able to identify broken steps without opening every card.

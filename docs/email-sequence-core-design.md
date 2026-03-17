@@ -1,6 +1,7 @@
 # Email Sequence Core Design
 
 Date: 2026-03-12
+Revised: 2026-03-17
 
 ---
 
@@ -10,17 +11,16 @@ This document defines the Phase 1 internal structure for email sequences in Core
 
 The Phase 1 design aims to:
 
-- keep the sequence definition self-contained,
-- store the workflow itself in JSONB,
+- keep the sequence definition understandable and queryable,
+- use relational tables for steps so template references are database-enforced,
+- use JSONB only for bounded structured payloads within entities,
 - keep sequence-wide execution behaviour explicit on the entity,
 - fit the current Core patterns already used by campaigns, email logs, contacts, segments, and the legacy scheduled-email model,
 - stay extensible for later automation and workflow growth.
 
 ---
 
-## 2. Phase 1 Design Rules
-
-Phase 1 sequences follow these rules.
+## 2. Design Rules
 
 ### 2.1 The sequence entity carries explicit top-level execution attributes
 
@@ -28,11 +28,19 @@ Sequence-wide behaviour is represented by normal top-level entity attributes.
 
 This keeps the entity easy to query, list, filter, inspect, and operate.
 
-### 2.2 The workflow is stored directly on the sequence in JSONB
+### 2.2 Steps are relational with JSONB for flexible sub-structures
 
-The current active workflow definition is stored in a required `Flow` JSONB field on the sequence.
+Each step is a row in the `SequenceStep` table with a foreign key to `Sequence` and a foreign key to `EmailTemplate`.
 
-This keeps the sequence self-contained and avoids splitting the step graph across multiple definition tables.
+Step-level configuration that is inherently structured and not independently queried (`Timing`) is stored as a JSONB field on the step row.
+
+This gives us:
+
+- database-enforced template references,
+- easy "where is this template used?" queries,
+- proper delete behaviour,
+- straightforward data migration,
+- retained flexibility for timing rules and future step-type-specific configuration.
 
 ### 2.3 The sequence is language-agnostic
 
@@ -46,40 +54,53 @@ The sequence itself does not define a language field.
 
 ### 2.4 Phase 1 optimizes for linear email journeys
 
-The Phase 1 workflow shape represents ordered multi-step email sequences.
+Steps carry an explicit `Position` attribute that defines execution order within the sequence.
 
-This gives us a clean and practical first implementation while leaving room for richer logic later.
+This gives us a clean and practical first implementation while leaving room for richer logic later (transitions, branching).
 
 ### 2.5 Runtime execution state remains relational
 
-The sequence stores the workflow definition.
+The sequence and its steps store the workflow definition.
 
 Contact execution state, delivery state, and audit history are stored in runtime tables so they can be indexed, queried, and updated efficiently.
 
+### 2.6 No explicit sequence versioning for now
+
+If editing active sequences later requires upgrade behaviour for existing enrollments, that should be handled by explicit runtime logic, not by exposing a version model from day one.
+
+### 2.7 Default behaviours are not configurable
+
+Some behaviours are always-on defaults and do not need per-sequence toggles:
+
+- **Stop on global unsubscribe** — if a contact is globally unsubscribed, the sequence always stops. This is not a setting.
+- **Fail and exit on repeated step failure** — if a step fails and retries are exhausted, the enrollment exits with a failure reason. This is not a setting.
+
 ---
 
-## 3. Recommended High-Level Model
+## 3. High-Level Model
 
 The Phase 1 model contains:
 
-- one main `Sequence` entity,
-- one required `Flow` JSONB field,
-- one optional `Enrollment` JSONB field,
-- one optional `UtmParameters` JSONB field,
-- separate runtime entities for enrollments and deliveries.
+### Definition entities
+
+- `Sequence` — the main entity with lifecycle, execution flags, counters, and JSONB for enrollment and UTM configuration.
+- `SequenceStep` — one row per step, ordered by `Position`, with FK to `Sequence` and FK to `EmailTemplate`. Step-specific timing is a JSONB field on this entity.
+
+### Runtime entities
+
+- `SequenceEnrollment` — one row per contact in a sequence.
+- `SequenceDelivery` — one row per contact per step delivery.
 
 This gives us a clean split:
 
-- `Sequence` stores what the sequence is and how it is defined,
+- definition entities store what the sequence is and how it is structured,
 - runtime tables store what happened to contacts inside it.
 
 ---
 
-## 4. Phase 1 Sequence Entity Shape
+## 4. Sequence Entity
 
-The `Sequence` entity should contain the following groups of attributes.
-
-## 4.1 Identity and lifecycle
+### 4.1 Identity and lifecycle
 
 - `Id`
 - `Name`
@@ -89,748 +110,30 @@ The `Sequence` entity should contain the following groups of attributes.
 - `LastPausedAt`
 - `ArchivedAt`
 
-`Status` should support at least:
+`Status` values:
 
 - `Draft`
 - `Active`
 - `Paused`
 - `Archived`
 
-## 4.2 Sequence-wide execution attributes
+### 4.2 Execution attributes
 
 These top-level attributes define execution behaviour across the whole sequence:
 
-- `ContinueOnStepFailure`
 - `StopOnReply`
-- `StopOnGlobalUnsubscribe`
-- `UseContactTimeZoneByDefault`
+- `UseContactTimeZone`
 - `TimeZone`
 
-### Attribute semantics
+#### Attribute semantics
 
-`ContinueOnStepFailure`
+`StopOnReply` — supports the business requirement for personal outreach workflows. When enabled, a reply from the contact stops further sequence progression for that contact.
 
-- controls whether a failed step blocks further progression.
+`UseContactTimeZone` — when `true`, step timing is resolved in each contact's local timezone. When `false`, the sequence-level `TimeZone` is used for all contacts.
 
-`StopOnReply`
+`TimeZone` — fallback timezone offset in minutes when `UseContactTimeZone` is `false` or when a contact has no timezone set, following the same pattern already used by campaigns.
 
-- supports the business requirement for personal outreach workflows.
-
-`StopOnGlobalUnsubscribe`
-
-- expresses the global unsubscribe rule explicitly on the sequence.
-
-`UseContactTimeZoneByDefault`
-
-- allows steps to inherit contact-local-time behaviour without repeating the same flag everywhere.
-
-`TimeZone`
-
-- stores the fallback timezone offset in minutes when contact timezone is unavailable, following the same general pattern already used by campaigns.
-
-## 4.3 Summary counters
-
-Recommended top-level counters:
-
-- `ActiveEnrollmentCount`
-- `CompletedEnrollmentCount`
-- `ExitedEnrollmentCount`
-- `SentCount`
-- `FailedCount`
-
-These are operational summaries rather than source of truth.
-
-## 4.4 JSONB attributes
-
-Phase 1 uses these JSONB attributes:
-
-- `Flow` required
-- `Enrollment` optional
-- `UtmParameters` optional
-
-This is the intended JSONB surface for the first implementation.
-
----
-
-## 5. `Flow` JSONB Structure
-
-`Flow` stores the actual sequence workflow.
-
-This is the main JSONB field and the primary self-contained definition of the journey.
-
-## 5.1 Responsibilities of `Flow`
-
-`Flow` contains:
-
-- ordered step definitions,
-- stable step identifiers,
-- step-level template references,
-- step-level timing rules,
-- step-level live-edit behaviour.
-
-## 5.2 Top-level `Flow` shape
-
-Phase 1 `Flow` shape:
-
-- `mode`
-- `steps`
-
-Phase 1 value for `mode`:
-
-- `linear`
-
-The `Flow` document stores the current workflow shape directly.
-
-## 5.3 Step shape inside `Flow`
-
-Each step contains:
-
-- `id`
-- `type`
-- `title`
-- `templateId`
-- `timing`
-- `liveEdit`
-- optional `metadata`
-
-### Step field semantics
-
-`id`
-
-- stable string identifier inside the sequence,
-- independent from array index,
-- used by runtime state and delivery tracking to refer to a specific step reliably.
-
-`type`
-
-- Phase 1 supports `email`.
-
-`title`
-
-- internal business/admin label for the step.
-
-`templateId`
-
-- references an existing email template.
-
-`timing`
-
-- defines when the step becomes eligible to send.
-
-`liveEdit`
-
-- defines how the step behaves when it is inserted or changed on an active sequence.
-
-`metadata`
-
-- optional editor-facing data that does not drive execution.
-
----
-
-## 6. Step Timing Structure
-
-Timing is step-specific and belongs inside each step.
-
-Recommended structure:
-
-- `anchor`
-- `delay`
-- optional `sendAt`
-- optional `useContactTimeZone`
-- optional `allowedWeekDays`
-
-## 6.1 Timing semantics
-
-`anchor`
-
-- `enrollment`
-- `previous_step`
-
-`delay`
-
-- object with `value` and `unit`
-- units should initially support `minutes`, `hours`, `days`
-
-`sendAt`
-
-- optional local time such as `10:00`
-
-`useContactTimeZone`
-
-- optional step-level override
-- if absent, the step inherits `UseContactTimeZoneByDefault` from the sequence
-
-`allowedWeekDays`
-
-- optional array for cases where a step should only send on specific weekdays
-
----
-
-## 7. Step Live-Edit Structure
-
-The implementation plan already identifies retroactive step behaviour as a key requirement.
-
-Each step therefore contains a small `liveEdit` structure.
-
-Recommended fields:
-
-- `insertPolicy`
-
-Recommended values:
-
-- `new_enrollments_only`
-- `include_in_progress`
-- `include_all`
-
-This keeps the critical retroactive rule attached directly to the step definition.
-
----
-
-## 8. `Enrollment` JSONB Structure
-
-`Enrollment` is an optional JSONB field for simple built-in sequence entry rules.
-
-Its role in Phase 1 is to make the sequence reasonably self-contained for common entry scenarios without turning the sequence itself into the full automation engine.
-
-## 8.1 `Enrollment` shape
-
-Recommended fields:
-
-- `mode`
-- `includeSegmentIds`
-- `excludeSegmentIds`
-- `reentryPolicy`
-
-Recommended values for `mode`:
-
-- `manual`
-- `api`
-- `segment`
-
-Recommended values for `reentryPolicy`:
-
-- `once_ever`
-- `allow_after_completion`
-- `always`
-
-## 8.2 Scope of `Enrollment` in Phase 1
-
-`Enrollment` covers these built-in entry patterns:
-
-- manual enrollment,
-- API-driven enrollment,
-- segment-based enrollment.
-
-Richer automation triggers can target a sequence later as a separate concept.
-
----
-
-## 9. `UtmParameters` JSONB Structure
-
-Following the existing campaign design, a sequence may define optional UTM overrides.
-
-This remains a dedicated JSONB field and follows the same conceptual model already used by campaigns.
-
-Its purpose is to:
-
-- provide default UTM context for sequence sends,
-- avoid repeating the same UTM values on every step,
-- allow send logic to derive step-specific details while still inheriting sequence-level campaign context.
-
----
-
-## 10. JSONB Fields Used in Phase 1
-
-Phase 1 uses these JSONB fields:
-
-### 10.1 `Flow` required
-
-Stores the ordered step workflow.
-
-### 10.2 `Enrollment` optional
-
-Stores simple built-in entry configuration.
-
-### 10.3 `UtmParameters` optional
-
-Stores structured UTM overrides.
-
----
-
-## 11. Real Sample Structures
-
-## 11.1 Example `Flow`
-
-Example for a simple onboarding sequence:
-
-```json
-{
-  "mode": "linear",
-  "steps": [
-    {
-      "id": "welcome",
-      "type": "email",
-      "title": "Welcome Email",
-      "templateId": 101,
-      "timing": {
-        "anchor": "enrollment",
-        "delay": {
-          "value": 0,
-          "unit": "minutes"
-        },
-        "useContactTimeZone": true
-      },
-      "liveEdit": {
-        "insertPolicy": "new_enrollments_only"
-      }
-    },
-    {
-      "id": "getting-started",
-      "type": "email",
-      "title": "Getting Started Guide",
-      "templateId": 102,
-      "timing": {
-        "anchor": "previous_step",
-        "delay": {
-          "value": 2,
-          "unit": "days"
-        },
-        "sendAt": "10:00",
-        "useContactTimeZone": true
-      },
-      "liveEdit": {
-        "insertPolicy": "include_in_progress"
-      }
-    },
-    {
-      "id": "case-study",
-      "type": "email",
-      "title": "Case Study",
-      "templateId": 103,
-      "timing": {
-        "anchor": "previous_step",
-        "delay": {
-          "value": 5,
-          "unit": "days"
-        },
-        "sendAt": "10:00"
-      },
-      "liveEdit": {
-        "insertPolicy": "new_enrollments_only"
-      }
-    }
-  ]
-}
-```
-
-## 11.2 Example `Enrollment`
-
-Example for a sequence that automatically enrolls contacts from a segment:
-
-```json
-{
-  "mode": "segment",
-  "includeSegmentIds": [12, 18],
-  "excludeSegmentIds": [25],
-  "reentryPolicy": "once_ever"
-}
-```
-
-Example for a sequence that is only used by manual or API enrollment:
-
-```json
-{
-  "mode": "api",
-  "reentryPolicy": "allow_after_completion"
-}
-```
-
-## 11.3 Example `UtmParameters`
-
-Example for sequence-level UTM defaults:
-
-```json
-{
-  "source": "leadcms",
-  "medium": "email",
-  "campaign": "trial_onboarding",
-  "content": "sequence_default"
-}
-```
-
-## 11.4 Example top-level sequence shape
-
-Illustrative example of how the full entity would look conceptually:
-
-```json
-{
-  "id": 44,
-  "name": "Trial Onboarding",
-  "description": "Core onboarding sequence for new trial users.",
-  "status": "Active",
-  "continueOnStepFailure": false,
-  "stopOnReply": true,
-  "stopOnGlobalUnsubscribe": true,
-  "useContactTimeZoneByDefault": true,
-  "timeZone": 0,
-  "flow": {
-    "mode": "linear",
-    "steps": [
-      {
-        "id": "welcome",
-        "type": "email",
-        "title": "Welcome Email",
-        "templateId": 101,
-        "timing": {
-          "anchor": "enrollment",
-          "delay": {
-            "value": 0,
-            "unit": "minutes"
-          }
-        },
-        "liveEdit": {
-          "insertPolicy": "new_enrollments_only"
-        }
-      }
-    ]
-  },
-  "enrollment": {
-    "mode": "segment",
-    "includeSegmentIds": [12],
-    "reentryPolicy": "once_ever"
-  },
-  "utmParameters": {
-    "source": "leadcms",
-    "medium": "email",
-    "campaign": "trial_onboarding"
-  }
-}
-```
-
----
-
-## 12. Runtime State Boundary
-
-The JSONB fields carry the sequence definition and lightweight enrollment configuration.
-
-Contact execution state lives in runtime tables so it can be updated, indexed, filtered, and counted efficiently.
-
-That runtime state includes:
-
-- current contact step,
-- last sent timestamp per contact,
-- retry counters per contact,
-- contact exit reason,
-- reply state per contact,
-- recipient snapshots,
-- delivery history.
-
----
-
-## 13. Runtime Entities Needed in Phase 1
-
-Even with a self-contained workflow, Phase 1 runtime state is relational.
-
-## 13.1 `SequenceEnrollment`
-
-Recommended purpose:
-
-- one row per contact in a sequence,
-- current progression state,
-- exit state,
-- entry source.
-
-Recommended fields:
-
-- `SequenceId`
-- `ContactId`
-- `Status`
-- `CurrentStepId` or `LastCompletedStepId`
-- `EnteredAt`
-- `CompletedAt`
-- `ExitedAt`
-- `ExitReason`
-- `EnrollmentSource`
-
-## 13.2 `SequenceDelivery`
-
-Recommended purpose:
-
-- one row per contact and step delivery,
-- idempotency,
-- scheduling,
-- auditability,
-- future analytics.
-
-Recommended fields:
-
-- `SequenceId`
-- `ContactId`
-- `StepId`
-- `Status`
-- `ScheduledAt`
-- `SentAt`
-- `SkipReason`
-- `ErrorMessage`
-- optional `EmailLogId`
-
-## 13.3 Why these remain relational
-
-These records:
-
-- change frequently,
-- need indexes,
-- need uniqueness rules,
-- need efficient counting and filtering,
-- fit the existing Core operational patterns much better than JSONB.
-
----
-
-## 14. Concrete Phase 1 Shape
-
-### On `Sequence`
-
-- top-level scalar metadata,
-- top-level execution attributes,
-- top-level counters,
-- `Flow` JSONB,
-- optional `Enrollment` JSONB,
-- optional `UtmParameters` JSONB.
-
-### In `Flow`
-
-- linear ordered `steps`,
-- stable `id` per step,
-- `templateId`,
-- `timing`,
-- `liveEdit.insertPolicy`.
-
-### Outside `Sequence`
-
-- `SequenceEnrollment` runtime rows,
-- `SequenceDelivery` runtime rows.
-
-This is the concrete Phase 1 shape.
-
----
-
-## 15. Summary
-
-Phase 1 sequences are defined by:
-
-- explicit top-level execution attributes,
-- a self-contained `Flow` JSONB workflow,
-- optional `Enrollment` and `UtmParameters` JSONB fields,
-- relational runtime entities for enrollment progress and delivery state.
-
-This gives us a concrete first implementation that stays aligned with the current Core design and remains extensible later.## 2. Phase 1 Design Rules
-
-Phase 1 sequences should follow these concrete rules.
-### 2.1 The sequence entity carries explicit top-level execution attributes
-
-Sequence-wide execution behaviour is represented by normal top-level entity attributes.
-### 2.2 The sequence definition is represented by three JSONB fields at most
-
-Phase 1 uses the following JSONB fields:
-- `Flow` required
-- `Enrollment` optional
-- `UtmParameters` optional
-### 2.3 Language is resolved through enrollment and template selection
-
-The sequence itself remains language-agnostic.
-### 2.4 Phase 1 stores the current active workflow shape directly
-
-The Phase 1 model stores the current workflow definition directly on the sequence.
-### 2.5 Phase 1 optimizes for linear email journeys
-
-The workflow structure is designed for ordered multi-step email sequences.
-## 4.2 Sequence-wide execution attributes
-
-Phase 1 sequence-wide execution behaviour is defined by these top-level attributes:
-### Notes
-
-`StopOnGlobalUnsubscribe`
-- is an explicit global rule for all sequence sends,
-- communicates sequence behaviour clearly at the entity level.
-## 4.4 JSONB fields
-
-Phase 1 JSONB fields:
-These fields are sufficient for the first implementation and leave room for future extension without making the entity vague.
-For Phase 1, `Flow` represents a linear journey.
-Phase 1 top-level shape:
-Phase 1 value for `mode`:
-- `linear`
-
-The `Flow` document stores the current active shape of the sequence.
-`id`
-
-- stable string identifier inside the sequence,
-- independent from array index,
-- used by runtime state and delivery tracking to refer to a specific step reliably.
-`metadata`
-
-- optional editor-facing data that does not drive execution.
-## 8. What Goes Into `Enrollment`
-
-`Enrollment` is an optional JSONB field for simple built-in entry rules.
-Its role in Phase 1 is to make the sequence reasonably self-contained for common entry scenarios without turning the sequence entity into the full automation system.
-## 8.2 Phase 1 scope of `Enrollment`
-
-`Enrollment` covers these built-in entry patterns in Phase 1:
-- manual enrollment,
-- API-driven enrollment,
-- segment-based enrollment.
-Phase 1 uses these JSONB fields:
-This is the intended JSONB surface for the first implementation.
-## 12. Runtime State Boundary
-
-The JSONB fields carry the sequence definition and lightweight enrollment configuration.
-Contact execution state lives in runtime tables so it can be updated, indexed, filtered, and counted efficiently.
-### In `Flow`
-
-- `liveEdit.insertPolicy`.
-This is the concrete Phase 1 shape.
-Phase 1 sequences are defined by:
-
-- explicit top-level execution attributes,
-- a self-contained `Flow` JSONB workflow,
-- optional `Enrollment` and `UtmParameters` JSONB fields,
-- relational runtime entities for enrollment progress and delivery state.
-
-This gives us a concrete first implementation that stays aligned with the current Core design and remains extensible later.
-# Email Sequence Core Design
-
-Date: 2026-03-12
-
----
-
-## 1. Goal
-
-This document defines the recommended internal structure for email sequences in Core.
-
-The main goals are:
-
-- keep the sequence definition as self-contained as possible,
-- store the actual workflow in JSONB,
-- avoid over-engineering the first version,
-- fit the current Core patterns already used by campaigns, email logs, contacts, segments, and the legacy scheduled-email model.
-
----
-
-## 2. Decisions for the First Version
-
-The design should follow these rules.
-
-### 2.1 Sequence-wide settings should be top-level attributes
-
-We should not introduce a generic `Settings` JSONB field for sequence-wide behaviour.
-
-If a setting is important enough to affect execution globally, filtering, list views, or operator understanding, it should be a normal top-level sequence attribute.
-
-### 2.2 No explicit sequence versioning for now
-
-We should not introduce a `FlowVersion`, `SequenceVersion`, or similar first-version concept.
-
-If editing active sequences later requires clever upgrade behaviour for existing enrollments, that should be handled by explicit runtime logic, not by exposing a version model as part of the first design.
-
-### 2.3 No explicit sequence versioning for now
-
-Language should not be defined at the sequence level.
-
-Language is already handled by:
-
-- who gets enrolled,
-- which templates a step references,
-- existing template language support.
-
-The sequence itself should not try to override that.
-
-### 2.4 Keep JSONB only where it brings real value
-
-The JSONB fields should be used for:
-
-- the ordered workflow definition,
-- optional self-contained enrollment configuration,
-- structured UTM overrides if we want sequence-level UTM defaults like campaigns already support.
-
-Everything else should stay explicit on the entity.
-
----
-
-## 3. Recommended High-Level Model
-
-The recommended first-version model is:
-
-- one main `Sequence` entity,
-- one required JSONB field for the workflow definition,
-- one optional JSONB field for enrollment definition,
-- one optional JSONB field for UTM overrides,
-- separate runtime entities for enrollments and deliveries.
-
-This gives us a good balance:
-
-- the workflow stays self-contained,
-- the sequence entity remains understandable and queryable,
-- runtime state does not pollute the main JSON document.
-
----
-
-## 4. Proposed Top-Level Sequence Attributes
-
-The `Sequence` entity should contain the fields below.
-
-## 4.1 Identity and lifecycle
-
-- `Id`
-- `Name`
-- `Description`
-- `Status`
-- `LastActivatedAt`
-- `LastPausedAt`
-- `ArchivedAt`
-
-`Status` should support at least:
-
-- `Draft`
-- `Active`
-- `Paused`
-- `Archived`
-
-## 4.2 Sequence-wide execution attributes
-
-These are the attributes that should be flattened to the top level instead of going into `Settings` JSONB:
-
-- `ContinueOnStepFailure`
-- `StopOnReply`
-- `StopOnGlobalUnsubscribe`
-- `UseContactTimeZoneByDefault`
-- `TimeZone`
-
-### Notes
-
-`ContinueOnStepFailure`
-
-- controls whether a failed step blocks further progression.
-
-`StopOnReply`
-
-- supports the business requirement for personal outreach workflows.
-
-`StopOnGlobalUnsubscribe`
-
-- should almost certainly default to `true`, but it is still useful as an explicit attribute because it expresses global sequence behaviour clearly.
-
-`UseContactTimeZoneByDefault`
-
-- allows a step to inherit contact-local-time behaviour without requiring every step to repeat the same default.
-
-`TimeZone`
-
-- fallback timezone offset in minutes when contact timezone is not available, mirroring the campaign pattern.
-
-## 4.3 Summary counters
-
-Recommended top-level counters:
+### 4.3 Summary counters
 
 - `ActiveEnrollmentCount`
 - `CompletedEnrollmentCount`
@@ -840,453 +143,193 @@ Recommended top-level counters:
 
 These are operational summaries, not source of truth.
 
-## 4.4 JSONB fields
+### 4.4 JSONB fields on Sequence
 
-Recommended JSONB fields:
+- `Enrollment` — optional
+- `UtmParameters` — optional
 
-- `Flow` required
-- `Enrollment` optional
-- `UtmParameters` optional
-
-That should be enough for the first version.
+These are the only JSONB fields on the sequence entity itself.
 
 ---
 
-## 5. What Should Go Into `Flow`
+## 5. SequenceStep Entity
 
-`Flow` should store the actual sequence structure.
+Each step is a separate row in the `SequenceStep` table.
 
-This is the most important JSONB field and the reason the sequence can remain self-contained.
+### 5.1 Relational fields
 
-## 5.1 Responsibilities of `Flow`
+- `Id` — primary key.
+- `SequenceId` — FK to `Sequence`.
+- `EmailTemplateId` — FK to `EmailTemplate`. Database-enforced reference.
+- `Position` — integer that defines execution order within the sequence. Unique per sequence.
+- `StepKey` — stable string identifier (e.g. `"welcome"`, `"getting-started"`), independent from position. Used by runtime state and delivery tracking to refer to a specific step reliably. Unique per sequence.
+- `Type` — step type. Phase 1 supports `Email` only.
+- `Title` — internal business/admin label for the step.
 
-`Flow` should contain:
+### 5.2 JSONB fields on SequenceStep
 
-- ordered step definitions,
-- stable step identifiers,
-- step-level template references,
-- step-level timing rules,
-- step-level live-edit behaviour.
+#### `Timing` — required
 
-For the first version, `Flow` should represent a linear journey only.
+Defines when the step becomes eligible to send.
 
-## 5.2 Recommended structure of `Flow`
+Fields:
 
-Recommended top-level shape:
+- `delay` — object with `value` (int) and `unit` (`minutes`, `hours`, `days`).
+- `sendAt` — optional local time such as `"10:00"`. When present, the send is aligned to the next occurrence of that local time after the delay elapses.
+- `allowedWeekDays` — optional array for cases where a step should only send on specific weekdays.
 
-- `mode`
-- `steps`
+### 5.3 Position-based timing rules
 
-Recommended first-version value for `mode`:
+Timing interpretation depends on the step's position in the sequence:
 
-- `linear`
+- **Position 0 (first step):** the delay is relative to when the contact was enrolled. A delay of `0 minutes` means send immediately upon enrollment.
+- **Position > 0 (subsequent steps):** the delay is relative to when the previous step was sent to this contact.
 
-No explicit `schemaVersion` is recommended right now.
+This makes timing unambiguous without requiring an explicit anchor field. The position already determines the reference point.
 
-If we later need to evolve the JSON shape, that can be handled through application-level migration logic rather than persisting a version concept from day one.
+### 5.4 Immediate execution
 
-## 5.3 What each step in `Flow` should contain
+A step with `delay: { "value": 0, "unit": "minutes" }` executes as soon as it becomes eligible:
 
-Each step should contain:
+- For position 0, this means immediately upon enrollment.
+- For subsequent steps, this means immediately after the previous step is sent.
 
-- `id`
-- `type`
-- `title`
-- `templateId`
-- `timing`
-- `liveEdit`
-- optional `metadata`
+This is the standard way to model steps that should fire without any waiting period— for example, a welcome email that should go out the moment a contact is enrolled.
 
-### Step field notes
+### 5.5 Why this split
 
-`id`
+Relational fields (`SequenceId`, `EmailTemplateId`, `Position`, `StepKey`, `Type`, `Title`):
 
-- stable string identifier inside the sequence,
-- should not depend on array index,
-- becomes especially important because we are not introducing sequence versions right now.
+- need FK enforcement,
+- need uniqueness constraints,
+- are queried, filtered, and joined frequently,
+- benefit from standard EF Core tooling.
 
-`type`
+JSONB field (`Timing`):
 
-- should initially support only `email`.
-
-`title`
-
-- internal business label for the step.
-
-`templateId`
-
-- references an existing email template.
-
-`timing`
-
-- defines when this step becomes eligible.
-
-`liveEdit`
-
-- defines how a step behaves when inserted or changed in an active sequence.
-
-`metadata`
-
-- optional editor-facing data that should not drive execution.
+- is structured but not independently queried or joined,
+- may vary by step type in the future,
+- benefits from schema flexibility without requiring migrations for every new option.
 
 ---
 
-## 6. What Should Go Into Step Timing
+## 6. Timing Semantics
 
-Timing belongs inside each step because it is a property of the step itself.
+### 6.1 Delay
 
-Recommended structure:
+Object with `value` and `unit`. Units: `minutes`, `hours`, `days`.
 
-- `anchor`
-- `delay`
-- optional `sendAt`
-- optional `useContactTimeZone`
-- optional `allowedWeekDays`
+The reference point for the delay is determined by the step's position (see section 5.3).
 
-## 6.1 Recommended timing semantics
+### 6.2 Send-at alignment
 
-`anchor`
+When `sendAt` is present (e.g. `"16:00"`), the send is aligned to the next occurrence of that local time after the delay elapses.
 
-- `enrollment`
-- `previous_step`
+Example: for a first step (position 0) with `delay = 0 minutes`, `sendAt = 16:00`:
 
-`delay`
+- if the contact is enrolled before 16:00 local time, send at 16:00 on the same day,
+- if the contact is enrolled at or after 16:00 local time, send at 16:00 on the next day.
 
-- object with `value` and `unit`
-- units should initially support `minutes`, `hours`, `days`
+### 6.3 Timezone resolution
 
-`sendAt`
+The sequence-level `UseContactTimeZone` flag determines how local times are resolved:
 
-- optional local time such as `10:00`
+- When `true`, the contact's timezone is used. If the contact has no timezone, `TimeZone` on the sequence is used as fallback.
+- When `false`, the sequence-level `TimeZone` is used for all contacts.
 
-`useContactTimeZone`
-
-- optional step-level override
-- if absent, the sequence should fall back to `UseContactTimeZoneByDefault`
-
-`allowedWeekDays`
-
-- optional array for cases like only sending on working days
-- not required to be used immediately, but safe to support in the structure if wanted
+There is no per-step timezone override.
 
 ---
 
-## 7. What Should Go Into Step Live-Edit Behaviour
+## 7. Enrollment JSONB Structure
 
-The implementation plan already identifies retroactive step behaviour as a key requirement.
+`Enrollment` is an optional JSONB field on the `Sequence` entity for simple built-in entry rules.
 
-That means the step definition should include a small structure for live-edit behaviour.
+Its role is to make the sequence reasonably self-contained for common entry scenarios without turning the sequence itself into the full automation engine.
 
-Recommended fields:
+### 7.1 Shape
 
-- `insertPolicy`
+- `modes` — array of enabled enrollment modes. Supported values: `"manual"`, `"api"`, `"segment"`. A sequence can support multiple modes simultaneously, e.g. `["manual", "api"]` or `["manual", "api", "segment"]`.
+- `includeSegmentIds` — array of segment IDs. Required when `"segment"` is in `modes`.
+- `excludeSegmentIds` — array of segment IDs to exclude. Used with `"segment"` mode.
+- `reentryPolicy` — `once_ever`, `allow_after_completion`, or `always`.
 
-Recommended values:
+### 7.2 Mode combinations
 
-- `new_enrollments_only`
-- `include_in_progress`
-- `include_all`
+A sequence can enable any combination of enrollment modes:
 
-This keeps the critical rule on the step itself, which is cleaner than handling it only at UI time.
+- `["manual"]` — contacts can only be enrolled manually by an operator.
+- `["api"]` — contacts can only be enrolled via the API.
+- `["manual", "api"]` — both manual and API enrollment are allowed.
+- `["segment"]` — contacts are automatically enrolled from matching segments.
+- `["manual", "api", "segment"]` — all three modes are active.
 
----
+The `modes` array defines which enrollment paths are open. The `reentryPolicy` applies uniformly regardless of how the contact was enrolled.
 
-## 8. What Should Go Into `Enrollment`
+### 7.3 Scope
 
-`Enrollment` should be optional.
+`Enrollment` covers these built-in entry patterns:
 
-It should exist only to describe simple built-in sequence entry rules when we want the sequence to be somewhat self-contained.
+- manual enrollment,
+- API-driven enrollment,
+- segment-based enrollment.
 
-It should not try to become a full automation engine.
-
-## 8.1 Recommended structure of `Enrollment`
-
-Recommended fields:
-
-- `mode`
-- `includeSegmentIds`
-- `excludeSegmentIds`
-- `reentryPolicy`
-
-Recommended values for `mode`:
-
-- `manual`
-- `api`
-- `segment`
-
-Recommended values for `reentryPolicy`:
-
-- `once_ever`
-- `allow_after_completion`
-- `always`
-
-## 8.2 What should not go into `Enrollment`
-
-Do not put full event-trigger automation logic here yet.
-
-Examples of what should stay out for now:
-
-- website event triggers,
-- CRM event triggers,
-- complex conditional automation rules,
-- multi-condition trigger trees.
-
-Those should become a separate automation concept later that can target a sequence.
+Richer automation triggers (website events, CRM events, conditional rules) should become a separate automation concept later that can target a sequence.
 
 ---
 
-## 9. What Should Go Into `UtmParameters`
+## 8. UtmParameters JSONB Structure
 
-Following the existing campaign design, it is reasonable for a sequence to have optional UTM overrides.
+Following the existing campaign design, a sequence may define optional UTM overrides.
 
-This should remain a dedicated JSONB field, reusing the same conceptual model already used by campaigns.
+This remains a dedicated JSONB field and follows the same conceptual model already used by campaigns.
 
-Recommended purpose:
+Purpose:
 
 - provide default UTM context for sequence sends,
 - avoid repeating the same UTM values on every step,
-- allow the sending logic to derive step-specific detail while still inheriting sequence-level campaign context.
+- allow send logic to derive step-specific details while still inheriting sequence-level campaign context.
 
 ---
 
-## 10. JSONB Fields We Actually Need
+## 9. Runtime Entities
 
-For the first version, the recommended JSONB fields are only these:
+### 9.1 SequenceEnrollment
 
-### 10.1 `Flow` required
+One row per contact in a sequence.
 
-Stores the ordered step workflow.
+Fields:
 
-### 10.2 `Enrollment` optional
-
-Stores simple built-in entry configuration.
-
-### 10.3 `UtmParameters` optional
-
-Stores structured UTM overrides, following the current campaign pattern.
-
-That should be the full JSONB surface unless a real business need appears.
-
----
-
-## 11. Real Sample Structures
-
-## 11.1 Example `Flow`
-
-Example for a simple onboarding sequence:
-
-```json
-{
-  "mode": "linear",
-  "steps": [
-    {
-      "id": "welcome",
-      "type": "email",
-      "title": "Welcome Email",
-      "templateId": 101,
-      "timing": {
-        "anchor": "enrollment",
-        "delay": {
-          "value": 0,
-          "unit": "minutes"
-        },
-        "useContactTimeZone": true
-      },
-      "liveEdit": {
-        "insertPolicy": "new_enrollments_only"
-      }
-    },
-    {
-      "id": "getting-started",
-      "type": "email",
-      "title": "Getting Started Guide",
-      "templateId": 102,
-      "timing": {
-        "anchor": "previous_step",
-        "delay": {
-          "value": 2,
-          "unit": "days"
-        },
-        "sendAt": "10:00",
-        "useContactTimeZone": true
-      },
-      "liveEdit": {
-        "insertPolicy": "include_in_progress"
-      }
-    },
-    {
-      "id": "case-study",
-      "type": "email",
-      "title": "Case Study",
-      "templateId": 103,
-      "timing": {
-        "anchor": "previous_step",
-        "delay": {
-          "value": 5,
-          "unit": "days"
-        },
-        "sendAt": "10:00"
-      },
-      "liveEdit": {
-        "insertPolicy": "new_enrollments_only"
-      }
-    }
-  ]
-}
-```
-
-## 11.2 Example `Enrollment`
-
-Example for a sequence that automatically enrolls contacts from a segment:
-
-```json
-{
-  "mode": "segment",
-  "includeSegmentIds": [12, 18],
-  "excludeSegmentIds": [25],
-  "reentryPolicy": "once_ever"
-}
-```
-
-Example for a sequence that is only used by manual or API enrollment:
-
-```json
-{
-  "mode": "api",
-  "reentryPolicy": "allow_after_completion"
-}
-```
-
-## 11.3 Example `UtmParameters`
-
-Example for sequence-level UTM defaults:
-
-```json
-{
-  "source": "leadcms",
-  "medium": "email",
-  "campaign": "trial_onboarding",
-  "content": "sequence_default"
-}
-```
-
-## 11.4 Example top-level sequence shape
-
-Illustrative example of how the full entity would feel conceptually:
-
-```json
-{
-  "id": 44,
-  "name": "Trial Onboarding",
-  "description": "Core onboarding sequence for new trial users.",
-  "status": "Active",
-  "continueOnStepFailure": false,
-  "stopOnReply": true,
-  "stopOnGlobalUnsubscribe": true,
-  "useContactTimeZoneByDefault": true,
-  "timeZone": 0,
-  "flow": {
-    "mode": "linear",
-    "steps": [
-      {
-        "id": "welcome",
-        "type": "email",
-        "title": "Welcome Email",
-        "templateId": 101,
-        "timing": {
-          "anchor": "enrollment",
-          "delay": {
-            "value": 0,
-            "unit": "minutes"
-          }
-        },
-        "liveEdit": {
-          "insertPolicy": "new_enrollments_only"
-        }
-      }
-    ]
-  },
-  "enrollment": {
-    "mode": "segment",
-    "includeSegmentIds": [12],
-    "reentryPolicy": "once_ever"
-  },
-  "utmParameters": {
-    "source": "leadcms",
-    "medium": "email",
-    "campaign": "trial_onboarding"
-  }
-}
-```
-
----
-
-## 12. What Should Not Go Into the Sequence JSONB Fields
-
-Do not store contact-specific mutable state in `Flow`, `Enrollment`, or `UtmParameters`.
-
-Specifically, do not embed:
-
-- current contact step,
-- last sent timestamp per contact,
-- retry counters per contact,
-- contact exit reason,
-- reply state per contact,
-- recipient snapshots,
-- delivery history.
-
-That data changes too frequently and needs relational indexing and querying.
-
----
-
-## 13. Runtime Entities Still Needed
-
-Even with a self-contained workflow, runtime state should stay relational.
-
-## 13.1 `SequenceEnrollment`
-
-Recommended purpose:
-
-- one row per contact in a sequence,
-- current progression state,
-- exit state,
-- entry source.
-
-Recommended fields:
-
-- `SequenceId`
-- `ContactId`
+- `Id`
+- `SequenceId` — FK to `Sequence`.
+- `ContactId` — FK to `Contact`.
 - `Status`
-- `CurrentStepId` or `LastCompletedStepId`
+- `LastCompletedStepId` — references `SequenceStep.StepKey`.
 - `EnteredAt`
 - `CompletedAt`
 - `ExitedAt`
-- `ExitReason`
-- `EnrollmentSource`
+- `ExitReason` — why the enrollment ended, e.g. `Completed`, `Failed`, `Unsubscribed`, `ReplyStopped`, `ManuallyRemoved`.
+- `EnrollmentSource` — how the contact was enrolled: `Manual`, `Api`, `Segment`, `Migration`.
+- `EnrollmentReason` — free-text or structured description of why the contact was enrolled. For manual enrollments this could be an operator note. For API enrollments this could be a trigger description. For segment enrollments this is populated automatically with the segment name or ID.
 
-## 13.2 `SequenceDelivery`
+### 9.2 SequenceDelivery
 
-Recommended purpose:
+One row per contact per step delivery.
 
-- one row per contact and step delivery,
-- idempotency,
-- scheduling,
-- auditability,
-- future analytics.
+Fields:
 
-Recommended fields:
-
-- `SequenceId`
-- `ContactId`
-- `StepId`
+- `Id`
+- `SequenceId` — FK to `Sequence`.
+- `SequenceStepId` — FK to `SequenceStep`.
+- `ContactId` — FK to `Contact`.
 - `Status`
 - `ScheduledAt`
 - `SentAt`
 - `SkipReason`
 - `ErrorMessage`
-- optional `EmailLogId`
+- `EmailLogId` — optional FK to `EmailLog`.
 
-## 13.3 Why these should remain relational
+### 9.3 Why runtime state stays relational
 
 These records:
 
@@ -1298,41 +341,337 @@ These records:
 
 ---
 
-## 14. Recommended First-Version Shape
+## 10. Examples
 
-### On `Sequence`
+### 10.1 Example SequenceStep rows
 
-- top-level scalar metadata,
-- top-level execution attributes,
-- top-level counters,
-- `Flow` JSONB,
-- optional `Enrollment` JSONB,
-- optional `UtmParameters` JSONB.
+For a simple onboarding sequence (id = 44):
 
-### In `Flow`
+| Id  | SequenceId | StepKey         | Position | Type  | Title                 | EmailTemplateId | Timing                                                    |
+| --- | ---------- | --------------- | -------- | ----- | --------------------- | --------------- | --------------------------------------------------------- |
+| 1   | 44         | welcome         | 0        | Email | Welcome Email         | 101             | `{"delay":{"value":0,"unit":"minutes"},"sendAt":"16:00"}` |
+| 2   | 44         | getting-started | 1        | Email | Getting Started Guide | 102             | `{"delay":{"value":2,"unit":"days"},"sendAt":"10:00"}`    |
+| 3   | 44         | case-study      | 2        | Email | Case Study            | 103             | `{"delay":{"value":5,"unit":"days"},"sendAt":"10:00"}`    |
 
-- linear ordered `steps`,
-- stable `id` per step,
-- `templateId`,
-- `timing`,
-- `liveEdit.insertPolicy`.
+Step 1 (welcome): sends at 16:00 on the day of enrollment (or next day if enrolled after 16:00). Delay is 0 from enrollment.
 
-### Outside `Sequence`
+Step 2 (getting-started): sends 2 days after the welcome email was sent, aligned to 10:00.
 
-- `SequenceEnrollment` runtime rows,
-- `SequenceDelivery` runtime rows.
+Step 3 (case-study): sends 5 days after the getting-started email was sent, aligned to 10:00.
 
-This is the cleanest first implementation.
+### 10.2 Example Enrollment
+
+All three modes enabled with segment filtering:
+
+```json
+{
+  "modes": ["manual", "api", "segment"],
+  "includeSegmentIds": [12, 18],
+  "excludeSegmentIds": [25],
+  "reentryPolicy": "once_ever"
+}
+```
+
+Manual and API only:
+
+```json
+{
+  "modes": ["manual", "api"],
+  "reentryPolicy": "allow_after_completion"
+}
+```
+
+### 10.3 Example UtmParameters
+
+```json
+{
+  "source": "leadcms",
+  "medium": "email",
+  "campaign": "trial_onboarding",
+  "content": "sequence_default"
+}
+```
+
+### 10.4 Example conceptual sequence shape
+
+```json
+{
+  "id": 44,
+  "name": "Trial Onboarding",
+  "description": "Core onboarding sequence for new trial users.",
+  "status": "Active",
+  "stopOnReply": true,
+  "useContactTimeZone": true,
+  "timeZone": 0,
+  "enrollment": {
+    "modes": ["manual", "api", "segment"],
+    "includeSegmentIds": [12],
+    "reentryPolicy": "once_ever"
+  },
+  "utmParameters": {
+    "source": "leadcms",
+    "medium": "email",
+    "campaign": "trial_onboarding"
+  },
+  "steps": [
+    {
+      "stepKey": "welcome",
+      "position": 0,
+      "type": "Email",
+      "title": "Welcome Email",
+      "emailTemplateId": 101,
+      "timing": {
+        "delay": { "value": 0, "unit": "minutes" }
+      }
+    },
+    {
+      "stepKey": "getting-started",
+      "position": 1,
+      "type": "Email",
+      "title": "Getting Started Guide",
+      "emailTemplateId": 102,
+      "timing": {
+        "delay": { "value": 2, "unit": "days" },
+        "sendAt": "10:00"
+      }
+    }
+  ]
+}
+```
 
 ---
 
-## 15. Key Recommendation
+## 11. Runtime State Boundary
 
-The strongest recommendation is:
+JSONB fields carry bounded configuration only (`Enrollment`, `UtmParameters` on the sequence; `Timing` on each step).
 
-- keep the workflow self-contained in JSONB,
-- keep sequence-wide execution controls explicit on the entity,
-- avoid introducing versioning now,
-- keep runtime execution state relational.
+Contact execution state lives in runtime tables so it can be updated, indexed, filtered, and counted efficiently.
 
-This gives us a practical model that stays aligned with the current Core design and avoids unnecessary complexity in the first implementation.
+Runtime state includes:
+
+- current contact step,
+- last sent timestamp per contact,
+- retry counters per contact,
+- contact exit reason,
+- reply state per contact,
+- recipient snapshots,
+- delivery history.
+
+None of that belongs on definition entities.
+
+---
+
+## 12. Phase 1 Shape Summary
+
+### Definition
+
+**Sequence** — top-level scalar metadata, execution attributes (`StopOnReply`, `UseContactTimeZone`, `TimeZone`), counters, optional `Enrollment` JSONB, optional `UtmParameters` JSONB.
+
+**SequenceStep** — relational row per step with FK to `Sequence`, FK to `EmailTemplate`, `Position`, `StepKey`, `Type`, `Title`, plus JSONB for `Timing`.
+
+### Runtime
+
+**SequenceEnrollment** — one row per contact enrollment, with `EnrollmentSource`, `EnrollmentReason`, and `ExitReason`.
+
+**SequenceDelivery** — one row per contact per step delivery, with FK to `SequenceStep` and optional FK to `EmailLog`.
+
+---
+
+## 13. Migration from Legacy Model
+
+The current legacy drip-email implementation uses `EmailGroup`, `EmailSchedule`, and `ContactEmailSchedule`. This must be migrated to the new sequence model via a database-level migration script.
+
+### 13.1 Legacy model mapping
+
+| Legacy entity                                | Legacy role                                                                  | New entity                                                    |
+| -------------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `EmailGroup`                                 | Groups related email templates in send order                                 | `Sequence`                                                    |
+| `EmailTemplate` (ordered by ID within group) | Individual emails in the drip                                                | `SequenceStep` (one per template, ordered by position)        |
+| `EmailSchedule`                              | Defines the send cadence for a group (JSON: cron, day/time, immediate+delay) | `SequenceStep.Timing` (converted from legacy schedule format) |
+| `ContactEmailSchedule`                       | Tracks per-contact progress through the group                                | `SequenceEnrollment`                                          |
+| `EmailLog` (with `ScheduleId`)               | Delivery history                                                             | `SequenceDelivery` + existing `EmailLog`                      |
+
+### 13.2 Migration script responsibilities
+
+The migration must:
+
+1. **Create `Sequence` rows** — one per `EmailGroup` that has an associated `EmailSchedule`. Copy `Name`, `Language` (as description context). Set `Status = Active` for groups that have pending `ContactEmailSchedule` rows, `Status = Paused` otherwise.
+
+2. **Create `SequenceStep` rows** — for each `EmailGroup`, query its `EmailTemplate` rows ordered by `Id`. Create one `SequenceStep` per template with:
+   - `Position` = 0-based index in the ordered template list,
+   - `StepKey` = slugified template name or auto-generated stable key,
+   - `EmailTemplateId` = existing template ID (FK preserved),
+   - `Timing` = converted from the `EmailSchedule.Schedule` JSON. Map legacy `{"Day": "5,14", "Time": "14.00"}` to appropriate delays between steps. Map `{"Immediately": "true", "Delay": "15"}` to `{"delay": {"value": 15, "unit": "minutes"}}`. Map cron expressions to equivalent day/time delays.
+
+3. **Create `SequenceEnrollment` rows** — one per `ContactEmailSchedule`:
+   - `Status` mapped from `ScheduleStatus` (`Pending` → `Active`, `Completed` → `Completed`, `Failed` → `Exited`, `Unsubscribed` → `Exited`),
+   - `ExitReason` = `Failed` or `Unsubscribed` as appropriate,
+   - `EnrollmentSource` = `Migration`,
+   - `EnrollmentReason` = `"Migrated from legacy EmailGroup: {GroupName}"`,
+   - `LastCompletedStepId` = determined by counting sent `EmailLog` entries for this contact and schedule.
+
+4. **Create `SequenceDelivery` rows** — one per `EmailLog` entry that references a `ScheduleId`, linking to the appropriate `SequenceStep` based on template ID matching.
+
+5. **Preserve legacy tables** — do not drop `EmailGroup`, `EmailSchedule`, or `ContactEmailSchedule` in the migration. Mark them as deprecated. They can be removed in a later release after verification.
+
+### 13.3 Migration considerations
+
+- The legacy schedule format is flexible (cron, day-based, immediate). The migration script must handle each format and produce the closest equivalent `Timing` structure.
+- Legacy groups that have no `EmailSchedule` (just template grouping) should not be migrated to sequences.
+- The migration should be idempotent — running it twice must not create duplicate sequences.
+
+---
+
+## 14. API Design
+
+The sequence API follows the same patterns established by `CampaignsController` and other Core controllers.
+
+### 14.1 Sequences Controller
+
+`SequencesController : BaseController<Sequence, SequenceCreateDto, SequenceUpdateDto, SequenceDetailsDto>`
+
+Route: `api/sequences`
+
+Inherits standard CRUD from `BaseController`: `GET`, `GET {id}`, `POST`, `PATCH {id}`, `DELETE {id}`, `DELETE` (batch), `GET export`, `GET sync`.
+
+Additional action endpoints:
+
+| Method | Route             | Purpose                                                                                                                   |
+| ------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `POST` | `{id}/activate`   | Transition from `Draft` or `Paused` to `Active`. Validates that the sequence has at least one step with a valid template. |
+| `POST` | `{id}/pause`      | Transition from `Active` to `Paused`. Stops scheduling new deliveries. In-flight deliveries are allowed to complete.      |
+| `POST` | `{id}/archive`    | Transition to `Archived`. Exits all active enrollments with reason `Archived`.                                            |
+| `GET`  | `{id}/statistics` | Returns summary statistics (enrollment counts, delivery counts, failure rates).                                           |
+
+### 14.2 Sequence Steps Controller
+
+`SequenceStepsController`
+
+Route: `api/sequences/{sequenceId}/steps`
+
+Steps are managed as a sub-resource of a sequence.
+
+| Method   | Route      | Purpose                                                                             |
+| -------- | ---------- | ----------------------------------------------------------------------------------- |
+| `GET`    |            | List all steps for the sequence, ordered by position.                               |
+| `GET`    | `{stepId}` | Get a single step.                                                                  |
+| `POST`   |            | Add a new step. Automatically assigns the next position unless explicitly provided. |
+| `PATCH`  | `{stepId}` | Update step fields (title, template, timing).                                       |
+| `DELETE` | `{stepId}` | Remove a step. Reorders remaining step positions.                                   |
+| `POST`   | `reorder`  | Accepts an ordered array of step IDs to redefine positions.                         |
+
+Editing steps on an `Active` sequence is allowed but restricted: the API must validate that changes do not break in-progress enrollments (e.g. removing a step that contacts are currently waiting on).
+
+### 14.3 Sequence Enrollments Controller
+
+`SequenceEnrollmentsController`
+
+Route: `api/sequences/{sequenceId}/enrollments`
+
+| Method   | Route            | Purpose                                                                                                                                                                                        |
+| -------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`    |                  | List enrollments for the sequence with filtering by status.                                                                                                                                    |
+| `GET`    | `{enrollmentId}` | Get a single enrollment with its delivery history.                                                                                                                                             |
+| `POST`   |                  | Manually enroll a contact or batch of contacts. Requires `"manual"` in the sequence's `enrollment.modes`. Body includes `contactId` (or array of contact IDs) and optional `enrollmentReason`. |
+| `DELETE` | `{enrollmentId}` | Remove a contact from the sequence. Sets `ExitReason = ManuallyRemoved`.                                                                                                                       |
+
+API-driven enrollment (`"api"` mode) uses the same `POST` endpoint but is distinguished by the caller context (API key vs. admin session). The `EnrollmentSource` is set accordingly.
+
+### 14.4 Editing active sequences
+
+When a sequence is `Active`:
+
+- Adding a new step: allowed. New step only applies to future enrollments and contacts who have not yet passed that position.
+- Removing a step: allowed only if no contacts are currently waiting on that step. The API returns an error otherwise.
+- Reordering steps: not allowed while the sequence is active. The sequence must be paused first.
+- Changing a step's template or timing: allowed. Changes apply to future deliveries only; already-scheduled deliveries are not affected.
+
+---
+
+## 15. Runtime Background Execution
+
+Sequence execution is driven by a background task, following the same `BaseTask` pattern used by `CampaignSendTask` and `ContactScheduledEmailTask`.
+
+### 15.1 SequenceSendTask
+
+A new `SequenceSendTask` registered as an `ITask` implementation, configured in `appsettings.json` with its own polling interval.
+
+Each execution cycle performs these steps:
+
+#### Step 1: Process segment-based enrollments
+
+For each active sequence that has `"segment"` in its `enrollment.modes`:
+
+- Resolve the audience from `includeSegmentIds` minus `excludeSegmentIds`.
+- For each contact in the resolved audience that is not already enrolled (respecting `reentryPolicy`), create a new `SequenceEnrollment` with `EnrollmentSource = Segment`.
+
+#### Step 2: Schedule next deliveries
+
+For each active `SequenceEnrollment`:
+
+- Determine the next step based on `LastCompletedStepId` and the step sequence (by `Position`).
+- If no `SequenceDelivery` exists for that step and contact, calculate `ScheduledAt` using the step's `Timing`:
+  - For position 0: base time = `EnteredAt`.
+  - For position > 0: base time = `SentAt` of the previous step's delivery.
+  - Add the delay.
+  - If `sendAt` is specified, align to the next occurrence of that local time.
+  - If `allowedWeekDays` is specified, advance to the next allowed day.
+  - Resolve timezone using the sequence's `UseContactTimeZone` and `TimeZone` settings.
+- Create a `SequenceDelivery` row with `Status = Scheduled`.
+
+#### Step 3: Send eligible deliveries
+
+For each `SequenceDelivery` with `Status = Scheduled` and `ScheduledAt <= DateTime.UtcNow`:
+
+- Check global unsubscribe — if the contact is unsubscribed, skip the delivery and exit the enrollment with `ExitReason = Unsubscribed`.
+- Check `StopOnReply` — if enabled on the sequence and the contact has replied (tracked via `EmailLog`), skip and exit with `ExitReason = ReplyStopped`.
+- Send the email using `IEmailFromTemplateService`, passing the step's `EmailTemplateId`.
+- On success: update `SequenceDelivery.Status = Sent`, `SentAt = DateTime.UtcNow`, link `EmailLogId`. Update `SequenceEnrollment.LastCompletedStepId`. Increment sequence counters.
+- On failure: update `SequenceDelivery.Status = Failed`, record `ErrorMessage`. The task will retry on the next cycle up to a configured retry limit. If retries are exhausted, exit the enrollment with `ExitReason = Failed`.
+
+#### Step 4: Complete enrollments
+
+For each active enrollment where all steps have been delivered (`LastCompletedStepId` equals the last step's `StepKey`):
+
+- Set `SequenceEnrollment.Status = Completed`, `CompletedAt = DateTime.UtcNow`.
+- Increment `Sequence.CompletedEnrollmentCount`.
+
+#### Step 5: Update sequence counters
+
+Update the summary counters on the `Sequence` entity (`ActiveEnrollmentCount`, `CompletedEnrollmentCount`, `ExitedEnrollmentCount`, `SentCount`, `FailedCount`).
+
+### 15.2 Task configuration
+
+```json
+{
+  "Tasks": {
+    "SequenceSendTask": {
+      "IntervalSeconds": 60,
+      "Enabled": true
+    }
+  }
+}
+```
+
+### 15.3 Concurrency and idempotency
+
+- The task must be safe to run concurrently across multiple instances. Use the existing `ILockService` to acquire a lock before processing.
+- Delivery scheduling is idempotent: if a `SequenceDelivery` already exists for a step and contact, the task does not create a duplicate.
+- Enrollment from segments is idempotent: if a contact is already enrolled, the task respects the `reentryPolicy`.
+
+---
+
+## 16. Key Decisions
+
+- Steps are relational rows, not embedded in JSONB. This gives us FK enforcement on template references, standard migration support, and easy reporting queries.
+- JSONB is used within `SequenceStep` for timing configuration only, keeping that structure flexible for future step types without requiring schema migrations for every new option.
+- Sequence-wide execution controls (`StopOnReply`, `UseContactTimeZone`, `TimeZone`) are explicit top-level attributes.
+- Default behaviours (stop on unsubscribe, fail-and-exit on repeated failure) are always-on and not configurable per sequence.
+- Timing reference point is implicit from step position (position 0 = from enrollment, position > 0 = from previous step). No explicit anchor field.
+- Timezone is resolved at the sequence level only, not per step.
+- Enrollment supports multiple modes simultaneously via a `modes` array.
+- No explicit sequence versioning. Editing behaviour for active sequences is handled by API-level restrictions.
+- Runtime state is fully relational.
+- Legacy drip-email data (`EmailGroup`, `EmailSchedule`, `ContactEmailSchedule`) is migrated via a database-level script.
+
+This gives us a practical first implementation that stays aligned with the current Core design and remains extensible later.

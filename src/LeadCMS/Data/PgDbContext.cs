@@ -132,6 +132,14 @@ public class PgDbContext : IdentityDbContext<User>
 
     public virtual DbSet<CampaignRecipient>? CampaignRecipients { get; set; }
 
+    public virtual DbSet<Sequence>? Sequences { get; set; }
+
+    public virtual DbSet<SequenceStep>? SequenceSteps { get; set; }
+
+    public virtual DbSet<SequenceEnrollment>? SequenceEnrollments { get; set; }
+
+    public virtual DbSet<SequenceDelivery>? SequenceDeliveries { get; set; }
+
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         var result = 0;
@@ -354,6 +362,33 @@ public class PgDbContext : IdentityDbContext<User>
             .WithMany()
             .HasForeignKey(o => o.CampaignId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // Sequence: steps navigation
+        builder.Entity<Sequence>()
+            .HasMany(s => s.Steps)
+            .WithOne(st => st.Sequence)
+            .HasForeignKey(st => st.SequenceId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // SequenceDelivery: avoid multiple cascade paths by restricting Contact delete
+        builder.Entity<SequenceDelivery>()
+            .HasOne(d => d.Contact)
+            .WithMany()
+            .HasForeignKey(d => d.ContactId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<SequenceDelivery>()
+            .HasOne(d => d.EmailLog)
+            .WithMany()
+            .HasForeignKey(d => d.EmailLogId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // SequenceEnrollment: Contact cascade
+        builder.Entity<SequenceEnrollment>()
+            .HasOne(e => e.Contact)
+            .WithMany()
+            .HasForeignKey(e => e.ContactId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 
     private DateTime GetDateWithKind(DateTime date)
