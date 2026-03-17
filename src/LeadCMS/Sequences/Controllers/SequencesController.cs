@@ -83,7 +83,7 @@ public class SequencesController : LeadCMS.Controllers.BaseController<Sequence, 
 
     /// <summary>
     /// Partially updates a sequence. Only Draft or Paused sequences can be edited.
-    /// If steps are provided, the step list is reconciled by step name.
+    /// If steps are provided, the step list is reconciled by step ID.
     /// </summary>
     [HttpPatch("{id}")]
     [ProducesResponseType(StatusCodes.Status200OK)]

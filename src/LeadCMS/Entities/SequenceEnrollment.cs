@@ -61,9 +61,14 @@ public class SequenceEnrollment : BaseEntityWithIdAndDates
     public SequenceEnrollmentStatus Status { get; set; } = SequenceEnrollmentStatus.Active;
 
     /// <summary>
-    /// Gets or sets the name of the last completed step.
+    /// Gets or sets the ID of the last completed step.
     /// </summary>
-    public string? LastCompletedStepName { get; set; }
+    public int? LastCompletedStepId { get; set; }
+
+    [JsonIgnore]
+    [ForeignKey("LastCompletedStepId")]
+    [DeleteBehavior(DeleteBehavior.SetNull)]
+    public virtual SequenceStep? LastCompletedStep { get; set; }
 
     /// <summary>
     /// Gets or sets when the contact entered the sequence.

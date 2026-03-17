@@ -13,6 +13,11 @@ namespace LeadCMS.Core.Sequences.DTOs;
 
 public class SequenceStepCreateDto
 {
+    /// <summary>
+    /// Gets or sets the existing step ID. When set, the step is updated; when null, a new step is created.
+    /// </summary>
+    public int? Id { get; set; }
+
     [Required]
     public int EmailTemplateId { get; set; }
 

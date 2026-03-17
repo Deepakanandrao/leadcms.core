@@ -132,6 +132,31 @@ public class SequenceStepsController : ControllerBase
             .FirstOrDefaultAsync(s => s.Id == stepId && s.SequenceId == sequenceId)
             ?? throw new EntityNotFoundException(nameof(SequenceStep), stepId.ToString());
 
+        // Reset enrollments pointing to the deleted step
+        var remainingStepIds = await dbContext.SequenceSteps!
+            .Where(s => s.SequenceId == sequenceId && s.Id != stepId)
+            .Select(s => s.Id)
+            .ToListAsync();
+
+        var affectedEnrollments = await dbContext.SequenceEnrollments!
+            .Where(e => e.SequenceId == sequenceId
+                && e.Status == SequenceEnrollmentStatus.Active
+                && e.LastCompletedStepId == stepId)
+            .ToListAsync();
+
+        foreach (var enrollment in affectedEnrollments)
+        {
+            var lastSentStepId = await dbContext.SequenceDeliveries!
+                .Where(d => d.SequenceEnrollmentId == enrollment.Id
+                    && d.Status == SequenceDeliveryStatus.Sent
+                    && remainingStepIds.Contains(d.SequenceStepId))
+                .OrderByDescending(d => d.SentAt)
+                .Select(d => (int?)d.SequenceStepId)
+                .FirstOrDefaultAsync();
+
+            enrollment.LastCompletedStepId = lastSentStepId;
+        }
+
         dbContext.SequenceSteps!.Remove(step);
 
         // Reorder remaining steps

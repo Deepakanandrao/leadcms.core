@@ -442,7 +442,7 @@ public class SequenceService : ISequenceService
 
             if (enrollment != null)
             {
-                enrollment.LastCompletedStepName = delivery.SequenceStep!.Name;
+                enrollment.LastCompletedStepId = delivery.SequenceStepId;
             }
 
             await dbContext.SaveChangesAsync();
@@ -562,12 +562,12 @@ public class SequenceService : ISequenceService
             return 0;
         }
 
-        var lastStepName = steps.Last().Name;
+        var lastStepId = steps.Last().Id;
 
         var completableEnrollments = await dbContext.SequenceEnrollments!
             .Where(e => e.SequenceId == sequence.Id
                 && e.Status == SequenceEnrollmentStatus.Active
-                && e.LastCompletedStepName == lastStepName)
+                && e.LastCompletedStepId == lastStepId)
             .ToListAsync();
 
         foreach (var enrollment in completableEnrollments)
@@ -661,19 +661,55 @@ public class SequenceService : ISequenceService
     private async Task ReconcileStepsAsync(Sequence sequence, List<SequenceStepCreateDto> incomingSteps)
     {
         var existingSteps = sequence.Steps?.ToList() ?? new List<SequenceStep>();
-        var incomingNames = new HashSet<string>(incomingSteps.Select(s => s.Name));
+        var incomingIds = incomingSteps
+            .Where(s => s.Id.HasValue)
+            .Select(s => s.Id!.Value)
+            .ToHashSet();
 
-        // Remove steps no longer in the incoming list.
-        var toRemove = existingSteps.Where(s => !incomingNames.Contains(s.Name)).ToList();
+        // Remove steps whose IDs are not in the incoming list.
+        var toRemove = existingSteps.Where(s => !incomingIds.Contains(s.Id)).ToList();
+
+        // Reset enrollments pointing to deleted steps before removal
+        if (toRemove.Count > 0)
+        {
+            var removedStepIds = toRemove.Select(s => s.Id).ToHashSet();
+            var remainingStepIds = existingSteps
+                .Where(s => incomingIds.Contains(s.Id))
+                .Select(s => s.Id)
+                .ToHashSet();
+
+            var affectedEnrollments = await dbContext.SequenceEnrollments!
+                .Where(e => e.SequenceId == sequence.Id
+                    && e.Status == SequenceEnrollmentStatus.Active
+                    && e.LastCompletedStepId != null
+                    && removedStepIds.Contains(e.LastCompletedStepId.Value))
+                .ToListAsync();
+
+            foreach (var enrollment in affectedEnrollments)
+            {
+                // Find the last sent delivery for a step that still exists
+                var lastSentStepId = await dbContext.SequenceDeliveries!
+                    .Where(d => d.SequenceEnrollmentId == enrollment.Id
+                        && d.Status == SequenceDeliveryStatus.Sent
+                        && remainingStepIds.Contains(d.SequenceStepId))
+                    .OrderByDescending(d => d.SentAt)
+                    .Select(d => (int?)d.SequenceStepId)
+                    .FirstOrDefaultAsync();
+
+                enrollment.LastCompletedStepId = lastSentStepId;
+            }
+        }
+
         dbContext.SequenceSteps!.RemoveRange(toRemove);
 
         // Update existing or add new steps with temporary negative positions.
+        var existingById = existingSteps.ToDictionary(s => s.Id);
+
         for (int i = 0; i < incomingSteps.Count; i++)
         {
             var stepDto = incomingSteps[i];
-            var existing = existingSteps.FirstOrDefault(s => s.Name == stepDto.Name);
 
-            if (existing != null)
+            if (stepDto.Id.HasValue && existingById.TryGetValue(stepDto.Id.Value, out var existing))
             {
                 existing.EmailTemplateId = stepDto.EmailTemplateId;
                 existing.Name = stepDto.Name;
@@ -705,9 +741,11 @@ public class SequenceService : ISequenceService
             .Where(s => s.SequenceId == sequence.Id)
             .ToListAsync();
 
+        var allStepsByName = allSteps.ToDictionary(s => s.Name);
+
         for (int i = 0; i < incomingSteps.Count; i++)
         {
-            var step = allSteps.First(s => s.Name == incomingSteps[i].Name);
+            var step = allStepsByName[incomingSteps[i].Name];
             step.Position = i + 1;
         }
 

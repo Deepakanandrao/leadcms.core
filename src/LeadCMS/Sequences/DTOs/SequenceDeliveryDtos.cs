@@ -15,7 +15,11 @@ public class SequenceDeliveryDetailsDto
 
     public int SequenceEnrollmentId { get; set; }
 
+    public SequenceEnrollmentDetailsDto? SequenceEnrollment { get; set; }
+
     public int SequenceStepId { get; set; }
+
+    public SequenceStepDetailsDto? SequenceStep { get; set; }
 
     public int ContactId { get; set; }
 
@@ -32,6 +36,8 @@ public class SequenceDeliveryDetailsDto
     public string? ErrorMessage { get; set; }
 
     public int? EmailLogId { get; set; }
+
+    public ContactEmailCommunicationDetailsDto? EmailLog { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

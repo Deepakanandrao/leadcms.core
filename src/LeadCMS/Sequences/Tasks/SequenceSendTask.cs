@@ -224,7 +224,7 @@ public class SequenceSendTask : BaseTask
             SequenceStep? nextStep;
             DateTime baseTime;
 
-            if (string.IsNullOrEmpty(enrollment.LastCompletedStepName))
+            if (enrollment.LastCompletedStepId == null)
             {
                 // First step
                 nextStep = steps.FirstOrDefault();
@@ -232,7 +232,7 @@ public class SequenceSendTask : BaseTask
             }
             else
             {
-                var lastCompletedIndex = steps.FindIndex(s => s.Name == enrollment.LastCompletedStepName);
+                var lastCompletedIndex = steps.FindIndex(s => s.Id == enrollment.LastCompletedStepId);
                 if (lastCompletedIndex < 0 || lastCompletedIndex >= steps.Count - 1)
                 {
                     continue; // All steps completed or step not found

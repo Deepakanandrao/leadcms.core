@@ -223,7 +223,7 @@ BEGIN
         -- 3. Create SequenceEnrollments from ContactEmailSchedule
         -- --------------------------------------------------------
         INSERT INTO sequence_enrollment (
-            sequence_id, contact_id, status, last_completed_step_name,
+            sequence_id, contact_id, status, last_completed_step_id,
             entered_at, completed_at, exited_at, exit_reason,
             enrollment_source, enrollment_reason,
             created_at, source
@@ -240,7 +240,7 @@ BEGIN
             -- Determine last completed step from sent email count
             CASE
                                 WHEN sent_counts.cnt > 0 THEN (
-                                        SELECT ss.name
+                                        SELECT ss.id
                                         FROM sequence_step ss
                                         WHERE ss.sequence_id = new_sequence_id
                                             AND ss.position = sent_counts.cnt - 1

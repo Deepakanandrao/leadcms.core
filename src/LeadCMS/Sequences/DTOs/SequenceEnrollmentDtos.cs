@@ -33,7 +33,9 @@ public class SequenceEnrollmentDetailsDto
 
     public SequenceEnrollmentStatus Status { get; set; }
 
-    public string? LastCompletedStepName { get; set; }
+    public int? LastCompletedStepId { get; set; }
+
+    public SequenceStepDetailsDto? LastCompletedStep { get; set; }
 
     public DateTime EnteredAt { get; set; }
 

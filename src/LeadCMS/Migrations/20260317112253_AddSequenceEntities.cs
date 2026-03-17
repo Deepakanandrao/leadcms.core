@@ -61,7 +61,7 @@ namespace LeadCMS.Migrations
                     sequence_id = table.Column<int>(type: "integer", nullable: false),
                     contact_id = table.Column<int>(type: "integer", nullable: false),
                     status = table.Column<int>(type: "integer", nullable: false),
-                    last_completed_step_name = table.Column<string>(type: "text", nullable: true),
+                    last_completed_step_id = table.Column<int>(type: "integer", nullable: true),
                     entered_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     completed_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     exited_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
@@ -223,6 +223,19 @@ namespace LeadCMS.Migrations
                 name: "ix_sequence_enrollment_contact_id",
                 table: "sequence_enrollment",
                 column: "contact_id");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_sequence_enrollment_last_completed_step_id",
+                table: "sequence_enrollment",
+                column: "last_completed_step_id");
+
+            migrationBuilder.AddForeignKey(
+                name: "fk_sequence_enrollment_sequence_step_last_completed_step_id",
+                table: "sequence_enrollment",
+                column: "last_completed_step_id",
+                principalTable: "sequence_step",
+                principalColumn: "id",
+                onDelete: ReferentialAction.SetNull);
 
             migrationBuilder.CreateIndex(
                 name: "ix_sequence_enrollment_sequence_id_contact_id",

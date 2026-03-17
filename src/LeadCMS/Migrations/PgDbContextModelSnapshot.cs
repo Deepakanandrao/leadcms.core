@@ -3258,9 +3258,9 @@ namespace LeadCMS.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("exited_at");
 
-                    b.Property<string>("LastCompletedStepName")
-                        .HasColumnType("text")
-                        .HasColumnName("last_completed_step_name");
+                    b.Property<int?>("LastCompletedStepId")
+                        .HasColumnType("integer")
+                        .HasColumnName("last_completed_step_id");
 
                     b.Property<int>("SequenceId")
                         .HasColumnType("integer")
@@ -3287,6 +3287,9 @@ namespace LeadCMS.Migrations
 
                     b.HasIndex("ContactId")
                         .HasDatabaseName("ix_sequence_enrollment_contact_id");
+
+                    b.HasIndex("LastCompletedStepId")
+                        .HasDatabaseName("ix_sequence_enrollment_last_completed_step_id");
 
                     b.HasIndex("SequenceId", "ContactId")
                         .HasDatabaseName("ix_sequence_enrollment_sequence_id_contact_id");
@@ -4222,6 +4225,12 @@ namespace LeadCMS.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_sequence_enrollment_contact_contact_id");
 
+                    b.HasOne("LeadCMS.Entities.SequenceStep", "LastCompletedStep")
+                        .WithMany()
+                        .HasForeignKey("LastCompletedStepId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_sequence_enrollment_sequence_step_last_completed_step_id");
+
                     b.HasOne("LeadCMS.Entities.Sequence", "Sequence")
                         .WithMany()
                         .HasForeignKey("SequenceId")
@@ -4230,6 +4239,8 @@ namespace LeadCMS.Migrations
                         .HasConstraintName("fk_sequence_enrollment_sequence_sequence_id");
 
                     b.Navigation("Contact");
+
+                    b.Navigation("LastCompletedStep");
 
                     b.Navigation("Sequence");
                 });
