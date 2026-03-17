@@ -9,6 +9,8 @@ namespace LeadCMS.Tests;
 
 public class ContentTests : SimpleTableTests<Content, TestContent, ContentUpdateDto, IEntityService<Content>>
 {
+    private const string ContentTypesApi = "/api/content-types";
+
     public ContentTests()
         : base("/api/content")
     {
@@ -148,10 +150,64 @@ public class ContentTests : SimpleTableTests<Content, TestContent, ContentUpdate
         updatedItem.Tags.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task ContentType_ShouldPersistSupportsPreviewSlug()
+    {
+        var uid = $"preview-type-{Guid.NewGuid():N}";
+
+        var contentType = await EnsureContentTypeAsync(uid, supportsPreviewSlug: true);
+
+        contentType.Should().NotBeNull();
+        contentType!.SupportsPreviewSlug.Should().BeTrue();
+
+        var fetched = await GetTest<ContentTypeDetailsDto>($"{ContentTypesApi}/{contentType.Id}", HttpStatusCode.OK);
+        fetched.Should().NotBeNull();
+        fetched!.SupportsPreviewSlug.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task CreateContent_WithPreviewSlug_ShouldPersistRegardlessOfTypeSetting()
+    {
+        var typeUid = $"preview-disabled-{Guid.NewGuid():N}";
+        await EnsureContentTypeAsync(typeUid, supportsPreviewSlug: false);
+
+        var content = new TestContent(Guid.NewGuid().ToString("N"))
+        {
+            Type = typeUid,
+            PreviewSlug = $"preview-{Guid.NewGuid():N}",
+        };
+
+        var created = await PostTest<ContentDetailsDto>(itemsUrl, content, HttpStatusCode.Created);
+
+        created.Should().NotBeNull();
+        created!.PreviewSlug.Should().Be(content.PreviewSlug);
+    }
+
     protected override ContentUpdateDto UpdateItem(TestContent to)
     {
         var from = new ContentUpdateDto();
         to.Author = from.Author = to.Author + " Updated";
         return from;
+    }
+
+    private async Task<ContentTypeDetailsDto?> EnsureContentTypeAsync(string uid, bool supportsPreviewSlug)
+    {
+        var existing = await GetTest<List<ContentTypeDetailsDto>>($"{ContentTypesApi}?filter[where][uid][eq]={uid}", HttpStatusCode.OK);
+        if (existing != null && existing.Count > 0)
+        {
+            return existing[0];
+        }
+
+        return await PostTest<ContentTypeDetailsDto>(
+            ContentTypesApi,
+            new ContentTypeCreateDto
+            {
+                Uid = uid,
+                Format = ContentFormat.MD,
+                SupportsComments = true,
+                SupportsCoverImage = true,
+                SupportsPreviewSlug = supportsPreviewSlug,
+            },
+            HttpStatusCode.Created);
     }
 }

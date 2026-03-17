@@ -37,6 +37,8 @@ public class Content : BaseEntity, ICommentable, ITranslatable
     [Required]
     public string Slug { get; set; } = string.Empty;
 
+    public string? PreviewSlug { get; set; }
+
     [Required]
     [ForeignKey(nameof(ContentType))]
     public string Type { get; set; } = string.Empty;

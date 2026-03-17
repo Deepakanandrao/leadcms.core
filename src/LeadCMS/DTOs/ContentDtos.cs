@@ -30,6 +30,8 @@ public class ContentCreateDto
     [Required]
     public string Slug { get; set; } = string.Empty;
 
+    public string? PreviewSlug { get; set; }
+
     [Required]
     public string Type { get; set; } = string.Empty;
 
@@ -78,6 +80,8 @@ public class ContentUpdateDto : IPatchDto
 
     [MinLength(1)]
     public string? Slug { get; set; }
+
+    public string? PreviewSlug { get; set; }
 
     [MinLength(1)]
     public string? Type { get; set; }
@@ -136,6 +140,9 @@ public class ContentImportDto : BaseImportDto
     [Optional]
     [SwaggerUnique]
     public string? Slug { get; set; }
+
+    [Optional]
+    public string? PreviewSlug { get; set; }
 
     [Optional]
     public string? Type { get; set; }

@@ -34,4 +34,6 @@ public class ContentType : BaseEntity
     public bool SupportsComments { get; set; } = false;
 
     public bool SupportsCoverImage { get; set; } = false;
+
+    public bool SupportsPreviewSlug { get; set; } = false;
 }
