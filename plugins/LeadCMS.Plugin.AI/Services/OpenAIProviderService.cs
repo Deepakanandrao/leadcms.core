@@ -69,7 +69,7 @@ public class OpenAIProviderService : IAIProviderService
                 totalInputChars);
 
             // Always use the best available model
-            var modelToUse = "gpt-5.2";
+            var modelToUse = "gpt-5.4";
 
             var userContent = new List<object>
             {
