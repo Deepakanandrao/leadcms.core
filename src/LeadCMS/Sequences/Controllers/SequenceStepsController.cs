@@ -3,15 +3,15 @@
 // </copyright>
 
 using AutoMapper;
+using LeadCMS.Core.Sequences.DTOs;
 using LeadCMS.Data;
-using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Exceptions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-namespace LeadCMS.Controllers;
+namespace LeadCMS.Core.Sequences.Controllers;
 
 [Authorize(Roles = "Admin")]
 [Route("api/sequences/{sequenceId}/steps")]
@@ -177,6 +177,16 @@ public class SequenceStepsController : ControllerBase
         {
             var step = steps.FirstOrDefault(s => s.Id == value.StepIds[i])
                 ?? throw new EntityNotFoundException(nameof(SequenceStep), value.StepIds[i].ToString());
+            step.Position = -(i + 1);
+        }
+
+        // Save temporary positions to avoid unique index conflicts
+        await dbContext.SaveChangesAsync();
+
+        // Set final positions
+        for (var i = 0; i < value.StepIds.Length; i++)
+        {
+            var step = steps.First(s => s.Id == value.StepIds[i]);
             step.Position = i + 1;
         }
 

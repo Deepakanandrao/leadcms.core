@@ -3,6 +3,7 @@
 // </copyright>
 
 using AutoMapper;
+using LeadCMS.Core.Sequences.DTOs;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;

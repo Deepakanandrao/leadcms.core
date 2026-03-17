@@ -3,6 +3,8 @@
 // </copyright>
 
 using AutoMapper;
+using LeadCMS.Core.Sequences.DTOs;
+using LeadCMS.Core.Sequences.Interfaces;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
@@ -11,11 +13,11 @@ using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace LeadCMS.Controllers;
+namespace LeadCMS.Core.Sequences.Controllers;
 
 [Authorize(Roles = "Admin")]
 [Route("api/[controller]")]
-public class SequencesController : BaseController<Sequence, SequenceCreateDto, SequenceUpdateDto, SequenceDetailsDto>
+public class SequencesController : LeadCMS.Controllers.BaseController<Sequence, SequenceCreateDto, SequenceUpdateDto, SequenceDetailsDto>
 {
     private readonly ISequenceService sequenceService;
 

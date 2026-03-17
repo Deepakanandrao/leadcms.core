@@ -3,16 +3,16 @@
 // </copyright>
 
 using AutoMapper;
+using LeadCMS.Core.Sequences.DTOs;
+using LeadCMS.Core.Sequences.Interfaces;
 using LeadCMS.Data;
-using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Infrastructure;
-using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-namespace LeadCMS.Controllers;
+namespace LeadCMS.Core.Sequences.Controllers;
 
 [Authorize(Roles = "Admin")]
 [Route("api/sequences/{sequenceId}/enrollments")]

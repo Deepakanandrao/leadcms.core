@@ -9,7 +9,7 @@ using LeadCMS.Entities;
 using LeadCMS.Infrastructure;
 using LeadCMS.Models;
 
-namespace LeadCMS.DTOs;
+namespace LeadCMS.Core.Sequences.DTOs;
 
 public class SequenceStepCreateDto
 {

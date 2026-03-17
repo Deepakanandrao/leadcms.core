@@ -30,6 +30,10 @@
     <Configurations>Debug;Migration;Release</Configurations>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="LeadCMS.Tests" />
+  </ItemGroup>
+
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' " />
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Migration|AnyCPU' " />
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">

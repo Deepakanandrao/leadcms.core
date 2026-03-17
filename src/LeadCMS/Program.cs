@@ -6,6 +6,9 @@ using LeadCMS.Configuration;
 using LeadCMS.Controllers;
 using LeadCMS.Core.AIAssistance.Interfaces;
 using LeadCMS.Core.AIAssistance.Services;
+using LeadCMS.Core.Sequences.Interfaces;
+using LeadCMS.Core.Sequences.Services;
+using LeadCMS.Core.Sequences.Tasks;
 using LeadCMS.Data;
 using LeadCMS.Enrichment.Interfaces;
 using LeadCMS.Enrichment.Services;
@@ -645,6 +648,7 @@ public class Program
         builder.Services.AddScoped<ITask, DomainVerificationTask>();
         builder.Services.AddScoped<ITask, ContactScheduledEmailTask>();
         builder.Services.AddScoped<ITask, CampaignSendTask>();
+        builder.Services.AddScoped<ITask, SequenceSendTask>();
         builder.Services.AddScoped<ITask, ContactAccountTask>();
         builder.Services.AddScoped<ITask, SyncEmailLogTask>();
         builder.Services.AddScoped<ITask, EnrichmentSchedulerTask>();

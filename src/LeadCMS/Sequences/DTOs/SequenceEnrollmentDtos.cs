@@ -5,7 +5,7 @@
 using System.ComponentModel.DataAnnotations;
 using LeadCMS.Entities;
 
-namespace LeadCMS.DTOs;
+namespace LeadCMS.Core.Sequences.DTOs;
 
 public class SequenceEnrollmentCreateDto
 {

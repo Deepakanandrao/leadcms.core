@@ -2,10 +2,10 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
-using LeadCMS.DTOs;
+using LeadCMS.Core.Sequences.DTOs;
 using LeadCMS.Entities;
 
-namespace LeadCMS.Interfaces;
+namespace LeadCMS.Core.Sequences.Interfaces;
 
 public interface ISequenceService
 {

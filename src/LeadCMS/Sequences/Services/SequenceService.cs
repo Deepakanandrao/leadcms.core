@@ -2,14 +2,14 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using LeadCMS.Core.Sequences.DTOs;
+using LeadCMS.Core.Sequences.Interfaces;
 using LeadCMS.Data;
-using LeadCMS.DTOs;
 using LeadCMS.Entities;
-using LeadCMS.Interfaces;
 using LeadCMS.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace LeadCMS.Services;
+namespace LeadCMS.Core.Sequences.Services;
 
 public class SequenceService : ISequenceService
 {

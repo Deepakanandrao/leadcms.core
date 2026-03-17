@@ -5,6 +5,8 @@
 global using System;
 global using System.Net;
 global using FluentAssertions;
+global using LeadCMS.Core.Sequences.DTOs;
+global using LeadCMS.Core.Sequences.Tasks;
 global using LeadCMS.DTOs;
 global using LeadCMS.Entities;
 global using LeadCMS.Interfaces;
