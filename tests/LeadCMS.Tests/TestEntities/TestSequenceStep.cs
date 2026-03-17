@@ -8,14 +8,13 @@ namespace LeadCMS.Tests.TestEntities;
 
 public class TestSequenceStep : SequenceStepCreateDto
 {
-    public TestSequenceStep(string uid = "", int emailTemplateId = 0)
+    public TestSequenceStep(string uid = "", int emailTemplateId = 0, int delayMinutes = 0)
     {
-        StepKey = $"step-{uid}";
-        Title = $"Test Step {uid}";
+        Name = $"Test Step {uid}";
         EmailTemplateId = emailTemplateId;
         Timing = new SequenceStepTiming
         {
-            Delay = new SequenceStepDelay { Value = 0, Unit = "minutes" },
+            Delay = new SequenceStepDelay { Value = delayMinutes, Unit = "minutes" },
         };
     }
 }

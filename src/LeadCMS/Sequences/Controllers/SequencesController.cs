@@ -12,6 +12,7 @@ using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Core.Sequences.Controllers;
 
@@ -34,7 +35,22 @@ public class SequencesController : LeadCMS.Controllers.BaseController<Sequence, 
     }
 
     /// <summary>
-    /// Creates a new sequence. Status is always Draft on creation.
+    /// Gets a sequence with all its steps.
+    /// </summary>
+    [HttpGet("{id}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public override async Task<ActionResult<SequenceDetailsDto>> GetOne(int id)
+    {
+        var sequence = await sequenceService.GetFullAsync(id);
+        var dto = mapper.Map<SequenceDetailsDto>(sequence);
+        return Ok(dto);
+    }
+
+    /// <summary>
+    /// Creates a new sequence with steps. Status is always Draft on creation.
     /// </summary>
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status201Created)]
@@ -43,18 +59,31 @@ public class SequencesController : LeadCMS.Controllers.BaseController<Sequence, 
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public override async Task<ActionResult<SequenceDetailsDto>> Post([FromBody] SequenceCreateDto value)
     {
-        var sequence = mapper.Map<Sequence>(value);
-        sequence.Status = SequenceStatus.Draft;
-
-        await dbSet.AddAsync(sequence);
-        await dbContext.SaveChangesAsync();
-
+        var sequence = await sequenceService.SaveFullAsync(null, value);
         var dto = mapper.Map<SequenceDetailsDto>(sequence);
         return CreatedAtAction(nameof(GetOne), new { id = sequence.Id }, dto);
     }
 
     /// <summary>
-    /// Updates a sequence. Only Draft or Paused sequences can be edited.
+    /// Replaces a sequence and its steps entirely.
+    /// Sequence must be in Draft or Paused status.
+    /// </summary>
+    [HttpPut("{id}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<SequenceDetailsDto>> Put(int id, [FromBody] SequenceCreateDto value)
+    {
+        var sequence = await sequenceService.SaveFullAsync(id, value);
+        var dto = mapper.Map<SequenceDetailsDto>(sequence);
+        return Ok(dto);
+    }
+
+    /// <summary>
+    /// Partially updates a sequence. Only Draft or Paused sequences can be edited.
+    /// If steps are provided, the step list is reconciled by step name.
     /// </summary>
     [HttpPatch("{id}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -71,7 +100,19 @@ public class SequencesController : LeadCMS.Controllers.BaseController<Sequence, 
                 $"Sequence can only be edited in Draft or Paused status. Current status: {existingEntity.Status}.");
         }
 
-        return await Patch(existingEntity, value);
+        var steps = value.Steps;
+        value.Steps = null;
+
+        await Patch(existingEntity, value);
+
+        if (steps != null)
+        {
+            await sequenceService.ReplaceStepsAsync(id, steps);
+        }
+
+        var sequence = await sequenceService.GetFullAsync(id);
+        var dto = mapper.Map<SequenceDetailsDto>(sequence);
+        return Ok(dto);
     }
 
     /// <summary>

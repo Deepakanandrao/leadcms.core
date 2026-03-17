@@ -16,10 +16,13 @@ DECLARE
     grp RECORD;
     tmpl RECORD;
     new_sequence_id INT;
-    new_step_id INT;
     step_pos INT;
     schedule_json JSONB;
     timing_json JSONB;
+    sequence_source TEXT;
+    step_source TEXT;
+    enrollment_source_text TEXT;
+    delivery_source_text TEXT;
     -- Cron parsing
     cron_parts TEXT[];
     cron_hour TEXT;
@@ -45,20 +48,25 @@ BEGIN
     --   - Creates SequenceSteps from the group's EmailTemplates
     --   - Creates SequenceEnrollments from ContactEmailSchedule
     --   - Creates SequenceDeliveries from EmailLog
+    --   - Updates summary counters on sequence and steps
     -- ============================================================
 
     FOR grp IN
-        SELECT eg.id, eg.name, eg.language,
-               es.id AS schedule_id, es.schedule
+        SELECT eg.id,
+               eg.name,
+               eg.language,
+               es.id AS schedule_id,
+               es.schedule,
+               es.source AS schedule_source
         FROM email_group eg
         INNER JOIN email_schedule es ON es.group_id = eg.id
     LOOP
+        sequence_source := COALESCE(NULLIF(grp.schedule_source, ''), 'email_schedule: ' || grp.schedule_id);
+
         -- Idempotency: skip groups already migrated
         IF EXISTS (
             SELECT 1 FROM sequence
-            WHERE source = 'migration'
-              AND description = 'Migrated from legacy EmailGroup ID: ' || grp.id
-                                || ', name: ' || grp.name || ' (' || grp.language || ')'
+            WHERE source = sequence_source
         ) THEN
             CONTINUE;
         END IF;
@@ -69,16 +77,16 @@ BEGIN
         -- 1. Create the Sequence
         -- --------------------------------------------------------
         INSERT INTO sequence (
-            name, description, status,
+            name, description, language, status,
             stop_on_reply, use_contact_time_zone, time_zone,
             active_enrollment_count, completed_enrollment_count, exited_enrollment_count,
             sent_count, failed_count,
             enrollment, utm_parameters,
             created_at, source
         ) VALUES (
+            grp.name,
             grp.name || ' (' || grp.language || ')',
-            'Migrated from legacy EmailGroup ID: ' || grp.id
-                || ', name: ' || grp.name || ' (' || grp.language || ')',
+            grp.language,
             CASE
                 WHEN EXISTS (
                     SELECT 1 FROM contact_email_schedule ces
@@ -89,7 +97,7 @@ BEGIN
             false, false, 0,
             0, 0, 0, 0, 0,
             NULL, NULL,
-            NOW(), 'migration'
+            NOW(), sequence_source
         ) RETURNING id INTO new_sequence_id;
 
         -- --------------------------------------------------------
@@ -124,11 +132,13 @@ BEGIN
             FROM unnest(string_to_array(cron_dow, ',')) AS d;
 
             FOR tmpl IN
-                SELECT et.id, et.name
+                SELECT et.id, et.name, et.source
                 FROM email_template et
                 WHERE et.email_group_id = grp.id
                 ORDER BY et.id
             LOOP
+                step_source := COALESCE(NULLIF(tmpl.source, ''), 'email_template: ' || tmpl.id);
+
                 -- Step 0: delay 0 (align to next allowed day at sendAt).
                 -- Step N>0: delay 1 day (ensures advancement past the current cron fire).
                 timing_json := jsonb_build_object(
@@ -141,12 +151,14 @@ BEGIN
                 );
 
                 INSERT INTO sequence_step (
-                    sequence_id, email_template_id, position, step_key, type, title,
-                    timing, created_at, source
+                    sequence_id, email_template_id, position, name, type,
+                    timing, scheduled_count, sent_count, failed_count, skipped_count,
+                    created_at, source
                 ) VALUES (
-                    new_sequence_id, tmpl.id, step_pos, 'step-' || step_pos,
-                    0, tmpl.name,
-                    timing_json, NOW(), 'migration'
+                    new_sequence_id, tmpl.id, step_pos, tmpl.name,
+                    0,
+                    timing_json, 0, 0, 0, 0,
+                    NOW(), step_source
                 );
 
                 step_pos := step_pos + 1;
@@ -165,11 +177,13 @@ BEGIN
             send_at_time := left(time_str, 5);  -- HH:MM:SS → HH:MM
 
             FOR tmpl IN
-                SELECT et.id, et.name
+                SELECT et.id, et.name, et.source
                 FROM email_template et
                 WHERE et.email_group_id = grp.id
                 ORDER BY et.id
             LOOP
+                step_source := COALESCE(NULLIF(tmpl.source, ''), 'email_template: ' || tmpl.id);
+
                 IF step_pos = 0 THEN
                     -- First step: delay = first day value (days since enrollment)
                     delay_value := day_values[1];
@@ -191,12 +205,14 @@ BEGIN
                 );
 
                 INSERT INTO sequence_step (
-                    sequence_id, email_template_id, position, step_key, type, title,
-                    timing, created_at, source
+                    sequence_id, email_template_id, position, name, type,
+                    timing, scheduled_count, sent_count, failed_count, skipped_count,
+                    created_at, source
                 ) VALUES (
-                    new_sequence_id, tmpl.id, step_pos, 'step-' || step_pos,
-                    0, tmpl.name,
-                    timing_json, NOW(), 'migration'
+                    new_sequence_id, tmpl.id, step_pos, tmpl.name,
+                    0,
+                    timing_json, 0, 0, 0, 0,
+                    NOW(), step_source
                 );
 
                 step_pos := step_pos + 1;
@@ -207,7 +223,7 @@ BEGIN
         -- 3. Create SequenceEnrollments from ContactEmailSchedule
         -- --------------------------------------------------------
         INSERT INTO sequence_enrollment (
-            sequence_id, contact_id, status, last_completed_step_key,
+            sequence_id, contact_id, status, last_completed_step_name,
             entered_at, completed_at, exited_at, exit_reason,
             enrollment_source, enrollment_reason,
             created_at, source
@@ -223,7 +239,12 @@ BEGIN
             END,
             -- Determine last completed step from sent email count
             CASE
-                WHEN sent_counts.cnt > 0 THEN 'step-' || (sent_counts.cnt - 1)
+                                WHEN sent_counts.cnt > 0 THEN (
+                                        SELECT ss.name
+                                        FROM sequence_step ss
+                                        WHERE ss.sequence_id = new_sequence_id
+                                            AND ss.position = sent_counts.cnt - 1
+                                        LIMIT 1)
                 ELSE NULL
             END,
             -- entered_at: normalize -infinity timestamps
@@ -256,9 +277,9 @@ BEGIN
                 ELSE 0          -- None
             END,
             3,   -- EnrollmentSource = Migration
-            'Migrated from legacy EmailGroup: ' || grp.name,
+            'Subscribed on ' || grp.name,
             NOW(),
-            'migration'
+            COALESCE(NULLIF(ces.source, ''), 'contact_email_schedule: ' || ces.id)
         FROM contact_email_schedule ces
         INNER JOIN contact c ON c.id = ces.contact_id
         LEFT JOIN LATERAL (
@@ -274,12 +295,18 @@ BEGIN
         -- 4. Create SequenceDeliveries from EmailLog
         -- --------------------------------------------------------
         INSERT INTO sequence_delivery (
-            sequence_id, sequence_step_id, contact_id,
+            sequence_id, sequence_enrollment_id, sequence_step_id, contact_id,
             status, scheduled_at, sent_at, email_log_id,
             created_at, source
         )
         SELECT
             new_sequence_id,
+            -- Match delivery to the best enrollment by (sequence_id, contact_id)
+            (SELECT e.id FROM sequence_enrollment e
+             WHERE e.sequence_id = new_sequence_id
+               AND e.contact_id = el.contact_id
+             ORDER BY e.entered_at DESC, e.id DESC
+             LIMIT 1),
             ss.id,
             el.contact_id,
             CASE el.status
@@ -290,16 +317,19 @@ BEGIN
             CASE WHEN el.status = 1 THEN el.created_at ELSE NULL END,
             el.id,
             NOW(),
-            'migration'
+            COALESCE(NULLIF(el.source, ''), 'email_log: ' || el.id)
         FROM email_log el
         INNER JOIN sequence_step ss
             ON ss.sequence_id = new_sequence_id
            AND ss.email_template_id = el.template_id
         INNER JOIN contact c ON c.id = el.contact_id
+        INNER JOIN sequence_enrollment se
+            ON se.sequence_id = new_sequence_id
+           AND se.contact_id = el.contact_id
         WHERE el.schedule_id = grp.schedule_id
           AND el.template_id IS NOT NULL
           AND el.contact_id IS NOT NULL
-        ON CONFLICT (sequence_id, sequence_step_id, contact_id) DO NOTHING;
+        ON CONFLICT (sequence_enrollment_id, sequence_step_id) DO NOTHING;
 
         -- --------------------------------------------------------
         -- 5. Update summary counters on the Sequence
@@ -312,6 +342,28 @@ BEGIN
             failed_count               = (SELECT COUNT(*) FROM sequence_delivery   WHERE sequence_id = new_sequence_id AND status = 2)
         WHERE id = new_sequence_id;
 
+        -- --------------------------------------------------------
+        -- 6. Update step-level counters
+        -- --------------------------------------------------------
+        UPDATE sequence_step ss SET
+            scheduled_count = COALESCE(c.scheduled, 0),
+            sent_count      = COALESCE(c.sent, 0),
+            failed_count    = COALESCE(c.failed, 0),
+            skipped_count   = COALESCE(c.skipped, 0)
+        FROM (
+            SELECT
+                d.sequence_step_id,
+                COUNT(*) FILTER (WHERE d.status = 0) AS scheduled,
+                COUNT(*) FILTER (WHERE d.status = 1) AS sent,
+                COUNT(*) FILTER (WHERE d.status = 2) AS failed,
+                COUNT(*) FILTER (WHERE d.status = 3) AS skipped
+            FROM sequence_delivery d
+            WHERE d.sequence_id = new_sequence_id
+            GROUP BY d.sequence_step_id
+        ) c
+        WHERE ss.id = c.sequence_step_id
+          AND ss.sequence_id = new_sequence_id;
+
     END LOOP;
 END $$;
 ");
@@ -320,12 +372,11 @@ END $$;
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            // Remove all migrated data (identifiable by source = 'migration')
             migrationBuilder.Sql(@"
-DELETE FROM sequence_delivery   WHERE source = 'migration';
-DELETE FROM sequence_enrollment WHERE source = 'migration';
-DELETE FROM sequence_step       WHERE source = 'migration';
-DELETE FROM sequence            WHERE source = 'migration';
+DELETE FROM sequence_delivery;
+DELETE FROM sequence_enrollment;
+DELETE FROM sequence_step;
+DELETE FROM sequence;
 ");
         }
     }

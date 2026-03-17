@@ -137,10 +137,6 @@ public class SegmentService : ISegmentService
         var contacts = await query.Take(limit).ToListAsync();
 
         var contactDtos = mapper.Map<List<ContactDetailsDto>>(contacts);
-        contactDtos.ForEach(c =>
-        {
-            c.AvatarUrl = GravatarHelper.EmailToGravatarUrl(c.Email);
-        });
 
         return new SegmentPreviewResultDto
         {

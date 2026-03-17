@@ -17,13 +17,11 @@ public class SequenceStepCreateDto
     public int EmailTemplateId { get; set; }
 
     [Required]
-    public string StepKey { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
 
     public int? Position { get; set; }
 
     public SequenceStepType Type { get; set; } = SequenceStepType.Email;
-
-    public string? Title { get; set; }
 
     [Required]
     public SequenceStepTiming Timing { get; set; } = new();
@@ -37,9 +35,7 @@ public class SequenceStepUpdateDto : IPatchDto
 
     public int? EmailTemplateId { get; set; }
 
-    public string? StepKey { get; set; }
-
-    public string? Title { get; set; }
+    public string? Name { get; set; }
 
     public SequenceStepTiming? Timing { get; set; }
 }
@@ -54,13 +50,19 @@ public class SequenceStepDetailsDto
 
     public int Position { get; set; }
 
-    public string StepKey { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
 
     public SequenceStepType Type { get; set; }
 
-    public string? Title { get; set; }
-
     public SequenceStepTiming Timing { get; set; } = new();
+
+    public int ScheduledCount { get; set; }
+
+    public int SentCount { get; set; }
+
+    public int FailedCount { get; set; }
+
+    public int SkippedCount { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

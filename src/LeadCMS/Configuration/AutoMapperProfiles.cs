@@ -109,6 +109,7 @@ public class AutoMapperProfiles : Profile
             .AfterMap((source, destination) =>
             {
                 destination.IpAddress = source.UpdatedByIp ?? source.CreatedByIp;
+                destination.AvatarUrl = GravatarHelper.EmailToGravatarUrl(source.Email);
             })
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<ContactImportDto, Contact>()
@@ -260,8 +261,11 @@ public class AutoMapperProfiles : Profile
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
 
         // Sequence mappings
-        CreateMap<SequenceCreateDto, Sequence>().ReverseMap();
+        CreateMap<SequenceCreateDto, Sequence>()
+            .ForMember(dest => dest.Steps, opt => opt.Ignore())
+            .ReverseMap();
         CreateMap<SequenceUpdateDto, Sequence>()
+            .ForMember(dest => dest.Steps, opt => opt.Ignore())
             .WithPatchDtoSupport()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<Sequence, SequenceUpdateDto>()
@@ -275,6 +279,8 @@ public class AutoMapperProfiles : Profile
         CreateMap<SequenceStep, SequenceStepDetailsDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<SequenceEnrollment, SequenceEnrollmentDetailsDto>()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+        CreateMap<SequenceDelivery, SequenceDeliveryDetailsDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
 
         // Segment mappings

@@ -92,10 +92,6 @@ public class SegmentsController : BaseController<Segment, SegmentCreateDto, Segm
         var contacts = await segmentService.GetSegmentContactsAsync(id, query, limit);
 
         var contactDtos = mapper.Map<List<ContactDetailsDto>>(contacts);
-        contactDtos.ForEach(c =>
-        {
-            c.AvatarUrl = GravatarHelper.EmailToGravatarUrl(c.Email);
-        });
 
         Response.Headers.Append(ResponseHeaderNames.TotalCount, contacts.Count.ToString());
         Response.Headers.Append(ResponseHeaderNames.AccessControlExposeHeader, ResponseHeaderNames.TotalCount);

@@ -18,6 +18,8 @@ public class SequenceCreateDto
 
     public string? Description { get; set; }
 
+    public string Language { get; set; } = string.Empty;
+
     public bool StopOnReply { get; set; }
 
     public bool UseContactTimeZone { get; set; }
@@ -27,6 +29,8 @@ public class SequenceCreateDto
     public SequenceEnrollmentConfig? Enrollment { get; set; }
 
     public Utms? UtmParameters { get; set; }
+
+    public List<SequenceStepCreateDto> Steps { get; set; } = new();
 }
 
 public class SequenceUpdateDto : IPatchDto
@@ -40,6 +44,8 @@ public class SequenceUpdateDto : IPatchDto
 
     public string? Description { get; set; }
 
+    public string? Language { get; set; }
+
     public bool? StopOnReply { get; set; }
 
     public bool? UseContactTimeZone { get; set; }
@@ -49,10 +55,14 @@ public class SequenceUpdateDto : IPatchDto
     public SequenceEnrollmentConfig? Enrollment { get; set; }
 
     public Utms? UtmParameters { get; set; }
+
+    public List<SequenceStepCreateDto>? Steps { get; set; }
 }
 
 public class SequenceDetailsDto : SequenceCreateDto
 {
+    public new List<SequenceStepDetailsDto> Steps { get; set; } = new();
+
     public int Id { get; set; }
 
     public SequenceStatus Status { get; set; }
@@ -92,3 +102,5 @@ public class SequenceStatisticsDto
 
     public int StepsCount { get; set; }
 }
+
+

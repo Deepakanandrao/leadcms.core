@@ -156,7 +156,7 @@ public class SequencesTests : BaseTestAutoLogin
     [Fact]
     public async Task ArchiveSequence_ExitsActiveEnrollments()
     {
-        var (sequenceId, _) = await CreateSequenceWithStepAsync("archive-enroll");
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("archive-enroll", delayMinutes: 1440);
         await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
 
         // Enroll a contact
@@ -290,7 +290,7 @@ public class SequencesTests : BaseTestAutoLogin
     [Fact]
     public async Task EnrollContact_InActiveSequence_Succeeds()
     {
-        var (sequenceId, _) = await CreateSequenceWithStepAsync("enroll");
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("enroll", delayMinutes: 1440);
         await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
 
         var contactId = await CreateContactAsync("enroll");
@@ -340,9 +340,195 @@ public class SequencesTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task EnrollContact_AllowAfterCompletion_ReenrollsAfterCompleted()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("reentry-aac");
+
+        // Set reentry policy to AllowAfterCompletion
+        await PatchTest($"{SequencesUrl}/{sequenceId}", new
+        {
+            Enrollment = new SequenceEnrollmentConfig
+            {
+                Modes = new[] { "manual", "api" },
+                ReentryPolicy = ReentryPolicy.AllowAfterCompletion,
+            },
+        });
+
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("reentry-aac");
+
+        // First enrollment
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        // Run task to schedule + send + complete (single 0-delay step)
+        await ExecuteSequenceSendTask();
+        await ExecuteSequenceSendTask();
+
+        // Verify first enrollment completed
+        var completedEnrollments = await GetTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments?filter[where][Status]=Completed");
+        completedEnrollments!.Count.Should().Be(1);
+
+        // Re-enrollment after completion should succeed
+        var reEnrollments = await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+        reEnrollments!.Count.Should().Be(1);
+
+        // Run task again — new enrollment gets its own delivery
+        await ExecuteSequenceSendTask();
+        await ExecuteSequenceSendTask();
+
+        var stats = await GetTest<SequenceStatisticsDto>($"{SequencesUrl}/{sequenceId}/statistics");
+        stats!.SentCount.Should().Be(2);
+        stats.CompletedEnrollmentCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task EnrollContact_AllowAfterCompletion_RejectsWhileActive()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("reentry-aac-active", delayMinutes: 1440);
+
+        await PatchTest($"{SequencesUrl}/{sequenceId}", new
+        {
+            Enrollment = new SequenceEnrollmentConfig
+            {
+                Modes = new[] { "manual", "api" },
+                ReentryPolicy = ReentryPolicy.AllowAfterCompletion,
+            },
+        });
+
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("reentry-aac-active");
+
+        // First enrollment
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        // Re-enrollment while active should fail
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task EnrollContact_Always_ReenrollsAfterExited()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("reentry-always", delayMinutes: 1440);
+
+        await PatchTest($"{SequencesUrl}/{sequenceId}", new
+        {
+            Enrollment = new SequenceEnrollmentConfig
+            {
+                Modes = new[] { "manual", "api" },
+                ReentryPolicy = ReentryPolicy.Always,
+            },
+        });
+
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("reentry-always");
+
+        // First enrollment
+        var enrollments = await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        // Remove enrollment (exit)
+        await DeleteTest(
+            $"{SequencesUrl}/{sequenceId}/enrollments/{enrollments![0].Id}",
+            HttpStatusCode.OK);
+
+        // Re-enrollment after exit should succeed
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        // Run task — new enrollment gets its own delivery
+        await ExecuteSequenceSendTask();
+        await ExecuteSequenceSendTask();
+
+        var stats = await GetTest<SequenceStatisticsDto>($"{SequencesUrl}/{sequenceId}/statistics");
+        stats!.SentCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task EnrollContact_Always_RejectsWhileActive()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("reentry-always-active", delayMinutes: 1440);
+
+        await PatchTest($"{SequencesUrl}/{sequenceId}", new
+        {
+            Enrollment = new SequenceEnrollmentConfig
+            {
+                Modes = new[] { "manual", "api" },
+                ReentryPolicy = ReentryPolicy.Always,
+            },
+        });
+
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("reentry-always-active");
+
+        // First enrollment
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        // Re-enrollment while active should fail
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task EnrollContact_WithTemplateArguments_PersistsArguments()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("tmpl-args", delayMinutes: 1440);
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("tmpl-args");
+
+        var templateArgs = new Dictionary<string, string>
+        {
+            { "CompanyName", "Acme Corp" },
+            { "TrialDays", "14" },
+        };
+
+        var result = await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto
+            {
+                ContactIds = new[] { contactId },
+                EnrollmentReason = "Test with args",
+                TemplateArguments = templateArgs,
+            },
+            HttpStatusCode.Created);
+
+        result.Should().NotBeNull();
+        result!.Count.Should().Be(1);
+        result[0].TemplateArguments.Should().NotBeNull();
+        result[0].TemplateArguments.Should().ContainKey("CompanyName").WhoseValue.Should().Be("Acme Corp");
+        result[0].TemplateArguments.Should().ContainKey("TrialDays").WhoseValue.Should().Be("14");
+    }
+
+    [Fact]
     public async Task RemoveEnrollment_SetsExitedStatus()
     {
-        var (sequenceId, _) = await CreateSequenceWithStepAsync("remove-enroll");
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("remove-enroll", delayMinutes: 1440);
         await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
 
         var contactId = await CreateContactAsync("remove-enroll");
@@ -364,7 +550,7 @@ public class SequencesTests : BaseTestAutoLogin
     [Fact]
     public async Task ListEnrollments_FiltersByStatus()
     {
-        var (sequenceId, _) = await CreateSequenceWithStepAsync("list-enroll");
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("list-enroll", delayMinutes: 1440);
         await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
 
         var contactId = await CreateContactAsync("list-enroll");
@@ -374,12 +560,12 @@ public class SequencesTests : BaseTestAutoLogin
             HttpStatusCode.Created);
 
         var activeEnrollments = await GetTest<List<SequenceEnrollmentDetailsDto>>(
-            $"{SequencesUrl}/{sequenceId}/enrollments?status=Active");
+            $"{SequencesUrl}/{sequenceId}/enrollments?filter[where][Status]=Active");
         activeEnrollments.Should().NotBeNull();
         activeEnrollments!.Count.Should().Be(1);
 
         var completedEnrollments = await GetTest<List<SequenceEnrollmentDetailsDto>>(
-            $"{SequencesUrl}/{sequenceId}/enrollments?status=Completed");
+            $"{SequencesUrl}/{sequenceId}/enrollments?filter[where][Status]=Completed");
         completedEnrollments!.Count.Should().Be(0);
     }
 
@@ -390,7 +576,7 @@ public class SequencesTests : BaseTestAutoLogin
     [Fact]
     public async Task GetStatistics_ReturnsCorrectCounts()
     {
-        var (sequenceId, _) = await CreateSequenceWithStepAsync("stats");
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("stats", delayMinutes: 1440);
         await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
 
         var contact1 = await CreateContactAsync("stats1");
@@ -404,6 +590,373 @@ public class SequencesTests : BaseTestAutoLogin
         stats.Should().NotBeNull();
         stats!.ActiveEnrollmentCount.Should().Be(2);
         stats.StepsCount.Should().Be(1);
+    }
+
+    // ──────────────────────────────────────────────────
+    // Enrolled Contacts Tests
+    // ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ListEnrolledContacts_ReturnsDistinctContacts()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("enrolled-contacts", delayMinutes: 1440);
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contact1 = await CreateContactAsync("enrolled-c1");
+        var contact2 = await CreateContactAsync("enrolled-c2");
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contact1, contact2 } },
+            HttpStatusCode.Created);
+
+        var contacts = await GetTest<List<ContactDetailsDto>>($"{SequencesUrl}/{sequenceId}/contacts");
+        contacts.Should().NotBeNull();
+        contacts!.Count.Should().Be(2);
+        contacts.Select(c => c.Id).Should().Contain(contact1);
+        contacts.Select(c => c.Id).Should().Contain(contact2);
+    }
+
+    [Fact]
+    public async Task ListEnrolledContacts_NoEnrollments_ReturnsEmpty()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("no-enrolled");
+
+        var contacts = await GetTest<List<ContactDetailsDto>>($"{SequencesUrl}/{sequenceId}/contacts");
+        contacts.Should().NotBeNull();
+        contacts!.Count.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ListEnrolledContacts_MultipleEnrollmentsSameContact_ReturnsOnce()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("dedup-contacts");
+        await PatchTest($"{SequencesUrl}/{sequenceId}", new { Enrollment = new SequenceEnrollmentConfig { Modes = new[] { "manual" }, ReentryPolicy = ReentryPolicy.Always } });
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("dedup-c");
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        var contacts = await GetTest<List<ContactDetailsDto>>($"{SequencesUrl}/{sequenceId}/contacts");
+        contacts.Should().NotBeNull();
+        contacts!.Count.Should().Be(1);
+        contacts[0].Id.Should().Be(contactId);
+    }
+
+    [Fact]
+    public async Task ListEnrollments_WithIncludedContact_PopulatesAvatarUrl()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("enrollment-contact-avatar", delayMinutes: 1440);
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contact = new TestContact("enrollment-contact-avatar");
+        var contactId = ExtractId(await PostTest(ContactsUrl, contact));
+
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        var enrollments = await GetTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments?filter[include]=Contact");
+
+        enrollments.Should().NotBeNull();
+        var enrollment = enrollments!.Should().ContainSingle().Subject;
+        enrollment.Contact.Should().NotBeNull();
+        var includedContact = enrollment.Contact!;
+        includedContact.Id.Should().Be(contactId);
+        includedContact.AvatarUrl.Should().Be(GravatarHelper.EmailToGravatarUrl(contact.Email));
+    }
+
+    // ──────────────────────────────────────────────────
+    // Composite API Tests
+    // ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Post_CreatesSequenceWithSteps()
+    {
+        var templateId = await CreateEmailTemplateAsync("post-steps");
+
+        var createDto = new SequenceCreateDto
+        {
+            Name = "PostWithSteps",
+            Description = "Created with steps in one call",
+            StopOnReply = true,
+            Enrollment = new SequenceEnrollmentConfig
+            {
+                Modes = new[] { "manual", "api" },
+                ReentryPolicy = ReentryPolicy.OnceEver,
+            },
+            Steps = new List<SequenceStepCreateDto>
+            {
+                new() { Name = "welcome", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 0, Unit = "minutes" } } },
+                new() { Name = "follow-up", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 1, Unit = "days" } } },
+            },
+        };
+
+        var created = await PostTest<SequenceDetailsDto>(SequencesUrl, createDto, HttpStatusCode.Created);
+
+        created.Should().NotBeNull();
+        created!.Name.Should().Be("PostWithSteps");
+        created.Status.Should().Be(SequenceStatus.Draft);
+        created.StopOnReply.Should().BeTrue();
+        created.Steps.Should().HaveCount(2);
+        created.Steps[0].Name.Should().Be("welcome");
+        created.Steps[0].Position.Should().Be(1);
+        created.Steps[1].Name.Should().Be("follow-up");
+        created.Steps[1].Position.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task GetOne_ReturnsSequenceWithSteps()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("get-one-steps");
+
+        var result = await GetTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}");
+
+        result.Should().NotBeNull();
+        result!.Id.Should().Be(sequenceId);
+        result.Steps.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task Put_UpdatesSequenceAndSteps()
+    {
+        var templateId = await CreateEmailTemplateAsync("put-steps");
+
+        // Create via POST
+        var createDto = new SequenceCreateDto
+        {
+            Name = "OriginalName",
+            Steps = new List<SequenceStepCreateDto>
+            {
+                new() { Name = "step-a", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 0, Unit = "minutes" } } },
+                new() { Name = "step-b", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 1, Unit = "days" } } },
+            },
+        };
+
+        var created = await PostTest<SequenceDetailsDto>(SequencesUrl, createDto, HttpStatusCode.Created);
+        var sequenceId = created!.Id;
+
+        // Update: rename, remove step-a, add step-c, keep step-b
+        var updateDto = new SequenceCreateDto
+        {
+            Name = "UpdatedName",
+            Steps = new List<SequenceStepCreateDto>
+            {
+                new() { Name = "step-b", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 2, Unit = "days" } } },
+                new() { Name = "step-c", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 3, Unit = "days" } } },
+            },
+        };
+
+        var putResponse = await Request(HttpMethod.Put, $"{SequencesUrl}/{sequenceId}", updateDto);
+        putResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var updated = JsonHelper.Deserialize<SequenceDetailsDto>(await putResponse.Content.ReadAsStringAsync());
+
+        updated.Should().NotBeNull();
+        updated!.Name.Should().Be("UpdatedName");
+        updated.Steps.Should().HaveCount(2);
+        updated.Steps[0].Name.Should().Be("step-b");
+        updated.Steps[0].Position.Should().Be(1);
+        updated.Steps[0].Timing.Delay.Value.Should().Be(2);
+        updated.Steps[1].Name.Should().Be("step-c");
+        updated.Steps[1].Position.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Put_WhenActive_Returns422()
+    {
+        var templateId = await CreateEmailTemplateAsync("put-active");
+
+        var createDto = new SequenceCreateDto
+        {
+            Name = "ActiveSeq",
+            Enrollment = new SequenceEnrollmentConfig { Modes = new[] { "manual", "api" } },
+            Steps = new List<SequenceStepCreateDto>
+            {
+                new() { Name = "s1", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 0, Unit = "minutes" } } },
+            },
+        };
+
+        var created = await PostTest<SequenceDetailsDto>(SequencesUrl, createDto, HttpStatusCode.Created);
+
+        // Activate
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{created!.Id}/activate", new { }, HttpStatusCode.OK);
+
+        // PUT on active sequence should fail
+        var putResponse = await Request(HttpMethod.Put, $"{SequencesUrl}/{created.Id}", createDto);
+        putResponse.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    // ──────────────────────────────────────────────────
+    // Immediate Step Processing Tests
+    // ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Enroll_ImmediateStep_SentWithoutTaskExecution()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("imm-send");
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("imm-send");
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        // Without executing the task, enrollment should already be completed
+        var enrollments = await GetTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments?filter[where][Status]=Completed");
+        enrollments!.Count.Should().Be(1);
+
+        var stats = await GetTest<SequenceStatisticsDto>($"{SequencesUrl}/{sequenceId}/statistics");
+        stats!.SentCount.Should().Be(1);
+        stats.CompletedEnrollmentCount.Should().Be(1);
+        stats.ActiveEnrollmentCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Enroll_ImmediateMultiStep_AllSentWithoutTaskExecution()
+    {
+        var templateId = await CreateEmailTemplateAsync("imm-multi");
+        var createDto = new SequenceCreateDto
+        {
+            Name = "ImmMultiStep",
+            Enrollment = new SequenceEnrollmentConfig { Modes = new[] { "manual", "api" } },
+            Steps = new List<SequenceStepCreateDto>
+            {
+                new() { Name = "imm1", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 0, Unit = "minutes" } } },
+                new() { Name = "imm2", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 0, Unit = "minutes" } } },
+            },
+        };
+
+        var created = await PostTest<SequenceDetailsDto>(SequencesUrl, createDto, HttpStatusCode.Created);
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{created!.Id}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("imm-multi");
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{created.Id}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        // Both immediate steps should be sent without any task execution
+        var stats = await GetTest<SequenceStatisticsDto>($"{SequencesUrl}/{created.Id}/statistics");
+        stats!.SentCount.Should().Be(2);
+        stats.CompletedEnrollmentCount.Should().Be(1);
+        stats.ActiveEnrollmentCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Enroll_MixedImmediateAndDelayed_OnlyImmediateSent()
+    {
+        var templateId = await CreateEmailTemplateAsync("imm-mixed");
+        var createDto = new SequenceCreateDto
+        {
+            Name = "MixedSteps",
+            Enrollment = new SequenceEnrollmentConfig { Modes = new[] { "manual", "api" } },
+            Steps = new List<SequenceStepCreateDto>
+            {
+                new() { Name = "imm", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 0, Unit = "minutes" } } },
+                new() { Name = "delayed", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 1, Unit = "days" } } },
+            },
+        };
+
+        var created = await PostTest<SequenceDetailsDto>(SequencesUrl, createDto, HttpStatusCode.Created);
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{created!.Id}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("imm-mixed");
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{created.Id}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        // Only the immediate step should be sent; enrollment still active
+        var stats = await GetTest<SequenceStatisticsDto>($"{SequencesUrl}/{created.Id}/statistics");
+        stats!.SentCount.Should().Be(1);
+        stats.ActiveEnrollmentCount.Should().Be(1);
+        stats.CompletedEnrollmentCount.Should().Be(0);
+    }
+
+    // ──────────────────────────────────────────────────
+    // Delivery API Tests
+    // ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ListDeliveries_ReturnsDeliveriesForSequence()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("list-del");
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("list-del");
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        // Immediate step creates a delivery
+        var deliveries = await GetTest<List<SequenceDeliveryDetailsDto>>(DeliveriesUrl(sequenceId));
+        deliveries.Should().NotBeNull();
+        deliveries!.Count.Should().BeGreaterThanOrEqualTo(1);
+        deliveries[0].SequenceId.Should().Be(sequenceId);
+        deliveries[0].ContactId.Should().Be(contactId);
+    }
+
+    [Fact]
+    public async Task ListDeliveries_FiltersByStatus()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("del-filter");
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("del-filter");
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        // Immediate step sends, so delivery should be Sent
+        var sent = await GetTest<List<SequenceDeliveryDetailsDto>>($"{DeliveriesUrl(sequenceId)}?filter[where][Status]=Sent");
+        sent.Should().NotBeNull();
+        sent!.Count.Should().BeGreaterThanOrEqualTo(1);
+
+        var scheduled = await GetTest<List<SequenceDeliveryDetailsDto>>($"{DeliveriesUrl(sequenceId)}?filter[where][Status]=Scheduled");
+        scheduled.Should().NotBeNull();
+        scheduled!.Count.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GetOneDelivery_ReturnsDelivery()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("get-del");
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("get-del");
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        var deliveries = await GetTest<List<SequenceDeliveryDetailsDto>>(DeliveriesUrl(sequenceId));
+        deliveries!.Count.Should().BeGreaterThanOrEqualTo(1);
+
+        var single = await GetTest<SequenceDeliveryDetailsDto>($"{DeliveriesUrl(sequenceId)}/{deliveries[0].Id}");
+        single.Should().NotBeNull();
+        single!.Id.Should().Be(deliveries[0].Id);
+        single.ContactId.Should().Be(contactId);
+    }
+
+    [Fact]
+    public async Task GetOneDelivery_NotFound_Returns404()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("del-404", delayMinutes: 1440);
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        await GetTest<SequenceDeliveryDetailsDto>($"{DeliveriesUrl(sequenceId)}/99999", HttpStatusCode.NotFound);
     }
 
     // ──────────────────────────────────────────────────
@@ -428,7 +981,7 @@ public class SequencesTests : BaseTestAutoLogin
 
         // Verify the enrollment was completed (single step with 0-minute delay)
         var enrollments = await GetTest<List<SequenceEnrollmentDetailsDto>>(
-            $"{SequencesUrl}/{sequenceId}/enrollments?status=Completed");
+            $"{SequencesUrl}/{sequenceId}/enrollments?filter[where][Status]=Completed");
         enrollments!.Count.Should().Be(1);
 
         // Verify statistics updated
@@ -464,7 +1017,7 @@ public class SequencesTests : BaseTestAutoLogin
         }
 
         var completedEnrollments = await GetTest<List<SequenceEnrollmentDetailsDto>>(
-            $"{SequencesUrl}/{sequenceId}/enrollments?status=Completed");
+            $"{SequencesUrl}/{sequenceId}/enrollments?filter[where][Status]=Completed");
         completedEnrollments!.Count.Should().Be(1);
 
         var stats = await GetTest<SequenceStatisticsDto>($"{SequencesUrl}/{sequenceId}/statistics");
@@ -526,6 +1079,8 @@ public class SequencesTests : BaseTestAutoLogin
 
     private static string StepsUrl(int sequenceId) => $"{SequencesUrl}/{sequenceId}/steps";
 
+    private static string DeliveriesUrl(int sequenceId) => $"{SequencesUrl}/{sequenceId}/deliveries";
+
     private static int ExtractId(string location) => int.Parse(location.Split("/").Last());
 
     private async Task<int> CreateContactAsync(string uid)
@@ -558,10 +1113,10 @@ public class SequencesTests : BaseTestAutoLogin
         return (sequenceId, templateId);
     }
 
-    private async Task<(int sequenceId, int templateId)> CreateSequenceWithStepAsync(string uid)
+    private async Task<(int sequenceId, int templateId)> CreateSequenceWithStepAsync(string uid, int delayMinutes = 0)
     {
         var (sequenceId, templateId) = await CreateSequenceWithPrerequisitesAsync(uid);
-        await PostTest<SequenceStepDetailsDto>(StepsUrl(sequenceId), new TestSequenceStep(uid, templateId), HttpStatusCode.Created);
+        await PostTest<SequenceStepDetailsDto>(StepsUrl(sequenceId), new TestSequenceStep(uid, templateId, delayMinutes), HttpStatusCode.Created);
         return (sequenceId, templateId);
     }
 

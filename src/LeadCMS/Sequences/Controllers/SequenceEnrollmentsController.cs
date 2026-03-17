@@ -10,7 +10,6 @@ using LeadCMS.Entities;
 using LeadCMS.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Core.Sequences.Controllers;
 
@@ -18,47 +17,38 @@ namespace LeadCMS.Core.Sequences.Controllers;
 [Route("api/sequences/{sequenceId}/enrollments")]
 public class SequenceEnrollmentsController : ControllerBase
 {
-    private readonly PgDbContext dbContext;
     private readonly IMapper mapper;
     private readonly ISequenceService sequenceService;
+    private readonly QueryProviderFactory<SequenceEnrollment> queryProviderFactory;
 
-    public SequenceEnrollmentsController(PgDbContext dbContext, IMapper mapper, ISequenceService sequenceService)
+    public SequenceEnrollmentsController(
+        IMapper mapper,
+        ISequenceService sequenceService,
+        QueryProviderFactory<SequenceEnrollment> queryProviderFactory)
     {
-        this.dbContext = dbContext;
         this.mapper = mapper;
         this.sequenceService = sequenceService;
+        this.queryProviderFactory = queryProviderFactory;
     }
 
     /// <summary>
-    /// Lists enrollments for a sequence with optional status filter.
+    /// Lists enrollments for a sequence with support for filtering, pagination, and search.
     /// </summary>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<List<SequenceEnrollmentDetailsDto>>> Get(
         int sequenceId,
-        [FromQuery] SequenceEnrollmentStatus? status)
+        [FromQuery] string? query)
     {
-        _ = await dbContext.Sequences!.FindAsync(sequenceId)
-            ?? throw new EntityNotFoundException(nameof(Sequence), sequenceId.ToString());
+        var qp = queryProviderFactory.BuildQueryProvider(
+            additionalQueryString: $"filter[where][SequenceId]={sequenceId}");
+        var result = await qp.GetResult();
 
-        var query = dbContext.SequenceEnrollments!
-            .Where(e => e.SequenceId == sequenceId);
-
-        if (status.HasValue)
-        {
-            query = query.Where(e => e.Status == status.Value);
-        }
-
-        var enrollments = await query
-            .OrderByDescending(e => e.EnteredAt)
-            .ToListAsync();
-
-        Response.Headers.Append(ResponseHeaderNames.TotalCount, enrollments.Count.ToString());
+        Response.Headers.Append(ResponseHeaderNames.TotalCount, result.TotalCount.ToString());
         Response.Headers.Append(ResponseHeaderNames.AccessControlExposeHeader, ResponseHeaderNames.TotalCount);
 
-        return Ok(mapper.Map<List<SequenceEnrollmentDetailsDto>>(enrollments));
+        return Ok(mapper.Map<List<SequenceEnrollmentDetailsDto>>(result.Records));
     }
 
     /// <summary>
@@ -70,11 +60,17 @@ public class SequenceEnrollmentsController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<SequenceEnrollmentDetailsDto>> GetOne(int sequenceId, int enrollmentId)
     {
-        var enrollment = await dbContext.SequenceEnrollments!
-            .FirstOrDefaultAsync(e => e.Id == enrollmentId && e.SequenceId == sequenceId)
-            ?? throw new EntityNotFoundException(nameof(SequenceEnrollment), enrollmentId.ToString());
+        var qp = queryProviderFactory.BuildQueryProvider(
+            limit: 1,
+            additionalQueryString: $"filter[where][SequenceId]={sequenceId}&filter[where][id]={enrollmentId}");
+        var result = await qp.GetResult();
 
-        return Ok(mapper.Map<SequenceEnrollmentDetailsDto>(enrollment));
+        if (result.Records == null || result.Records.Count == 0)
+        {
+            throw new EntityNotFoundException(nameof(SequenceEnrollment), enrollmentId.ToString());
+        }
+
+        return Ok(mapper.Map<SequenceEnrollmentDetailsDto>(result.Records.First()));
     }
 
     /// <summary>
@@ -89,7 +85,7 @@ public class SequenceEnrollmentsController : ControllerBase
         [FromBody] SequenceEnrollmentCreateDto value)
     {
         var enrollments = await sequenceService.EnrollContactsAsync(
-            sequenceId, value.ContactIds, value.EnrollmentReason, SequenceEnrollmentSource.Manual);
+            sequenceId, value.ContactIds, value.EnrollmentReason, value.TemplateArguments, SequenceEnrollmentSource.Manual);
 
         var dtos = mapper.Map<List<SequenceEnrollmentDetailsDto>>(enrollments);
         return StatusCode(StatusCodes.Status201Created, dtos);

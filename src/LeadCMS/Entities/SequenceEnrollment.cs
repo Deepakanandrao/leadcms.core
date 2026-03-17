@@ -61,9 +61,9 @@ public class SequenceEnrollment : BaseEntityWithIdAndDates
     public SequenceEnrollmentStatus Status { get; set; } = SequenceEnrollmentStatus.Active;
 
     /// <summary>
-    /// Gets or sets the StepKey of the last completed step.
+    /// Gets or sets the name of the last completed step.
     /// </summary>
-    public string? LastCompletedStepKey { get; set; }
+    public string? LastCompletedStepName { get; set; }
 
     /// <summary>
     /// Gets or sets when the contact entered the sequence.
@@ -96,4 +96,11 @@ public class SequenceEnrollment : BaseEntityWithIdAndDates
     /// Gets or sets the reason the contact was enrolled (operator note, trigger description, segment name).
     /// </summary>
     public string? EnrollmentReason { get; set; }
+
+    /// <summary>
+    /// Gets or sets custom template arguments for this enrollment.
+    /// Merged into the template arguments for every email sent in this enrollment.
+    /// </summary>
+    [Column(TypeName = "jsonb")]
+    public Dictionary<string, string>? TemplateArguments { get; set; }
 }

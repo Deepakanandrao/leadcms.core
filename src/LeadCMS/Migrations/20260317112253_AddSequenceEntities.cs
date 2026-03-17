@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using LeadCMS.Models;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -21,6 +22,7 @@ namespace LeadCMS.Migrations
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     name = table.Column<string>(type: "text", nullable: false),
                     description = table.Column<string>(type: "text", nullable: true),
+                    language = table.Column<string>(type: "text", nullable: false),
                     status = table.Column<int>(type: "integer", nullable: false),
                     stop_on_reply = table.Column<bool>(type: "boolean", nullable: false),
                     use_contact_time_zone = table.Column<bool>(type: "boolean", nullable: false),
@@ -59,13 +61,14 @@ namespace LeadCMS.Migrations
                     sequence_id = table.Column<int>(type: "integer", nullable: false),
                     contact_id = table.Column<int>(type: "integer", nullable: false),
                     status = table.Column<int>(type: "integer", nullable: false),
-                    last_completed_step_key = table.Column<string>(type: "text", nullable: true),
+                    last_completed_step_name = table.Column<string>(type: "text", nullable: true),
                     entered_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     completed_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     exited_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     exit_reason = table.Column<int>(type: "integer", nullable: false),
                     enrollment_source = table.Column<int>(type: "integer", nullable: false),
                     enrollment_reason = table.Column<string>(type: "text", nullable: true),
+                    template_arguments = table.Column<Dictionary<string, string>>(type: "jsonb", nullable: true),
                     source = table.Column<string>(type: "text", nullable: true),
                     created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     updated_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
@@ -96,10 +99,13 @@ namespace LeadCMS.Migrations
                     sequence_id = table.Column<int>(type: "integer", nullable: false),
                     email_template_id = table.Column<int>(type: "integer", nullable: false),
                     position = table.Column<int>(type: "integer", nullable: false),
-                    step_key = table.Column<string>(type: "text", nullable: false),
+                    name = table.Column<string>(type: "text", nullable: false),
                     type = table.Column<int>(type: "integer", nullable: false),
-                    title = table.Column<string>(type: "text", nullable: true),
                     timing = table.Column<SequenceStepTiming>(type: "jsonb", nullable: false),
+                    scheduled_count = table.Column<int>(type: "integer", nullable: false),
+                    sent_count = table.Column<int>(type: "integer", nullable: false),
+                    failed_count = table.Column<int>(type: "integer", nullable: false),
+                    skipped_count = table.Column<int>(type: "integer", nullable: false),
                     source = table.Column<string>(type: "text", nullable: true),
                     created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     updated_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
@@ -128,6 +134,7 @@ namespace LeadCMS.Migrations
                     id = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     sequence_id = table.Column<int>(type: "integer", nullable: false),
+                    sequence_enrollment_id = table.Column<int>(type: "integer", nullable: false),
                     sequence_step_id = table.Column<int>(type: "integer", nullable: false),
                     contact_id = table.Column<int>(type: "integer", nullable: false),
                     status = table.Column<int>(type: "integer", nullable: false),
@@ -156,6 +163,12 @@ namespace LeadCMS.Migrations
                         principalColumn: "id",
                         onDelete: ReferentialAction.SetNull);
                     table.ForeignKey(
+                        name: "fk_sequence_delivery_sequence_enrollment_sequence_enrollment_id",
+                        column: x => x.sequence_enrollment_id,
+                        principalTable: "sequence_enrollment",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
                         name: "fk_sequence_delivery_sequence_sequence_id",
                         column: x => x.sequence_id,
                         principalTable: "sequence",
@@ -170,9 +183,9 @@ namespace LeadCMS.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "ix_sequence_name",
+                name: "ix_sequence_name_language",
                 table: "sequence",
-                column: "name",
+                columns: new[] { "name", "language" },
                 unique: true);
 
             migrationBuilder.CreateIndex(
@@ -186,10 +199,15 @@ namespace LeadCMS.Migrations
                 column: "email_log_id");
 
             migrationBuilder.CreateIndex(
-                name: "ix_sequence_delivery_sequence_id_sequence_step_id_contact_id",
+                name: "ix_sequence_delivery_sequence_enrollment_id_sequence_step_id",
                 table: "sequence_delivery",
-                columns: new[] { "sequence_id", "sequence_step_id", "contact_id" },
+                columns: new[] { "sequence_enrollment_id", "sequence_step_id" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "ix_sequence_delivery_sequence_id",
+                table: "sequence_delivery",
+                column: "sequence_id");
 
             migrationBuilder.CreateIndex(
                 name: "ix_sequence_delivery_sequence_step_id",
@@ -228,9 +246,9 @@ namespace LeadCMS.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "ix_sequence_step_sequence_id_step_key",
+                name: "ix_sequence_step_sequence_id_name",
                 table: "sequence_step",
-                columns: new[] { "sequence_id", "step_key" },
+                columns: new[] { "sequence_id", "name" },
                 unique: true);
         }
 

@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using LeadCMS.Core.Sequences.Services;
 using LeadCMS.Models;
 
 namespace LeadCMS.Tests;
@@ -14,7 +15,7 @@ public class SequenceSendTaskCalculationTests
         var baseTime = new DateTime(2025, 6, 1, 12, 0, 0, DateTimeKind.Utc);
         var timing = MakeTiming(30, "minutes");
 
-        var result = SequenceSendTask.CalculateScheduledAt(baseTime, timing, false, 0, null);
+        var result = SequenceService.CalculateScheduledAt(baseTime, timing, false, 0, null);
 
         result.Should().Be(baseTime.AddMinutes(30));
     }
@@ -25,7 +26,7 @@ public class SequenceSendTaskCalculationTests
         var baseTime = new DateTime(2025, 6, 1, 12, 0, 0, DateTimeKind.Utc);
         var timing = MakeTiming(2, "hours");
 
-        var result = SequenceSendTask.CalculateScheduledAt(baseTime, timing, false, 0, null);
+        var result = SequenceService.CalculateScheduledAt(baseTime, timing, false, 0, null);
 
         result.Should().Be(baseTime.AddHours(2));
     }
@@ -36,7 +37,7 @@ public class SequenceSendTaskCalculationTests
         var baseTime = new DateTime(2025, 6, 1, 12, 0, 0, DateTimeKind.Utc);
         var timing = MakeTiming(3, "days");
 
-        var result = SequenceSendTask.CalculateScheduledAt(baseTime, timing, false, 0, null);
+        var result = SequenceService.CalculateScheduledAt(baseTime, timing, false, 0, null);
 
         result.Should().Be(baseTime.AddDays(3));
     }
@@ -47,7 +48,7 @@ public class SequenceSendTaskCalculationTests
         var baseTime = new DateTime(2025, 6, 1, 12, 0, 0, DateTimeKind.Utc);
         var timing = MakeTiming(0, "minutes");
 
-        var result = SequenceSendTask.CalculateScheduledAt(baseTime, timing, false, 0, null);
+        var result = SequenceService.CalculateScheduledAt(baseTime, timing, false, 0, null);
 
         result.Should().Be(baseTime);
     }
@@ -60,7 +61,7 @@ public class SequenceSendTaskCalculationTests
         var baseTime = new DateTime(2025, 6, 1, 12, 0, 0, DateTimeKind.Utc);
         var timing = MakeTiming(1, "days", sendAt: "10:00");
 
-        var result = SequenceSendTask.CalculateScheduledAt(baseTime, timing, false, 0, null);
+        var result = SequenceService.CalculateScheduledAt(baseTime, timing, false, 0, null);
 
         result.Should().Be(new DateTime(2025, 6, 3, 10, 0, 0, DateTimeKind.Unspecified));
     }
@@ -73,7 +74,7 @@ public class SequenceSendTaskCalculationTests
         var baseTime = new DateTime(2025, 6, 1, 8, 0, 0, DateTimeKind.Utc);
         var timing = MakeTiming(1, "days", sendAt: "10:00");
 
-        var result = SequenceSendTask.CalculateScheduledAt(baseTime, timing, false, 0, null);
+        var result = SequenceService.CalculateScheduledAt(baseTime, timing, false, 0, null);
 
         result.Should().Be(new DateTime(2025, 6, 2, 10, 0, 0, DateTimeKind.Unspecified));
     }
@@ -87,7 +88,7 @@ public class SequenceSendTaskCalculationTests
         var baseTime = new DateTime(2025, 6, 1, 16, 0, 0, DateTimeKind.Utc);
         var timing = MakeTiming(1, "days", sendAt: "10:00");
 
-        var result = SequenceSendTask.CalculateScheduledAt(baseTime, timing, false, 180, null);
+        var result = SequenceService.CalculateScheduledAt(baseTime, timing, false, 180, null);
 
         result.Should().Be(new DateTime(2025, 6, 3, 7, 0, 0, DateTimeKind.Unspecified));
     }
@@ -99,7 +100,7 @@ public class SequenceSendTaskCalculationTests
         var baseTime = new DateTime(2025, 6, 1, 10, 0, 0, DateTimeKind.Utc);
         var timing = MakeTiming(0, "minutes", allowedDays: new[] { "Monday" });
 
-        var result = SequenceSendTask.CalculateScheduledAt(baseTime, timing, false, 0, null);
+        var result = SequenceService.CalculateScheduledAt(baseTime, timing, false, 0, null);
 
         result.DayOfWeek.Should().Be(DayOfWeek.Monday);
         result.Should().Be(new DateTime(2025, 6, 2, 10, 0, 0, DateTimeKind.Unspecified));
@@ -112,7 +113,7 @@ public class SequenceSendTaskCalculationTests
         var baseTime = new DateTime(2025, 6, 2, 10, 0, 0, DateTimeKind.Utc);
         var timing = MakeTiming(0, "minutes", allowedDays: new[] { "Monday", "Wednesday", "Friday" });
 
-        var result = SequenceSendTask.CalculateScheduledAt(baseTime, timing, false, 0, null);
+        var result = SequenceService.CalculateScheduledAt(baseTime, timing, false, 0, null);
 
         result.DayOfWeek.Should().Be(DayOfWeek.Monday);
         result.Should().Be(baseTime);
@@ -127,7 +128,7 @@ public class SequenceSendTaskCalculationTests
         var baseTime = new DateTime(2025, 6, 1, 12, 0, 0, DateTimeKind.Utc);
         var timing = MakeTiming(1, "days", sendAt: "09:00", allowedDays: new[] { "Tuesday", "Thursday" });
 
-        var result = SequenceSendTask.CalculateScheduledAt(baseTime, timing, false, 0, null);
+        var result = SequenceService.CalculateScheduledAt(baseTime, timing, false, 0, null);
 
         result.DayOfWeek.Should().Be(DayOfWeek.Tuesday);
         result.Should().Be(new DateTime(2025, 6, 3, 9, 0, 0, DateTimeKind.Unspecified));
@@ -142,7 +143,7 @@ public class SequenceSendTaskCalculationTests
         var baseTime = new DateTime(2025, 6, 2, 12, 0, 0, DateTimeKind.Utc);
         var timing = MakeTiming(0, "minutes", sendAt: "09:00", allowedDays: new[] { "Wednesday" });
 
-        var result = SequenceSendTask.CalculateScheduledAt(baseTime, timing, false, 0, null);
+        var result = SequenceService.CalculateScheduledAt(baseTime, timing, false, 0, null);
 
         result.DayOfWeek.Should().Be(DayOfWeek.Wednesday);
         result.Should().Be(new DateTime(2025, 6, 4, 9, 0, 0, DateTimeKind.Unspecified));
@@ -159,7 +160,7 @@ public class SequenceSendTaskCalculationTests
         var baseTime = new DateTime(2025, 6, 1, 2, 0, 0, DateTimeKind.Utc);
         var timing = MakeTiming(0, "minutes", sendAt: "10:00");
 
-        var result = SequenceSendTask.CalculateScheduledAt(baseTime, timing, false, -300, null);
+        var result = SequenceService.CalculateScheduledAt(baseTime, timing, false, -300, null);
 
         result.Should().Be(new DateTime(2025, 6, 1, 15, 0, 0, DateTimeKind.Unspecified));
     }
@@ -173,7 +174,7 @@ public class SequenceSendTaskCalculationTests
         var baseTime = new DateTime(2025, 6, 1, 16, 0, 0, DateTimeKind.Utc);
         var timing = MakeTiming(1, "days", sendAt: "10:00");
 
-        var result = SequenceSendTask.CalculateScheduledAt(baseTime, timing, true, 180, -300);
+        var result = SequenceService.CalculateScheduledAt(baseTime, timing, true, 180, -300);
 
         result.Should().Be(new DateTime(2025, 6, 3, 15, 0, 0, DateTimeKind.Unspecified));
     }
@@ -184,7 +185,7 @@ public class SequenceSendTaskCalculationTests
         var baseTime = new DateTime(2025, 6, 1, 16, 0, 0, DateTimeKind.Utc);
         var timing = MakeTiming(1, "days", sendAt: "10:00");
 
-        var result = SequenceSendTask.CalculateScheduledAt(baseTime, timing, true, 180, null);
+        var result = SequenceService.CalculateScheduledAt(baseTime, timing, true, 180, null);
 
         result.Should().Be(new DateTime(2025, 6, 3, 7, 0, 0, DateTimeKind.Unspecified));
     }

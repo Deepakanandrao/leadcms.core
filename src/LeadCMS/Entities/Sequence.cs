@@ -21,7 +21,7 @@ public enum SequenceStatus
 
 [Table("sequence")]
 [SupportsChangeLog]
-[Index(nameof(Name), IsUnique = true)]
+[Index(nameof(Name), nameof(Language), IsUnique = true)]
 public class Sequence : BaseEntity
 {
     [Required]
@@ -30,6 +30,9 @@ public class Sequence : BaseEntity
 
     [Searchable]
     public string? Description { get; set; }
+
+    [Searchable]
+    public string Language { get; set; } = string.Empty;
 
     [Required]
     public SequenceStatus Status { get; set; } = SequenceStatus.Draft;

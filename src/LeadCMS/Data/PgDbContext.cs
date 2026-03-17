@@ -383,6 +383,12 @@ public class PgDbContext : IdentityDbContext<User>
             .HasForeignKey(d => d.EmailLogId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        builder.Entity<SequenceDelivery>()
+            .HasOne(d => d.SequenceEnrollment)
+            .WithMany()
+            .HasForeignKey(d => d.SequenceEnrollmentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         // SequenceEnrollment: Contact cascade
         builder.Entity<SequenceEnrollment>()
             .HasOne(e => e.Contact)

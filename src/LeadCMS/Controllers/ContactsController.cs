@@ -56,7 +56,6 @@ public class ContactsController : BaseControllerWithImport<Contact, ContactCreat
 
         var singleItem = (ContactDetailsDto)((ObjectResult)returnedSingleItem!).Value!;
 
-        singleItem!.AvatarUrl = GravatarHelper.EmailToGravatarUrl(singleItem.Email);
         singleItem.UserDeviceSummary = UserAgentDeviceSummaryHelper.Parse(singleItem.UpdatedByUserAgent ?? singleItem.CreatedByUserAgent);
 
         return Ok(singleItem!);
@@ -73,11 +72,6 @@ public class ContactsController : BaseControllerWithImport<Contact, ContactCreat
         var returnedItems = (await ExecuteWithSegmentFilterAsync(() => base.Get(query))).Result;
 
         var items = (List<ContactDetailsDto>)((ObjectResult)returnedItems!).Value!;
-
-        items.ForEach(c =>
-        {
-            c.AvatarUrl = GravatarHelper.EmailToGravatarUrl(c.Email);
-        });
 
         return Ok(items);
     }
@@ -107,8 +101,6 @@ public class ContactsController : BaseControllerWithImport<Contact, ContactCreat
 
         var returnedValue = mapper.Map<ContactDetailsDto>(contact);
 
-        returnedValue.AvatarUrl = GravatarHelper.EmailToGravatarUrl(returnedValue.Email);
-
         return CreatedAtAction(nameof(GetOne), new { id = contact.Id }, returnedValue);
     }
 
@@ -134,8 +126,6 @@ public class ContactsController : BaseControllerWithImport<Contact, ContactCreat
         await dbContext.SaveChangesAsync();
 
         var returnedValue = mapper.Map<ContactDetailsDto>(existingContact);
-
-        returnedValue.AvatarUrl = GravatarHelper.EmailToGravatarUrl(returnedValue.Email);
 
         return Ok(returnedValue);
     }

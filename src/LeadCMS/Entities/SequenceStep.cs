@@ -18,7 +18,7 @@ public enum SequenceStepType
 
 [Table("sequence_step")]
 [Index(nameof(SequenceId), nameof(Position), IsUnique = true)]
-[Index(nameof(SequenceId), nameof(StepKey), IsUnique = true)]
+[Index(nameof(SequenceId), nameof(Name), IsUnique = true)]
 public class SequenceStep : BaseEntityWithIdAndDates
 {
     [Required]
@@ -43,12 +43,12 @@ public class SequenceStep : BaseEntityWithIdAndDates
     public int Position { get; set; }
 
     /// <summary>
-    /// Gets or sets the stable string identifier for this step (e.g. "welcome", "getting-started").
-    /// Independent from position. Used by runtime state and delivery tracking.
+    /// Gets or sets the step name.
+    /// Used by runtime state and delivery tracking.
     /// </summary>
     [Required]
     [Searchable]
-    public string StepKey { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
 
     /// <summary>
     /// Gets or sets the step type. Phase 1 supports Email only.
@@ -57,15 +57,19 @@ public class SequenceStep : BaseEntityWithIdAndDates
     public SequenceStepType Type { get; set; } = SequenceStepType.Email;
 
     /// <summary>
-    /// Gets or sets the internal business/admin label for this step.
-    /// </summary>
-    [Searchable]
-    public string? Title { get; set; }
-
-    /// <summary>
     /// Gets or sets the timing configuration (delay, sendAt, allowedWeekDays).
     /// </summary>
     [Required]
     [Column(TypeName = "jsonb")]
     public SequenceStepTiming Timing { get; set; } = new();
+
+    // Summary counters
+
+    public int ScheduledCount { get; set; }
+
+    public int SentCount { get; set; }
+
+    public int FailedCount { get; set; }
+
+    public int SkippedCount { get; set; }
 }

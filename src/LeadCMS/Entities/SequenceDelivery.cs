@@ -18,7 +18,7 @@ public enum SequenceDeliveryStatus
 }
 
 [Table("sequence_delivery")]
-[Index(nameof(SequenceId), nameof(SequenceStepId), nameof(ContactId), IsUnique = true)]
+[Index(nameof(SequenceEnrollmentId), nameof(SequenceStepId), IsUnique = true)]
 [Index(nameof(Status), nameof(ScheduledAt))]
 public class SequenceDelivery : BaseEntityWithIdAndDates
 {
@@ -29,6 +29,14 @@ public class SequenceDelivery : BaseEntityWithIdAndDates
     [ForeignKey("SequenceId")]
     [DeleteBehavior(DeleteBehavior.Cascade)]
     public virtual Sequence? Sequence { get; set; }
+
+    [Required]
+    public int SequenceEnrollmentId { get; set; }
+
+    [JsonIgnore]
+    [ForeignKey("SequenceEnrollmentId")]
+    [DeleteBehavior(DeleteBehavior.Cascade)]
+    public virtual SequenceEnrollment? SequenceEnrollment { get; set; }
 
     [Required]
     public int SequenceStepId { get; set; }
