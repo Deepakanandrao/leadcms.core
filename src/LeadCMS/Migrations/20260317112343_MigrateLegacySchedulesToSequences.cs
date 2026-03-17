@@ -94,7 +94,7 @@ BEGIN
                 ) THEN 1  -- Active
                 ELSE 2    -- Paused
             END,
-            false, false, 0,
+            false, true, 0,
             0, 0, 0, 0, 0,
             NULL, NULL,
             NOW(), sequence_source
