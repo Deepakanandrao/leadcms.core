@@ -27,6 +27,15 @@ public class ContactScheduledEmailTask : BaseTask
 
     public override async Task<bool> Execute(TaskExecutionLog currentJob)
     {
+        currentJob.Result = "Skipped: legacy ContactScheduledEmailTask is retired. Email sequences are now handled by SequenceSendTask.";
+
+        // Keep the legacy implementation below for reference during the transition.
+        // This branch is intentionally disabled so the old flow can never execute again.
+        if (DateTime.UtcNow.Year >= 2000)
+        {
+            return true;
+        }
+
         try
         {
             int processedCount = 0;
@@ -55,7 +64,7 @@ public class ContactScheduledEmailTask : BaseTask
                         continue;
                     }
 
-                    // Skip contacts without email — cannot send scheduled emails
+                    // Skip contacts without email - cannot send scheduled emails
                     if (string.IsNullOrWhiteSpace(schedule.Contact?.Email))
                     {
                         Log.Warning("Skipping scheduled email for contact {ContactId}: no email address", schedule.ContactId);
