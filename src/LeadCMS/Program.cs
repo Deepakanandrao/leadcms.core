@@ -114,6 +114,7 @@ public class Program
         builder.Services.AddScoped<ISyncService, SyncService>();
         builder.Services.AddScoped<ISegmentService, SegmentService>();
         builder.Services.AddScoped<ICampaignService, CampaignService>();
+        builder.Services.AddScoped<ISequenceService, SequenceService>();
         builder.Services.AddScoped<IEmailTemplateService, EmailTemplateService>();
 
         // Add enrichment services

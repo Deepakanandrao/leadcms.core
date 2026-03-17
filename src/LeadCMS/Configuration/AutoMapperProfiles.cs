@@ -258,6 +258,24 @@ public class AutoMapperProfiles : Profile
         CreateMap<CampaignRecipient, CampaignRecipientDetailsDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
 
+        // Sequence mappings
+        CreateMap<SequenceCreateDto, Sequence>().ReverseMap();
+        CreateMap<SequenceUpdateDto, Sequence>()
+            .WithPatchDtoSupport()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+        CreateMap<Sequence, SequenceUpdateDto>()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+        CreateMap<Sequence, SequenceDetailsDto>()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+        CreateMap<SequenceStepCreateDto, SequenceStep>().ReverseMap();
+        CreateMap<SequenceStepUpdateDto, SequenceStep>()
+            .WithPatchDtoSupport()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+        CreateMap<SequenceStep, SequenceStepDetailsDto>()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+        CreateMap<SequenceEnrollment, SequenceEnrollmentDetailsDto>()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+
         // Segment mappings
         CreateMap<SegmentCreateDto, Segment>()
             .ReverseMap();
