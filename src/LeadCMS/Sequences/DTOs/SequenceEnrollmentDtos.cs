@@ -22,6 +22,12 @@ public class SequenceEnrollmentCreateDto
     public Dictionary<string, string>? TemplateArguments { get; set; }
 }
 
+public class SequenceEnrollmentStopDto
+{
+    [Required]
+    public int[] EnrollmentIds { get; set; } = Array.Empty<int>();
+}
+
 public class SequenceEnrollmentDetailsDto
 {
     public int Id { get; set; }

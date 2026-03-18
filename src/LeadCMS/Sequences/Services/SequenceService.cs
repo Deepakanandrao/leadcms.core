@@ -396,6 +396,40 @@ public class SequenceService : ISequenceService
         return enrollment;
     }
 
+    public async Task<List<SequenceEnrollment>> StopEnrollmentsAsync(int sequenceId, int[] enrollmentIds)
+    {
+        var enrollments = await dbContext.SequenceEnrollments!
+            .Where(e => e.SequenceId == sequenceId
+                && enrollmentIds.Contains(e.Id)
+                && e.Status == SequenceEnrollmentStatus.Active)
+            .ToListAsync();
+
+        if (enrollments.Count == 0)
+        {
+            return enrollments;
+        }
+
+        var now = DateTime.UtcNow;
+
+        foreach (var enrollment in enrollments)
+        {
+            enrollment.Status = SequenceEnrollmentStatus.Exited;
+            enrollment.ExitReason = SequenceExitReason.ManuallyRemoved;
+            enrollment.ExitedAt = now;
+        }
+
+        var sequence = await dbContext.Sequences!.FindAsync(sequenceId);
+        if (sequence != null)
+        {
+            sequence.ActiveEnrollmentCount = Math.Max(0, sequence.ActiveEnrollmentCount - enrollments.Count);
+            sequence.ExitedEnrollmentCount += enrollments.Count;
+        }
+
+        await dbContext.SaveChangesAsync();
+
+        return enrollments;
+    }
+
     public async Task<SequenceEnrollmentDetailsDto> GetEnrollmentWithTimelineAsync(int sequenceId, int enrollmentId)
     {
         var enrollment = await dbContext.SequenceEnrollments!

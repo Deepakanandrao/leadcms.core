@@ -83,6 +83,23 @@ public class SequenceEnrollmentsController : ControllerBase
     }
 
     /// <summary>
+    /// Stops selected enrollments with a given exit reason.
+    /// </summary>
+    [HttpPost("stop")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<List<SequenceEnrollmentDetailsDto>>> Stop(
+        int sequenceId,
+        [FromBody] SequenceEnrollmentStopDto value)
+    {
+        var enrollments = await sequenceService.StopEnrollmentsAsync(
+            sequenceId, value.EnrollmentIds);
+
+        return Ok(mapper.Map<List<SequenceEnrollmentDetailsDto>>(enrollments));
+    }
+
+    /// <summary>
     /// Removes a contact from a sequence (exits their enrollment).
     /// </summary>
     [HttpDelete("{enrollmentId}")]

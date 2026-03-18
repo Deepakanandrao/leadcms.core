@@ -28,6 +28,8 @@ public interface ISequenceService
 
     Task<SequenceEnrollment> RemoveEnrollmentAsync(int sequenceId, int enrollmentId);
 
+    Task<List<SequenceEnrollment>> StopEnrollmentsAsync(int sequenceId, int[] enrollmentIds);
+
     /// <summary>
     /// Returns a single enrollment with its step timeline: executed, scheduled, and planned steps.
     /// </summary>

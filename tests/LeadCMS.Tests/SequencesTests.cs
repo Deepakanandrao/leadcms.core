@@ -548,6 +548,73 @@ public class SequencesTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task StopEnrollments_SetsExitedStatusWithReason()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("stop-enroll", delayMinutes: 1440);
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contact1 = await CreateContactAsync("stop-enroll1");
+        var contact2 = await CreateContactAsync("stop-enroll2");
+        var enrollments = await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contact1, contact2 } },
+            HttpStatusCode.Created);
+
+        var stopDto = new SequenceEnrollmentStopDto
+        {
+            EnrollmentIds = new[] { enrollments![0].Id, enrollments[1].Id },
+        };
+
+        var result = await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments/stop",
+            stopDto,
+            HttpStatusCode.OK);
+
+        result.Should().NotBeNull();
+        result!.Count.Should().Be(2);
+        result.Should().AllSatisfy(e =>
+        {
+            e.Status.Should().Be(SequenceEnrollmentStatus.Exited);
+            e.ExitReason.Should().Be(SequenceExitReason.ManuallyRemoved);
+            e.ExitedAt.Should().NotBeNull();
+        });
+    }
+
+    [Fact]
+    public async Task StopEnrollments_SkipsNonActiveEnrollments()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("stop-skip", delayMinutes: 1440);
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contact1 = await CreateContactAsync("stop-skip1");
+        var contact2 = await CreateContactAsync("stop-skip2");
+        var enrollments = await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contact1, contact2 } },
+            HttpStatusCode.Created);
+
+        // Remove first enrollment so it's already exited
+        await DeleteTest(
+            $"{SequencesUrl}/{sequenceId}/enrollments/{enrollments![0].Id}",
+            HttpStatusCode.OK);
+
+        var stopDto = new SequenceEnrollmentStopDto
+        {
+            EnrollmentIds = new[] { enrollments[0].Id, enrollments[1].Id },
+        };
+
+        var result = await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments/stop",
+            stopDto,
+            HttpStatusCode.OK);
+
+        // Only the second active enrollment should be stopped
+        result.Should().NotBeNull();
+        result!.Count.Should().Be(1);
+        result[0].ContactId.Should().Be(contact2);
+    }
+
+    [Fact]
     public async Task ListEnrollments_FiltersByStatus()
     {
         var (sequenceId, _) = await CreateSequenceWithStepAsync("list-enroll", delayMinutes: 1440);
