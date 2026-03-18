@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using AutoMapper;
 using LeadCMS.Core.Sequences.DTOs;
 using LeadCMS.Core.Sequences.Interfaces;
 using LeadCMS.Data;
@@ -9,6 +10,7 @@ using LeadCMS.Entities;
 using LeadCMS.Helpers;
 using LeadCMS.Interfaces;
 using LeadCMS.Models;
+using LeadCMS.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Core.Sequences.Services;
@@ -17,11 +19,15 @@ public class SequenceService : ISequenceService
 {
     private readonly PgDbContext dbContext;
     private readonly IEmailFromTemplateService emailFromTemplateService;
+    private readonly IMapper mapper;
+    private readonly ILiquidTemplateService liquidTemplateService;
 
-    public SequenceService(PgDbContext dbContext, IEmailFromTemplateService emailFromTemplateService)
+    public SequenceService(PgDbContext dbContext, IEmailFromTemplateService emailFromTemplateService, IMapper mapper, ILiquidTemplateService liquidTemplateService)
     {
         this.dbContext = dbContext;
         this.emailFromTemplateService = emailFromTemplateService;
+        this.mapper = mapper;
+        this.liquidTemplateService = liquidTemplateService;
     }
 
     public static DateTime CalculateScheduledAt(
@@ -388,6 +394,164 @@ public class SequenceService : ISequenceService
         await dbContext.SaveChangesAsync();
 
         return enrollment;
+    }
+
+    public async Task<SequenceEnrollmentDetailsDto> GetEnrollmentWithTimelineAsync(int sequenceId, int enrollmentId)
+    {
+        var enrollment = await dbContext.SequenceEnrollments!
+            .Include(e => e.LastCompletedStep)
+            .FirstOrDefaultAsync(e => e.Id == enrollmentId && e.SequenceId == sequenceId)
+            ?? throw new EntityNotFoundException(nameof(SequenceEnrollment), enrollmentId.ToString());
+
+        var sequence = await dbContext.Sequences!.FindAsync(sequenceId)
+            ?? throw new EntityNotFoundException(nameof(Sequence), sequenceId.ToString());
+
+        // Load contact with related entities for template rendering
+        var contact = await TemplateContactLoader.LoadByIdAsync(dbContext, enrollment.ContactId);
+        enrollment.Contact = contact;
+
+        var steps = await dbContext.SequenceSteps!
+            .Where(s => s.SequenceId == sequenceId)
+            .OrderBy(s => s.Position)
+            .ToListAsync();
+
+        var deliveries = await dbContext.SequenceDeliveries!
+            .Where(d => d.SequenceEnrollmentId == enrollmentId)
+            .ToListAsync();
+
+        var deliveriesByStepId = deliveries.ToDictionary(d => d.SequenceStepId);
+
+        // Batch-load EmailLogs for sent deliveries
+        var emailLogIds = deliveries
+            .Where(d => d.EmailLogId.HasValue)
+            .Select(d => d.EmailLogId!.Value)
+            .Distinct()
+            .ToList();
+
+        var emailLogsById = emailLogIds.Count > 0
+            ? await dbContext.EmailLogs!
+                .AsNoTracking()
+                .Where(l => emailLogIds.Contains(l.Id))
+                .ToDictionaryAsync(l => l.Id)
+            : new Dictionary<int, EmailLog>();
+
+        // Batch-load EmailTemplates for steps that need preview rendering
+        var templateIds = steps.Select(s => s.EmailTemplateId).Distinct().ToList();
+        var templatesById = await dbContext.EmailTemplates!
+            .AsNoTracking()
+            .Where(t => templateIds.Contains(t.Id))
+            .ToDictionaryAsync(t => t.Id);
+
+        // Build template arguments for preview rendering
+        var templateArgs = TemplateArgumentsBuilder.FromContact(contact);
+
+        var utmParams = UtmsBuilder.Create()
+            .WithDefaults()
+            .WithContext(new Utms { Campaign = sequence.Name })
+            .WithOverrides(sequence.UtmParameters)
+            .Build();
+
+        TemplateArgumentsBuilder.WithUtmParameters(templateArgs, utmParams);
+
+        if (enrollment.TemplateArguments != null)
+        {
+            var enrollmentArgs = enrollment.TemplateArguments
+                .ToDictionary(kv => kv.Key, kv => (object)kv.Value);
+            TemplateArgumentsBuilder.Merge(templateArgs, enrollmentArgs);
+        }
+
+        var dto = mapper.Map<SequenceEnrollmentDetailsDto>(enrollment);
+        dto.Steps = new List<EnrollmentStepTimelineEntryDto>();
+
+        // Track the base time for calculating planned step schedules.
+        // Start from the last known actual time (sent or scheduled delivery),
+        // then chain forward using CalculateScheduledAt for planned steps.
+        DateTime? lastKnownTime = null;
+
+        foreach (var step in steps)
+        {
+            var entry = new EnrollmentStepTimelineEntryDto
+            {
+                StepId = step.Id,
+                Name = step.Name,
+                Position = step.Position,
+                EmailTemplateId = step.EmailTemplateId,
+                Timing = step.Timing,
+            };
+
+            if (deliveriesByStepId.TryGetValue(step.Id, out var delivery))
+            {
+                entry.DeliveryId = delivery.Id;
+                entry.ScheduledAt = delivery.ScheduledAt;
+                entry.EmailLogId = delivery.EmailLogId;
+
+                switch (delivery.Status)
+                {
+                    case SequenceDeliveryStatus.Sent:
+                        entry.Status = EnrollmentStepTimelineStatus.Sent;
+                        entry.SentAt = delivery.SentAt;
+                        lastKnownTime = delivery.SentAt ?? delivery.ScheduledAt;
+
+                        if (delivery.EmailLogId.HasValue && emailLogsById.TryGetValue(delivery.EmailLogId.Value, out var emailLog))
+                        {
+                            entry.EmailPreview = new StepEmailPreviewDto
+                            {
+                                Subject = emailLog.Subject,
+                                Body = ContactEmailCommunicationService.PrepareBody(emailLog),
+                                FromEmail = emailLog.FromEmail,
+                            };
+                        }
+
+                        break;
+                    case SequenceDeliveryStatus.Scheduled:
+                        entry.Status = EnrollmentStepTimelineStatus.Scheduled;
+                        lastKnownTime = delivery.ScheduledAt;
+                        break;
+                    case SequenceDeliveryStatus.Failed:
+                        entry.Status = EnrollmentStepTimelineStatus.Failed;
+                        entry.ErrorMessage = delivery.ErrorMessage;
+                        lastKnownTime = delivery.SentAt ?? delivery.ScheduledAt;
+                        break;
+                    case SequenceDeliveryStatus.Skipped:
+                        entry.Status = EnrollmentStepTimelineStatus.Skipped;
+                        entry.SkipReason = delivery.SkipReason;
+                        lastKnownTime = delivery.ScheduledAt;
+                        break;
+                }
+            }
+            else
+            {
+                // No delivery exists — this is a planned step.
+                entry.Status = EnrollmentStepTimelineStatus.Planned;
+
+                var baseTime = lastKnownTime ?? enrollment.EnteredAt;
+                var estimatedAt = CalculateScheduledAt(
+                    baseTime,
+                    step.Timing,
+                    sequence.UseContactTimeZone,
+                    sequence.TimeZone,
+                    enrollment.Contact?.Timezone);
+
+                entry.ScheduledAt = estimatedAt;
+                lastKnownTime = estimatedAt;
+            }
+
+            // Render email preview from template for steps without an EmailLog
+            if (entry.EmailPreview == null && templatesById.TryGetValue(step.EmailTemplateId, out var template))
+            {
+                entry.EmailPreview = new StepEmailPreviewDto
+                {
+                    Subject = await liquidTemplateService.RenderAsync(template.Subject, templateArgs),
+                    Body = await liquidTemplateService.RenderAsync(template.BodyTemplate, templateArgs),
+                    FromEmail = template.FromEmail,
+                    FromName = template.FromName,
+                };
+            }
+
+            dto.Steps.Add(entry);
+        }
+
+        return dto;
     }
 
     public async Task<bool> ExecuteDeliveryAsync(

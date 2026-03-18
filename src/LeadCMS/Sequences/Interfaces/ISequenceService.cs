@@ -29,6 +29,14 @@ public interface ISequenceService
     Task<SequenceEnrollment> RemoveEnrollmentAsync(int sequenceId, int enrollmentId);
 
     /// <summary>
+    /// Returns a single enrollment with its step timeline: executed, scheduled, and planned steps.
+    /// </summary>
+    /// <param name="sequenceId">The sequence ID.</param>
+    /// <param name="enrollmentId">The enrollment ID.</param>
+    /// <returns>The enrollment details with a step-by-step timeline.</returns>
+    Task<SequenceEnrollmentDetailsDto> GetEnrollmentWithTimelineAsync(int sequenceId, int enrollmentId);
+
+    /// <summary>
     /// Sends an email for a scheduled delivery: builds template args and UTMs,
     /// sends via email service, updates delivery status, links email log, and
     /// advances the enrollment's last completed step.

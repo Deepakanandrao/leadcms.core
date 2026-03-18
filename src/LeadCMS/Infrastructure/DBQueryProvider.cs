@@ -85,6 +85,45 @@ namespace LeadCMS.Infrastructure
                    typeToCheck == typeof(Guid);
         }
 
+        private static bool IsNavigationProperty(Type propertyType)
+        {
+            var typeToCheck = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+            return typeToCheck.IsClass
+                && typeToCheck != typeof(string)
+                && typeof(BaseEntityWithId).IsAssignableFrom(typeToCheck);
+        }
+
+        private static List<Expression> BuildNavigationSearchExpressions(
+            ParameterExpression paramExpr,
+            PropertyInfo navProp,
+            string searchValue,
+            MethodInfo containsMethod)
+        {
+            var results = new List<Expression>();
+            var navAccess = Expression.Property(paramExpr, navProp.Name);
+            var navNotNull = Expression.NotEqual(navAccess, Expression.Constant(null, navProp.PropertyType));
+            var toLowerMethod = typeof(string).GetMethod("ToLower", Type.EmptyTypes)!;
+            var valueLower = Expression.Constant(searchValue.ToLower());
+
+            var innerProps = navProp.PropertyType
+                .GetProperties()
+                .Where(p => p.IsDefined(typeof(SearchableAttribute), false) && p.PropertyType == typeof(string));
+
+            foreach (var innerProp in innerProps)
+            {
+                var innerAccess = Expression.Property(navAccess, innerProp.Name);
+                var innerNotNull = Expression.NotEqual(innerAccess, Expression.Constant(null, typeof(string)));
+                var innerLower = Expression.Call(innerAccess, toLowerMethod);
+                var containsCall = Expression.Call(innerLower, containsMethod, valueLower);
+
+                // entity.Nav != null && entity.Nav.Prop != null && entity.Nav.Prop.ToLower().Contains(term)
+                var combined = Expression.AndAlso(Expression.AndAlso(navNotNull, innerNotNull), containsCall);
+                results.Add(combined);
+            }
+
+            return results;
+        }
+
         private void AddIncludeCommands()
         {
             foreach (var data in queryBuilder.IncludeData)
@@ -204,6 +243,19 @@ namespace LeadCMS.Infrastructure
                 {
                     if (prop != null)
                     {
+                        // Check if this is a navigation property (entity class with its own [Searchable] fields)
+                        if (IsNavigationProperty(prop.PropertyType))
+                        {
+                            var navSearchExpressions = BuildNavigationSearchExpressions(
+                                paramExpr, prop, cmdValue, containsMethod!);
+                            foreach (var navExpr in navSearchExpressions)
+                            {
+                                orExpression = Expression.Or(orExpression, navExpr);
+                            }
+
+                            continue;
+                        }
+
                         var n = prop.Name;
                         var me = Expression.Property(paramExpr, n);
                         Expression containsExpression;

@@ -52,6 +52,7 @@ public class SequenceEnrollment : BaseEntityWithIdAndDates
     [Required]
     public int ContactId { get; set; }
 
+    [Searchable]
     [JsonIgnore]
     [ForeignKey("ContactId")]
     [DeleteBehavior(DeleteBehavior.Cascade)]

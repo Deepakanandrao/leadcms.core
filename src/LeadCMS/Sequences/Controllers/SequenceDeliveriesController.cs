@@ -28,6 +28,7 @@ public class SequenceDeliveriesController : ControllerBase
 
     /// <summary>
     /// Lists deliveries for a sequence with support for filtering, pagination, and search.
+    /// Search terms are matched against contact attributes (email, name, company, etc.).
     /// </summary>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]

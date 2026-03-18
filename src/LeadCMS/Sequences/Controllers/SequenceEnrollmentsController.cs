@@ -5,7 +5,6 @@
 using AutoMapper;
 using LeadCMS.Core.Sequences.DTOs;
 using LeadCMS.Core.Sequences.Interfaces;
-using LeadCMS.Data;
 using LeadCMS.Entities;
 using LeadCMS.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
@@ -33,6 +32,7 @@ public class SequenceEnrollmentsController : ControllerBase
 
     /// <summary>
     /// Lists enrollments for a sequence with support for filtering, pagination, and search.
+    /// Search terms are matched against contact attributes (email, name, company, etc.).
     /// </summary>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -52,7 +52,7 @@ public class SequenceEnrollmentsController : ControllerBase
     }
 
     /// <summary>
-    /// Gets a single enrollment by ID.
+    /// Gets a single enrollment by ID, including executed, scheduled, and planned steps.
     /// </summary>
     [HttpGet("{enrollmentId}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -60,17 +60,8 @@ public class SequenceEnrollmentsController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<SequenceEnrollmentDetailsDto>> GetOne(int sequenceId, int enrollmentId)
     {
-        var qp = queryProviderFactory.BuildQueryProvider(
-            limit: 1,
-            additionalQueryString: $"filter[where][SequenceId]={sequenceId}&filter[where][id]={enrollmentId}");
-        var result = await qp.GetResult();
-
-        if (result.Records == null || result.Records.Count == 0)
-        {
-            throw new EntityNotFoundException(nameof(SequenceEnrollment), enrollmentId.ToString());
-        }
-
-        return Ok(mapper.Map<SequenceEnrollmentDetailsDto>(result.Records.First()));
+        var dto = await sequenceService.GetEnrollmentWithTimelineAsync(sequenceId, enrollmentId);
+        return Ok(dto);
     }
 
     /// <summary>

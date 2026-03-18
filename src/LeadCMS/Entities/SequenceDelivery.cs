@@ -5,6 +5,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
+using LeadCMS.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Entities;
@@ -49,6 +50,7 @@ public class SequenceDelivery : BaseEntityWithIdAndDates
     [Required]
     public int ContactId { get; set; }
 
+    [Searchable]
     [JsonIgnore]
     [ForeignKey("ContactId")]
     [DeleteBehavior(DeleteBehavior.Cascade)]
