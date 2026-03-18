@@ -96,7 +96,7 @@ BEGIN
             END,
             false, true, 0,
             0, 0, 0, 0, 0,
-            NULL, NULL,
+            '{""Modes"": [""manual"", ""api""], ""ReentryPolicy"": 2}'::jsonb, NULL,
             NOW(), sequence_source
         ) RETURNING id INTO new_sequence_id;
 
