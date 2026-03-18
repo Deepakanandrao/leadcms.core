@@ -32,6 +32,8 @@ public class Sequence : BaseEntity
     public string? Description { get; set; }
 
     [Searchable]
+    [Required]
+    [LanguageCode]
     public string Language { get; set; } = string.Empty;
 
     [Required]

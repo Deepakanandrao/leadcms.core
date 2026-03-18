@@ -101,6 +101,7 @@ public class SequenceSendTask : BaseTask
 
         // Resolve audience from segments
         var allContacts = new Dictionary<int, Contact>();
+        var excludedContactIds = new HashSet<int>();
         foreach (var segmentId in enrollment.IncludeSegmentIds)
         {
             var contacts = await segmentService.GetSegmentContactsAsync(segmentId);
@@ -115,6 +116,7 @@ public class SequenceSendTask : BaseTask
             foreach (var segmentId in enrollment.ExcludeSegmentIds)
             {
                 var contacts = await segmentService.GetSegmentContactsAsync(segmentId);
+                excludedContactIds.UnionWith(contacts.Select(contact => contact.Id));
                 foreach (var contact in contacts)
                 {
                     allContacts.Remove(contact.Id);
@@ -122,18 +124,18 @@ public class SequenceSendTask : BaseTask
             }
         }
 
+        var exited = await ExitExcludedContactsAsync(sequence.Id, excludedContactIds);
+
         // Check unsubscribed contacts
         var unsubscribedIds = await GetUnsubscribedContactIdsAsync();
 
-        // Get existing enrollments for reentry policy check
-        var existingEnrollments = await dbContext.SequenceEnrollments!
+        // Segment-based enrollment is once per contact regardless of manual/API re-entry policy.
+        var existingEnrollmentContactIds = await dbContext.SequenceEnrollments!
             .Where(e => e.SequenceId == sequence.Id)
-            .Select(e => new { e.ContactId, e.Status })
+            .Select(e => e.ContactId)
+            .Distinct()
             .ToListAsync();
-
-        var enrollmentsByContact = existingEnrollments
-            .GroupBy(e => e.ContactId)
-            .ToDictionary(g => g.Key, g => g.ToList());
+        var existingEnrollmentContactIdSet = existingEnrollmentContactIds.ToHashSet();
 
         int enrolled = 0;
         foreach (var contact in allContacts.Values)
@@ -150,21 +152,9 @@ public class SequenceSendTask : BaseTask
                 continue;
             }
 
-            // Check reentry policy
-            if (enrollmentsByContact.TryGetValue(contact.Id, out var existing))
+            if (existingEnrollmentContactIdSet.Contains(contact.Id))
             {
-                var canEnroll = enrollment.ReentryPolicy switch
-                {
-                    ReentryPolicy.OnceEver => false,
-                    ReentryPolicy.AllowAfterCompletion => existing.TrueForAll(e => e.Status == SequenceEnrollmentStatus.Completed),
-                    ReentryPolicy.Always => !existing.Exists(e => e.Status == SequenceEnrollmentStatus.Active),
-                    _ => false,
-                };
-
-                if (!canEnroll)
-                {
-                    continue;
-                }
+                continue;
             }
 
             var newEnrollment = new SequenceEnrollment
@@ -181,12 +171,41 @@ public class SequenceSendTask : BaseTask
             enrolled++;
         }
 
-        if (enrolled > 0)
+        if (enrolled > 0 || exited > 0)
         {
             await dbContext.SaveChangesAsync();
         }
 
         return enrolled;
+    }
+
+    private async Task<int> ExitExcludedContactsAsync(int sequenceId, HashSet<int> excludedContactIds)
+    {
+        if (excludedContactIds.Count == 0)
+        {
+            return 0;
+        }
+
+        var activeEnrollments = await dbContext.SequenceEnrollments!
+            .Where(e => e.SequenceId == sequenceId
+                && e.Status == SequenceEnrollmentStatus.Active
+                && excludedContactIds.Contains(e.ContactId))
+            .ToListAsync();
+
+        if (activeEnrollments.Count == 0)
+        {
+            return 0;
+        }
+
+        var exitedAt = DateTime.UtcNow;
+        foreach (var enrollment in activeEnrollments)
+        {
+            enrollment.Status = SequenceEnrollmentStatus.Exited;
+            enrollment.ExitReason = SequenceExitReason.ExcludedBySegment;
+            enrollment.ExitedAt = exitedAt;
+        }
+
+        return activeEnrollments.Count;
     }
 
     /// <summary>

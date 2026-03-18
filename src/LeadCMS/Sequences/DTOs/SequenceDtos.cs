@@ -5,6 +5,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using CsvHelper.Configuration.Attributes;
+using LeadCMS.DataAnnotations;
 using LeadCMS.Entities;
 using LeadCMS.Infrastructure;
 using LeadCMS.Models;
@@ -18,6 +19,8 @@ public class SequenceCreateDto
 
     public string? Description { get; set; }
 
+    [Required]
+    [LanguageCode]
     public string Language { get; set; } = string.Empty;
 
     public bool StopOnReply { get; set; }
@@ -44,6 +47,8 @@ public class SequenceUpdateDto : IPatchDto
 
     public string? Description { get; set; }
 
+    [MinLength(1)]
+    [LanguageCode(nullAllowed: true)]
     public string? Language { get; set; }
 
     public bool? StopOnReply { get; set; }

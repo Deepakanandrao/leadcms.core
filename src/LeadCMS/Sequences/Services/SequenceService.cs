@@ -106,6 +106,7 @@ public class SequenceService : ISequenceService
 
             sequence.Name = dto.Name;
             sequence.Description = dto.Description;
+            sequence.Language = dto.Language;
             sequence.StopOnReply = dto.StopOnReply;
             sequence.UseContactTimeZone = dto.UseContactTimeZone;
             sequence.TimeZone = dto.TimeZone;
@@ -118,6 +119,7 @@ public class SequenceService : ISequenceService
             {
                 Name = dto.Name,
                 Description = dto.Description,
+                Language = dto.Language,
                 Status = SequenceStatus.Draft,
                 StopOnReply = dto.StopOnReply,
                 UseContactTimeZone = dto.UseContactTimeZone,

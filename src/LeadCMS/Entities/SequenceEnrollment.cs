@@ -26,6 +26,7 @@ public enum SequenceExitReason
     ReplyStopped = 4,
     ManuallyRemoved = 5,
     Archived = 6,
+    ExcludedBySegment = 7,
 }
 
 public enum SequenceEnrollmentSource

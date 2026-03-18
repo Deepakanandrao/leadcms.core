@@ -16,6 +16,7 @@ public class SequencesTests : BaseTestAutoLogin
     private const string ContactsUrl = "/api/contacts";
     private const string EmailGroupsUrl = "/api/email-groups";
     private const string EmailTemplatesUrl = "/api/email-templates";
+    private const string SegmentsUrl = "/api/segments";
     private const string TasksUrl = "/api/tasks";
 
     public SequencesTests()
@@ -47,6 +48,18 @@ public class SequencesTests : BaseTestAutoLogin
         created!.Name.Should().Be(sequence.Name);
         created.Status.Should().Be(SequenceStatus.Draft);
         created.Description.Should().Be(sequence.Description);
+        created.Language.Should().Be(sequence.Language);
+    }
+
+    [Fact]
+    public async Task CreateSequence_WithoutLanguage_Returns422()
+    {
+        var sequence = new TestSequence("missing-language")
+        {
+            Language = string.Empty,
+        };
+
+        await PostTest<SequenceDetailsDto>(SequencesUrl, sequence, HttpStatusCode.UnprocessableEntity);
     }
 
     [Fact]
@@ -67,13 +80,23 @@ public class SequencesTests : BaseTestAutoLogin
         var location = await PostTest(SequencesUrl, new TestSequence("patch"));
         var id = ExtractId(location);
 
-        var update = new { Name = "UpdatedName", Description = "Updated description", StopOnReply = true };
+        var update = new { Name = "UpdatedName", Description = "Updated description", Language = "lv", StopOnReply = true };
         await PatchTest($"{SequencesUrl}/{id}", update);
 
         var updated = await GetTest<SequenceDetailsDto>($"{SequencesUrl}/{id}");
         updated!.Name.Should().Be("UpdatedName");
         updated.Description.Should().Be("Updated description");
+        updated.Language.Should().Be("lv");
         updated.StopOnReply.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task UpdateSequence_ClearingLanguage_Returns422()
+    {
+        var location = await PostTest(SequencesUrl, new TestSequence("patch-language-required"));
+        var id = ExtractId(location);
+
+        await PatchTest($"{SequencesUrl}/{id}", new { Language = " " }, HttpStatusCode.UnprocessableEntity);
     }
 
     [Fact]
@@ -754,6 +777,7 @@ public class SequencesTests : BaseTestAutoLogin
         {
             Name = "PostWithSteps",
             Description = "Created with steps in one call",
+            Language = "en",
             StopOnReply = true,
             Enrollment = new SequenceEnrollmentConfig
             {
@@ -801,6 +825,7 @@ public class SequencesTests : BaseTestAutoLogin
         var createDto = new SequenceCreateDto
         {
             Name = "OriginalName",
+            Language = "en",
             Steps = new List<SequenceStepCreateDto>
             {
                 new() { Name = "step-a", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 0, Unit = "minutes" } } },
@@ -815,6 +840,7 @@ public class SequencesTests : BaseTestAutoLogin
         var updateDto = new SequenceCreateDto
         {
             Name = "UpdatedName",
+            Language = "fr",
             Steps = new List<SequenceStepCreateDto>
             {
                 new() { Name = "step-b", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 2, Unit = "days" } } },
@@ -828,6 +854,7 @@ public class SequencesTests : BaseTestAutoLogin
 
         updated.Should().NotBeNull();
         updated!.Name.Should().Be("UpdatedName");
+        updated.Language.Should().Be("fr");
         updated.Steps.Should().HaveCount(2);
         updated.Steps[0].Name.Should().Be("step-b");
         updated.Steps[0].Position.Should().Be(1);
@@ -844,6 +871,7 @@ public class SequencesTests : BaseTestAutoLogin
         var createDto = new SequenceCreateDto
         {
             Name = "ActiveSeq",
+            Language = "en",
             Enrollment = new SequenceEnrollmentConfig { Modes = new[] { "manual", "api" } },
             Steps = new List<SequenceStepCreateDto>
             {
@@ -895,6 +923,7 @@ public class SequencesTests : BaseTestAutoLogin
         var createDto = new SequenceCreateDto
         {
             Name = "ImmMultiStep",
+            Language = "en",
             Enrollment = new SequenceEnrollmentConfig { Modes = new[] { "manual", "api" } },
             Steps = new List<SequenceStepCreateDto>
             {
@@ -926,6 +955,7 @@ public class SequencesTests : BaseTestAutoLogin
         var createDto = new SequenceCreateDto
         {
             Name = "MixedSteps",
+            Language = "en",
             Enrollment = new SequenceEnrollmentConfig { Modes = new[] { "manual", "api" } },
             Steps = new List<SequenceStepCreateDto>
             {
@@ -1140,6 +1170,93 @@ public class SequencesTests : BaseTestAutoLogin
         }
     }
 
+    [Theory]
+    [InlineData(ReentryPolicy.AllowAfterCompletion)]
+    [InlineData(ReentryPolicy.Always)]
+    public async Task SequenceSendTask_SegmentEnrollment_DoesNotAutomaticallyReenrollCompletedContacts(ReentryPolicy reentryPolicy)
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync($"segment-once-{reentryPolicy}");
+        var contactId = await CreateContactAsync($"segment-once-{reentryPolicy}");
+        var includeSegmentId = await CreateStaticSegmentAsync($"segment-once-{reentryPolicy}", new[] { contactId });
+
+        await PatchTest($"{SequencesUrl}/{sequenceId}", new
+        {
+            Enrollment = new SequenceEnrollmentConfig
+            {
+                Modes = new[] { "segment", "manual", "api" },
+                IncludeSegmentIds = new[] { includeSegmentId },
+                ReentryPolicy = reentryPolicy,
+            },
+        });
+
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        await ExecuteSequenceSendTask();
+        await ExecuteSequenceSendTask();
+        await ExecuteSequenceSendTask();
+
+        var enrollments = await GetTest<List<SequenceEnrollmentDetailsDto>>($"{SequencesUrl}/{sequenceId}/enrollments");
+        enrollments.Should().NotBeNull();
+        var enrollment = enrollments!.Should().ContainSingle().Subject;
+        enrollment.ContactId.Should().Be(contactId);
+        enrollment.EnrollmentSource.Should().Be(SequenceEnrollmentSource.Segment);
+        enrollment.Status.Should().Be(SequenceEnrollmentStatus.Completed);
+
+        var stats = await GetTest<SequenceStatisticsDto>($"{SequencesUrl}/{sequenceId}/statistics");
+        stats.Should().NotBeNull();
+        stats!.SentCount.Should().Be(1);
+        stats.CompletedEnrollmentCount.Should().Be(1);
+        stats.ActiveEnrollmentCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task SequenceSendTask_ExcludeSegment_ExitsActiveEnrollmentWhenContactBecomesExcluded()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("segment-exclude-exit", delayMinutes: 1440);
+        var enrolledContactId = await CreateContactAsync("segment-exclude-enrolled");
+        var excludedContactId = await CreateContactAsync("segment-exclude-existing");
+        var includeSegmentId = await CreateStaticSegmentAsync("segment-exclude-include", new[] { enrolledContactId });
+        var excludeSegmentId = await CreateStaticSegmentAsync("segment-exclude-exclude", new[] { excludedContactId });
+
+        await PatchTest($"{SequencesUrl}/{sequenceId}", new
+        {
+            Enrollment = new SequenceEnrollmentConfig
+            {
+                Modes = new[] { "segment" },
+                IncludeSegmentIds = new[] { includeSegmentId },
+                ExcludeSegmentIds = new[] { excludeSegmentId },
+                ReentryPolicy = ReentryPolicy.OnceEver,
+            },
+        });
+
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        await ExecuteSequenceSendTask();
+
+        var activeEnrollments = await GetTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments?filter[where][Status]=Active");
+        activeEnrollments.Should().NotBeNull();
+        var activeEnrollment = activeEnrollments!.Should().ContainSingle().Subject;
+        activeEnrollment.ContactId.Should().Be(enrolledContactId);
+
+        await PatchTest($"{SegmentsUrl}/{excludeSegmentId}", new { ContactIds = new[] { excludedContactId, enrolledContactId } });
+
+        await ExecuteSequenceSendTask();
+
+        var exitedEnrollments = await GetTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments?filter[where][Status]=Exited");
+        exitedEnrollments.Should().NotBeNull();
+        var exitedEnrollment = exitedEnrollments!.Should().ContainSingle().Subject;
+        exitedEnrollment.ContactId.Should().Be(enrolledContactId);
+        exitedEnrollment.ExitReason.Should().Be(SequenceExitReason.ExcludedBySegment);
+        exitedEnrollment.EnrollmentReason.Should().Contain("exclude segment");
+
+        var stats = await GetTest<SequenceStatisticsDto>($"{SequencesUrl}/{sequenceId}/statistics");
+        stats.Should().NotBeNull();
+        stats!.ActiveEnrollmentCount.Should().Be(0);
+        stats.ExitedEnrollmentCount.Should().Be(1);
+    }
+
     // ──────────────────────────────────────────────────
     // Helper Methods
     // ──────────────────────────────────────────────────
@@ -1154,6 +1271,13 @@ public class SequencesTests : BaseTestAutoLogin
     {
         var contact = TestData.Generate<TestContact>(uid);
         var location = await PostTest(ContactsUrl, contact);
+        return ExtractId(location);
+    }
+
+    private async Task<int> CreateStaticSegmentAsync(string uid, int[] contactIds)
+    {
+        var segment = new TestSegment(uid, SegmentType.Static, null, contactIds);
+        var location = await PostTest(SegmentsUrl, segment);
         return ExtractId(location);
     }
 

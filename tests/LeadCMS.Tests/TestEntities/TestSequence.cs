@@ -12,6 +12,7 @@ public class TestSequence : SequenceCreateDto
     {
         Name = $"TestSequence{uid}";
         Description = $"Test sequence description {uid}";
+        Language = "en";
         StopOnReply = false;
         UseContactTimeZone = false;
         TimeZone = 0;
