@@ -1055,6 +1055,58 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
     }
 
     [Fact]
+    public async Task GetOne_WithUnsubscribeInclude_ReturnsUnsubscribeDetails()
+    {
+        TrackEntityType<Unsubscribe>();
+
+        var createUrl = await PostTest(itemsUrl, TestData.Generate<TestContact>());
+        createUrl.Should().NotBeNull();
+
+        var contactId = Convert.ToInt32(createUrl.Split("/").Last());
+
+        var dbContext = App.GetDbContext()!;
+        var unsubscribe = new Unsubscribe
+        {
+            ContactId = contactId,
+            Reason = "Requested removal",
+            CreatedAt = DateTime.UtcNow,
+            Source = "ContactTests",
+        };
+
+        await dbContext.Unsubscribes!.AddAsync(unsubscribe);
+        await dbContext.SaveChangesAsync();
+
+        var contact = await dbContext.Contacts!.FindAsync(contactId);
+        contact.Should().NotBeNull();
+        contact!.UnsubscribeId = unsubscribe.Id;
+        await dbContext.SaveChangesAsync();
+
+        var resultWithoutIncludes = await GetTest<ContactDetailsDto>($"{itemsUrl}/{contactId}");
+        resultWithoutIncludes.Should().NotBeNull();
+        resultWithoutIncludes!.UnsubscribeId.Should().Be(unsubscribe.Id);
+        resultWithoutIncludes.Unsubscribe.Should().BeNull();
+
+        var resultWithIncludes = await GetTest<ContactDetailsDto>($"{itemsUrl}/{contactId}?filter[include]=Unsubscribe");
+        resultWithIncludes.Should().NotBeNull();
+        resultWithIncludes!.UnsubscribeId.Should().Be(unsubscribe.Id);
+        resultWithIncludes.Unsubscribe.Should().NotBeNull();
+        resultWithIncludes.Unsubscribe!.Id.Should().Be(unsubscribe.Id);
+        resultWithIncludes.Unsubscribe.ContactId.Should().Be(contactId);
+        resultWithIncludes.Unsubscribe.Reason.Should().Be("Requested removal");
+        resultWithIncludes.Unsubscribe.Source.Should().Be("ContactTests");
+        resultWithIncludes.Unsubscribe.Contact.Should().BeNull();
+
+        var listedResults = await GetTest<List<ContactDetailsDto>>($"{itemsUrl}?filter[where][id]={contactId}&filter[include]=Unsubscribe");
+        listedResults.Should().NotBeNull();
+        listedResults!.Should().ContainSingle();
+
+        var listedContact = listedResults![0];
+        listedContact.Unsubscribe.Should().NotBeNull();
+        listedContact.Unsubscribe!.Id.Should().Be(unsubscribe.Id);
+        listedContact.Unsubscribe.Contact.Should().BeNull();
+    }
+
+    [Fact]
     public async Task DuplicatedRecordsImportTest()
     {
         // first attempt to import records with some duplicates

@@ -153,6 +153,9 @@ public class ContactDetailsDto : ContactCreateDto
     public AccountDetailsDto? Account { get; set; }
 
     [Ignore]
+    public UnsubscribeDetailsDto? Unsubscribe { get; set; }
+
+    [Ignore]
     public List<OrderDetailsDto>? Orders { get; set; }
 }
 

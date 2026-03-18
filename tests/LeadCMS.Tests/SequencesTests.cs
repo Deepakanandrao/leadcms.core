@@ -444,6 +444,46 @@ public class SequencesTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task EnrollContact_AllowAfterCompletion_ReenrollsAfterExited()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("reentry-aac-exited");
+
+        await PatchTest($"{SequencesUrl}/{sequenceId}", new
+        {
+            Enrollment = new SequenceEnrollmentConfig
+            {
+                Modes = new[] { "manual", "api" },
+                ReentryPolicy = ReentryPolicy.AllowAfterCompletion,
+            },
+        });
+
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("reentry-aac-exited");
+        await UnsubscribeContactAsync(contactId);
+
+        var firstEnrollments = await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+        firstEnrollments.Should().NotBeNull();
+        firstEnrollments!.Should().ContainSingle().Which.Status.Should().Be(SequenceEnrollmentStatus.Exited);
+
+        var secondEnrollments = await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+        secondEnrollments.Should().NotBeNull();
+        secondEnrollments!.Should().ContainSingle().Which.Status.Should().Be(SequenceEnrollmentStatus.Exited);
+
+        var exitedEnrollments = await GetTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments?filter[where][Status]=Exited");
+        exitedEnrollments.Should().NotBeNull();
+        exitedEnrollments!.Count.Should().Be(2);
+        exitedEnrollments.Should().OnlyContain(e => e.ExitReason == SequenceExitReason.Unsubscribed);
+    }
+
+    [Fact]
     public async Task EnrollContact_Always_ReenrollsAfterExited()
     {
         var (sequenceId, _) = await CreateSequenceWithStepAsync("reentry-always", delayMinutes: 1440);
@@ -980,6 +1020,38 @@ public class SequencesTests : BaseTestAutoLogin
         stats.CompletedEnrollmentCount.Should().Be(0);
     }
 
+    [Fact]
+    public async Task Enroll_UnsubscribedContact_ExitsBeforeCreatingDeliveries()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("unsubscribed-before-send");
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("unsubscribed-before-send");
+        await UnsubscribeContactAsync(contactId);
+
+        var created = await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        created.Should().NotBeNull();
+        var enrollment = created!.Should().ContainSingle().Subject;
+        enrollment.ContactId.Should().Be(contactId);
+        enrollment.Status.Should().Be(SequenceEnrollmentStatus.Exited);
+        enrollment.ExitReason.Should().Be(SequenceExitReason.Unsubscribed);
+        enrollment.ExitedAt.Should().NotBeNull();
+
+        var deliveries = await GetTest<List<SequenceDeliveryDetailsDto>>(DeliveriesUrl(sequenceId));
+        deliveries.Should().NotBeNull();
+        deliveries!.Should().BeEmpty();
+
+        var stats = await GetTest<SequenceStatisticsDto>($"{SequencesUrl}/{sequenceId}/statistics");
+        stats.Should().NotBeNull();
+        stats!.SentCount.Should().Be(0);
+        stats.ActiveEnrollmentCount.Should().Be(0);
+        stats.ExitedEnrollmentCount.Should().Be(1);
+    }
+
     // ──────────────────────────────────────────────────
     // Delivery API Tests
     // ──────────────────────────────────────────────────
@@ -1294,6 +1366,18 @@ public class SequencesTests : BaseTestAutoLogin
         var template = TestData.Generate<TestEmailTemplate>(uid, groupId);
         var location = await PostTest(EmailTemplatesUrl, template);
         return ExtractId(location);
+    }
+
+    private async Task UnsubscribeContactAsync(int contactId)
+    {
+        var unsubscribeDto = new UnsubscribeDto
+        {
+            ContactId = contactId,
+            Reason = "Test unsubscribe",
+            Source = "Tests",
+        };
+
+        await PostTest("/api/unsubscribes", unsubscribeDto);
     }
 
     private async Task<(int sequenceId, int templateId)> CreateSequenceWithPrerequisitesAsync(string uid)

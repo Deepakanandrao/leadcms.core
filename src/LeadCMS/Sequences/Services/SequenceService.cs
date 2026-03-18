@@ -305,12 +305,20 @@ public class SequenceService : ISequenceService
                 $"Enrollment via '{modeName}' is not enabled for this sequence.");
         }
 
+        var distinctContactIds = contactIds.Distinct().ToList();
+        var contacts = await dbContext.Contacts!
+            .Where(c => distinctContactIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id);
+        var unsubscribedIds = await GetUnsubscribedContactIdsAsync();
+
         var enrollments = new List<SequenceEnrollment>();
 
         foreach (var contactId in contactIds)
         {
-            _ = await dbContext.Contacts!.FindAsync(contactId)
-                ?? throw new EntityNotFoundException(nameof(Contact), contactId.ToString());
+            if (!contacts.TryGetValue(contactId, out var contact))
+            {
+                throw new EntityNotFoundException(nameof(Contact), contactId.ToString());
+            }
 
             // Check reentry policy
             if (enrollmentConfig != null)
@@ -328,7 +336,7 @@ public class SequenceService : ISequenceService
                             throw new InvalidOperationException(
                                 $"Contact {contactId} has already been enrolled in this sequence and reentry policy is OnceEver.");
                         case ReentryPolicy.AllowAfterCompletion:
-                            if (existingEnrollment.Status != SequenceEnrollmentStatus.Completed)
+                            if (existingEnrollment.Status == SequenceEnrollmentStatus.Active)
                             {
                                 throw new InvalidOperationException(
                                     $"Contact {contactId} is currently in this sequence and reentry policy is AllowAfterCompletion.");
@@ -347,12 +355,17 @@ public class SequenceService : ISequenceService
                 }
             }
 
+            var isUnsubscribed = unsubscribedIds.Contains(contactId) || contact.UnsubscribeId != null;
+            var enteredAt = DateTime.UtcNow;
+
             var enrollment = new SequenceEnrollment
             {
                 SequenceId = sequenceId,
                 ContactId = contactId,
-                Status = SequenceEnrollmentStatus.Active,
-                EnteredAt = DateTime.UtcNow,
+                Status = isUnsubscribed ? SequenceEnrollmentStatus.Exited : SequenceEnrollmentStatus.Active,
+                EnteredAt = enteredAt,
+                ExitedAt = isUnsubscribed ? enteredAt : null,
+                ExitReason = isUnsubscribed ? SequenceExitReason.Unsubscribed : SequenceExitReason.None,
                 EnrollmentSource = source,
                 EnrollmentReason = enrollmentReason,
                 TemplateArguments = templateArguments,
@@ -362,7 +375,8 @@ public class SequenceService : ISequenceService
         }
 
         await dbContext.SequenceEnrollments!.AddRangeAsync(enrollments);
-        sequence.ActiveEnrollmentCount += enrollments.Count;
+        sequence.ActiveEnrollmentCount += enrollments.Count(e => e.Status == SequenceEnrollmentStatus.Active);
+        sequence.ExitedEnrollmentCount += enrollments.Count(e => e.Status == SequenceEnrollmentStatus.Exited);
         await dbContext.SaveChangesAsync();
 
         await ProcessImmediateStepsAsync(sequence, enrollments);
@@ -954,6 +968,15 @@ public class SequenceService : ISequenceService
 
     private async Task ProcessImmediateStepsAsync(Sequence sequence, List<SequenceEnrollment> enrollments)
     {
+        var activeEnrollments = enrollments
+            .Where(e => e.Status == SequenceEnrollmentStatus.Active)
+            .ToList();
+
+        if (activeEnrollments.Count == 0)
+        {
+            return;
+        }
+
         var steps = await dbContext.SequenceSteps!
             .Where(s => s.SequenceId == sequence.Id)
             .OrderBy(s => s.Position)
@@ -964,7 +987,7 @@ public class SequenceService : ISequenceService
             return;
         }
 
-        var contactIds = enrollments.Select(e => e.ContactId).Distinct().ToList();
+        var contactIds = activeEnrollments.Select(e => e.ContactId).Distinct().ToList();
         var contacts = await dbContext.Contacts!
             .Where(c => contactIds.Contains(c.Id))
             .ToListAsync();
@@ -972,7 +995,7 @@ public class SequenceService : ISequenceService
         var contactsById = contacts.ToDictionary(c => c.Id);
 
         // Create Scheduled deliveries for all immediate steps (scheduledAt <= now)
-        foreach (var enrollment in enrollments)
+        foreach (var enrollment in activeEnrollments)
         {
             if (!contactsById.TryGetValue(enrollment.ContactId, out var contact))
             {
