@@ -82,7 +82,7 @@ namespace LeadCMS.Services
             await emailWithLogService.SendAsync(subject, template.FromEmail, template.FromName, recipients, body, attachments, template.Id, contactId, campaignId);
         }
 
-        public async Task SendToContactAsync(int contactId, string templateName, Dictionary<string, object>? templateArguments, List<AttachmentDto>? attachments, int scheduleId = 0, int campaignId = 0)
+        public async Task<int> SendToContactAsync(int contactId, string templateName, Dictionary<string, object>? templateArguments, List<AttachmentDto>? attachments, int scheduleId = 0, int campaignId = 0)
         {
             var template = await GetEmailTemplate(templateName, contactId);
 
@@ -92,7 +92,7 @@ namespace LeadCMS.Services
             var body = await liquidTemplateService.RenderAsync(bodySource, templateArguments);
             var subject = await liquidTemplateService.RenderAsync(template.Subject, templateArguments);
 
-            await emailWithLogService.SendToContactAsync(contactId, subject, template.FromEmail, template.FromName, body, attachments, scheduleId, template.Id, campaignId);
+            return await emailWithLogService.SendToContactAsync(contactId, subject, template.FromEmail, template.FromName, body, attachments, scheduleId, template.Id, campaignId);
         }
 
         private async Task<EmailTemplate> GetEmailTemplate(string name, int contactId)

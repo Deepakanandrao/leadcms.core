@@ -221,6 +221,15 @@ BEGIN
 
         -- --------------------------------------------------------
         -- 3. Create SequenceEnrollments from ContactEmailSchedule
+        --
+        -- Deduplication: when a contact has multiple CES records
+        -- for the same schedule created within 60 seconds, only
+        -- the newest is kept; older duplicates are migrated as
+        -- Exited/Archived.
+        --
+        -- Stale detection: a pending (status=0) enrollment whose
+        -- sent email count >= total templates in the group is
+        -- migrated as Completed rather than Active.
         -- --------------------------------------------------------
         INSERT INTO sequence_enrollment (
             sequence_id, contact_id, status, last_completed_step_id,
@@ -231,20 +240,24 @@ BEGIN
         SELECT
             new_sequence_id,
             ces.contact_id,
-            -- Map legacy status → new status
-            CASE ces.status
-                WHEN 0 THEN 0   -- Pending  → Active
-                WHEN 1 THEN 1   -- Completed → Completed
-                ELSE 2          -- Failed/Unsubscribed → Exited
+            CASE
+                -- Near-duplicate: older CES for same contact within 60s → Exited/Archived
+                WHEN ces.is_near_duplicate THEN 2  -- Exited
+                -- Originally pending but all emails sent → Completed
+                WHEN ces.status = 0 AND sent_counts.cnt >= step_pos THEN 1  -- Completed
+                -- Normal status mapping
+                WHEN ces.status = 0 THEN 0   -- Pending  → Active
+                WHEN ces.status = 1 THEN 1   -- Completed → Completed
+                ELSE 2                       -- Failed/Unsubscribed → Exited
             END,
             -- Determine last completed step from sent email count
             CASE
-                                WHEN sent_counts.cnt > 0 THEN (
-                                        SELECT ss.id
-                                        FROM sequence_step ss
-                                        WHERE ss.sequence_id = new_sequence_id
-                                            AND ss.position = sent_counts.cnt - 1
-                                        LIMIT 1)
+                WHEN sent_counts.cnt > 0 THEN (
+                    SELECT ss.id
+                    FROM sequence_step ss
+                    WHERE ss.sequence_id = new_sequence_id
+                        AND ss.position = LEAST(sent_counts.cnt, step_pos) - 1
+                    LIMIT 1)
                 ELSE NULL
             END,
             -- entered_at: normalize -infinity timestamps
@@ -254,7 +267,7 @@ BEGIN
                 ELSE NOW()
             END,
             -- completed_at
-            CASE WHEN ces.status = 1 THEN
+            CASE WHEN ces.status = 1 OR (ces.status = 0 AND sent_counts.cnt >= step_pos) THEN
                 CASE
                     WHEN ces.updated_at IS NOT NULL AND ces.updated_at > '1970-01-01'::timestamptz THEN ces.updated_at
                     ELSE NOW()
@@ -262,25 +275,53 @@ BEGIN
                 ELSE NULL
             END,
             -- exited_at
-            CASE WHEN ces.status IN (2, 3) THEN
-                CASE
-                    WHEN ces.updated_at IS NOT NULL AND ces.updated_at > '1970-01-01'::timestamptz THEN ces.updated_at
-                    ELSE NOW()
-                END
+            CASE
+                WHEN ces.is_near_duplicate THEN
+                    CASE
+                        WHEN ces.created_at > '1970-01-01'::timestamptz THEN ces.created_at
+                        ELSE NOW()
+                    END
+                WHEN ces.status IN (2, 3) THEN
+                    CASE
+                        WHEN ces.updated_at IS NOT NULL AND ces.updated_at > '1970-01-01'::timestamptz THEN ces.updated_at
+                        ELSE NOW()
+                    END
                 ELSE NULL
             END,
             -- exit_reason
-            CASE ces.status
-                WHEN 1 THEN 1   -- Completed
-                WHEN 2 THEN 2   -- Failed
-                WHEN 3 THEN 3   -- Unsubscribed
-                ELSE 0          -- None
+            CASE
+                WHEN ces.is_near_duplicate THEN 6  -- Archived
+                WHEN ces.status = 1 OR (ces.status = 0 AND sent_counts.cnt >= step_pos) THEN 1  -- Completed
+                WHEN ces.status = 2 THEN 2   -- Failed
+                WHEN ces.status = 3 THEN 3   -- Unsubscribed
+                ELSE 0                       -- None
             END,
             3,   -- EnrollmentSource = Migration
-            'Subscribed on ' || grp.name,
+            CASE
+                WHEN ces.is_near_duplicate THEN 'Duplicate enrollment (archived during migration)'
+                ELSE 'Subscribed on ' || grp.name
+            END,
             NOW(),
             COALESCE(NULLIF(ces.source, ''), 'contact_email_schedule: ' || ces.id)
-        FROM contact_email_schedule ces
+        FROM (
+            SELECT
+                ces_inner.*,
+                -- Detect near-duplicates: same contact+schedule within 60 seconds.
+                -- Keep the newest (by created_at DESC, id DESC); mark older ones.
+                ROW_NUMBER() OVER (
+                    PARTITION BY ces_inner.contact_id
+                    ORDER BY ces_inner.created_at DESC, ces_inner.id DESC
+                ) > 1
+                AND EXISTS (
+                    SELECT 1 FROM contact_email_schedule ces2
+                    WHERE ces2.schedule_id = ces_inner.schedule_id
+                      AND ces2.contact_id = ces_inner.contact_id
+                      AND ces2.id != ces_inner.id
+                      AND ABS(EXTRACT(EPOCH FROM (ces2.created_at - ces_inner.created_at))) < 60
+                ) AS is_near_duplicate
+            FROM contact_email_schedule ces_inner
+            WHERE ces_inner.schedule_id = grp.schedule_id
+        ) ces
         INNER JOIN contact c ON c.id = ces.contact_id
         LEFT JOIN LATERAL (
             SELECT COUNT(*) AS cnt
@@ -288,8 +329,7 @@ BEGIN
             WHERE el.schedule_id = grp.schedule_id
               AND el.contact_id = ces.contact_id
               AND el.status = 1  -- Sent
-        ) sent_counts ON true
-        WHERE ces.schedule_id = grp.schedule_id;
+        ) sent_counts ON true;
 
         -- --------------------------------------------------------
         -- 4. Create SequenceDeliveries from EmailLog

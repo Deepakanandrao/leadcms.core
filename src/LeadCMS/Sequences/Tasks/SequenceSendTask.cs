@@ -228,16 +228,8 @@ public class SequenceSendTask : BaseTask
             .Include(e => e.Contact)
             .ToListAsync();
 
-        var enrollmentsToSchedule = activeEnrollments
-            .GroupBy(e => e.ContactId)
-            .Select(g => g
-                .OrderByDescending(e => e.EnteredAt)
-                .ThenByDescending(e => e.Id)
-                .First())
-            .ToList();
-
         int scheduled = 0;
-        foreach (var enrollment in enrollmentsToSchedule)
+        foreach (var enrollment in activeEnrollments)
         {
             // Find the next step
             SequenceStep? nextStep;

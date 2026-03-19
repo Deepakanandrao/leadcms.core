@@ -14,6 +14,7 @@ namespace LeadCMS.Services
     {
         private readonly IEmailService emailService;
         private readonly PgDbContext pgDbContext;
+        private int lastEmailLogId;
 
         public EmailWithLogService(IEmailService emailService, PgDbContext pgDbContext)
         {
@@ -47,7 +48,7 @@ namespace LeadCMS.Services
             }
         }
 
-        public async Task SendToContactAsync(int contactId, string subject, string fromEmail, string fromName, string body, List<AttachmentDto>? attachments, int scheduleId = 0, int templateId = 0, int campaignId = 0)
+        public async Task<int> SendToContactAsync(int contactId, string subject, string fromEmail, string fromName, string body, List<AttachmentDto>? attachments, int scheduleId = 0, int templateId = 0, int campaignId = 0)
         {
             var emailStatus = false;
             var recipient = string.Empty;
@@ -74,6 +75,8 @@ namespace LeadCMS.Services
             {
                 await AddEmailLogEntry(subject, fromEmail, body, recipient, emailStatus, messageId, contactId, scheduleId, templateId, campaignId);
             }
+
+            return lastEmailLogId;
         }
 
         private async Task AddEmailLogEntry(string subject, string fromEmail, string body, string recipient, bool status, string messageId, int contactId = 0, int scheduleId = 0, int templateId = 0, int campaignId = 0)
@@ -112,6 +115,7 @@ namespace LeadCMS.Services
 
                 await pgDbContext.EmailLogs!.AddAsync(log);
                 await pgDbContext.SaveChangesAsync();
+                lastEmailLogId = log.Id;
             }
             catch (Exception ex)
             {

@@ -344,12 +344,6 @@ public class SequenceService : ISequenceService
 
                             break;
                         case ReentryPolicy.Always:
-                            if (existingEnrollment.Status == SequenceEnrollmentStatus.Active)
-                            {
-                                throw new InvalidOperationException(
-                                    $"Contact {contactId} already has an active enrollment in this sequence.");
-                            }
-
                             break;
                     }
                 }
@@ -633,7 +627,7 @@ public class SequenceService : ISequenceService
                 TemplateArgumentsBuilder.Merge(templateArgs, enrollmentArgs);
             }
 
-            await emailFromTemplateService.SendToContactAsync(
+            var emailLogId = await emailFromTemplateService.SendToContactAsync(
                 delivery.ContactId,
                 templateName,
                 templateArgs,
@@ -641,18 +635,7 @@ public class SequenceService : ISequenceService
 
             delivery.Status = SequenceDeliveryStatus.Sent;
             delivery.SentAt = DateTime.UtcNow;
-
-            var emailLog = await dbContext.EmailLogs!
-                .Where(l => l.ContactId == delivery.ContactId
-                    && l.TemplateId == delivery.SequenceStep!.EmailTemplateId
-                    && l.Status == EmailStatus.Sent)
-                .OrderByDescending(l => l.CreatedAt)
-                .FirstOrDefaultAsync();
-
-            if (emailLog != null)
-            {
-                delivery.EmailLogId = emailLog.Id;
-            }
+            delivery.EmailLogId = emailLogId;
 
             if (enrollment != null)
             {

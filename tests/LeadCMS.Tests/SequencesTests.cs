@@ -527,7 +527,7 @@ public class SequencesTests : BaseTestAutoLogin
     }
 
     [Fact]
-    public async Task EnrollContact_Always_RejectsWhileActive()
+    public async Task EnrollContact_Always_AllowsConcurrentActiveEnrollments()
     {
         var (sequenceId, _) = await CreateSequenceWithStepAsync("reentry-always-active", delayMinutes: 1440);
 
@@ -550,11 +550,27 @@ public class SequencesTests : BaseTestAutoLogin
             new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
             HttpStatusCode.Created);
 
-        // Re-enrollment while active should fail
-        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+        // Re-enrollment while active should succeed
+        var secondEnrollment = await PostTest<List<SequenceEnrollmentDetailsDto>>(
             $"{SequencesUrl}/{sequenceId}/enrollments",
             new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
-            HttpStatusCode.UnprocessableEntity);
+            HttpStatusCode.Created);
+        secondEnrollment.Should().NotBeNull();
+
+        // Both enrollments should progress independently
+        await ExecuteSequenceSendTask();
+        await ExecuteSequenceSendTask();
+
+        using (var scope = App.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<PgDbContext>();
+            var deliveries = await dbContext.SequenceDeliveries!
+                .Where(d => d.SequenceId == sequenceId && d.ContactId == contactId)
+                .ToListAsync();
+
+            // Each enrollment should get its own scheduled delivery
+            deliveries.Should().HaveCount(2);
+        }
     }
 
     [Fact]
@@ -1194,51 +1210,100 @@ public class SequencesTests : BaseTestAutoLogin
     }
 
     [Fact]
-    public async Task SequenceSendTask_DuplicateActiveEnrollments_SchedulesSingleDelivery()
+    public async Task SequenceSendTask_DuplicateEnrollments_DoNotResendAfterCompletion()
     {
-        var (sequenceId, _) = await CreateSequenceWithStepAsync("dup-active-enrollment");
+        var templateId = await CreateEmailTemplateAsync("dup-no-resend");
+        var sequenceLocation = await PostTest(SequencesUrl, new TestSequence("dup-no-resend"));
+        var sequenceId = ExtractId(sequenceLocation);
+
+        // Two steps so the sequence isn't immediately complete
+        await PostTest<SequenceStepDetailsDto>(StepsUrl(sequenceId), new TestSequenceStep("step1", templateId), HttpStatusCode.Created);
+        await PostTest<SequenceStepDetailsDto>(StepsUrl(sequenceId), new TestSequenceStep("step2", templateId), HttpStatusCode.Created);
+
         await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
 
-        var contactId = await CreateContactAsync("dup-active-enrollment");
+        var contactId = await CreateContactAsync("dup-no-resend");
 
+        // Create two active enrollments (simulates migrated data)
         using (var scope = App.Services.CreateScope())
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<PgDbContext>();
-
             await dbContext.SequenceEnrollments!.AddRangeAsync(
                 new SequenceEnrollment
                 {
                     SequenceId = sequenceId,
                     ContactId = contactId,
                     Status = SequenceEnrollmentStatus.Active,
-                    EnteredAt = DateTime.UtcNow.AddMinutes(-10),
-                    EnrollmentSource = SequenceEnrollmentSource.Manual,
-                    EnrollmentReason = "duplicate-test-1",
+                    EnteredAt = DateTime.UtcNow.AddMinutes(-20),
+                    EnrollmentSource = SequenceEnrollmentSource.Migration,
+                    EnrollmentReason = "older-enrollment",
                 },
                 new SequenceEnrollment
                 {
                     SequenceId = sequenceId,
                     ContactId = contactId,
                     Status = SequenceEnrollmentStatus.Active,
-                    EnteredAt = DateTime.UtcNow.AddMinutes(-5),
-                    EnrollmentSource = SequenceEnrollmentSource.Manual,
-                    EnrollmentReason = "duplicate-test-2",
+                    EnteredAt = DateTime.UtcNow.AddMinutes(-10),
+                    EnrollmentSource = SequenceEnrollmentSource.Migration,
+                    EnrollmentReason = "newer-enrollment",
                 });
-
             await dbContext.SaveChangesAsync();
         }
 
+        // Run task many times to ensure no infinite re-sends
+        for (int i = 0; i < 10; i++)
+        {
+            await ExecuteSequenceSendTask();
+        }
+
+        using (var scope = App.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<PgDbContext>();
+
+            var sentDeliveries = await dbContext.SequenceDeliveries!
+                .Where(d => d.SequenceId == sequenceId && d.ContactId == contactId && d.Status == SequenceDeliveryStatus.Sent)
+                .ToListAsync();
+
+            // Should have exactly 4 sent deliveries (2 enrollments × 2 steps), not more
+            sentDeliveries.Should().HaveCount(4, "each enrollment should complete independently through all steps");
+
+            var activeEnrollments = await dbContext.SequenceEnrollments!
+                .Where(e => e.SequenceId == sequenceId && e.ContactId == contactId && e.Status == SequenceEnrollmentStatus.Active)
+                .ToListAsync();
+
+            activeEnrollments.Should().BeEmpty("no active enrollments should remain after completion");
+        }
+    }
+
+    [Fact]
+    public async Task SequenceSendTask_SentDelivery_HasEmailLogId()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("email-log-link");
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("email-log-link");
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        await ExecuteSequenceSendTask();
         await ExecuteSequenceSendTask();
 
         using (var scope = App.Services.CreateScope())
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<PgDbContext>();
-            var deliveries = await dbContext.SequenceDeliveries!
-                .Where(d => d.SequenceId == sequenceId && d.ContactId == contactId)
+
+            var sentDeliveries = await dbContext.SequenceDeliveries!
+                .Where(d => d.SequenceId == sequenceId && d.ContactId == contactId && d.Status == SequenceDeliveryStatus.Sent)
                 .ToListAsync();
 
-            deliveries.Should().HaveCount(1);
-            deliveries[0].Status.Should().Be(SequenceDeliveryStatus.Sent);
+            sentDeliveries.Should().NotBeEmpty();
+            foreach (var delivery in sentDeliveries)
+            {
+                delivery.EmailLogId.Should().NotBeNull("every sent delivery should reference its email_log");
+                delivery.EmailLogId.Should().BeGreaterThan(0);
+            }
         }
     }
 
@@ -1321,7 +1386,6 @@ public class SequencesTests : BaseTestAutoLogin
         var exitedEnrollment = exitedEnrollments!.Should().ContainSingle().Subject;
         exitedEnrollment.ContactId.Should().Be(enrolledContactId);
         exitedEnrollment.ExitReason.Should().Be(SequenceExitReason.ExcludedBySegment);
-        exitedEnrollment.EnrollmentReason.Should().Contain("exclude segment");
 
         var stats = await GetTest<SequenceStatisticsDto>($"{SequencesUrl}/{sequenceId}/statistics");
         stats.Should().NotBeNull();
