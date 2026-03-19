@@ -50,7 +50,7 @@
     <PackageReference Include="HtmlAgilityPack" Version="1.11.60" />
     <PackageReference Include="libphonenumber-csharp" Version="9.0.25" />
     <PackageReference Include="MailKit" Version="4.9.0" />
-    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.10.4" />
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.11.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.11" />
     <PackageReference Include="Microsoft.Identity.Web" Version="3.8.4" />
