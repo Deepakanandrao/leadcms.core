@@ -378,6 +378,16 @@ public class SequenceService : ISequenceService
         return enrollments;
     }
 
+    public async Task<List<SequenceEnrollment>> EnrollContactBySequenceNameAsync(string sequenceName, int[] contactIds, string? enrollmentReason = null, Dictionary<string, string>? templateArguments = null, SequenceEnrollmentSource source = SequenceEnrollmentSource.Api)
+    {
+        var query = dbContext.Sequences!.Where(s => s.Name == sequenceName);
+
+        var sequence = await query.FirstOrDefaultAsync()
+            ?? throw new EntityNotFoundException(nameof(Sequence), sequenceName);
+
+        return await EnrollContactsAsync(sequence.Id, contactIds, enrollmentReason, templateArguments, source);
+    }
+
     public async Task<SequenceEnrollment> RemoveEnrollmentAsync(int sequenceId, int enrollmentId)
     {
         var enrollment = await dbContext.SequenceEnrollments!
