@@ -509,9 +509,7 @@ public class SequenceService : ISequenceService
 
         if (enrollment.TemplateArguments != null)
         {
-            var enrollmentArgs = enrollment.TemplateArguments
-                .ToDictionary(kv => kv.Key, kv => (object)kv.Value);
-            TemplateArgumentsBuilder.Merge(templateArgs, enrollmentArgs);
+            TemplateArgumentsBuilder.Merge(templateArgs, enrollment.TemplateArguments);
         }
 
         var dto = mapper.Map<SequenceEnrollmentDetailsDto>(enrollment);
@@ -632,9 +630,7 @@ public class SequenceService : ISequenceService
 
             if (enrollment?.TemplateArguments != null)
             {
-                var enrollmentArgs = enrollment.TemplateArguments
-                    .ToDictionary(kv => kv.Key, kv => (object)kv.Value);
-                TemplateArgumentsBuilder.Merge(templateArgs, enrollmentArgs);
+                TemplateArgumentsBuilder.Merge(templateArgs, enrollment.TemplateArguments);
             }
 
             var emailLogId = await emailFromTemplateService.SendToContactAsync(

@@ -75,8 +75,10 @@ public class SequenceEnrollmentsController : ControllerBase
         int sequenceId,
         [FromBody] SequenceEnrollmentCreateDto value)
     {
+        var templateArguments = value.TemplateArguments?.ToDictionary(kv => kv.Key, kv => (object)kv.Value);
+
         var enrollments = await sequenceService.EnrollContactsAsync(
-            sequenceId, value.ContactIds, value.EnrollmentReason, value.TemplateArguments, SequenceEnrollmentSource.Manual);
+            sequenceId, value.ContactIds, value.EnrollmentReason, templateArguments, SequenceEnrollmentSource.Manual);
 
         var dtos = mapper.Map<List<SequenceEnrollmentDetailsDto>>(enrollments);
         return StatusCode(StatusCodes.Status201Created, dtos);
