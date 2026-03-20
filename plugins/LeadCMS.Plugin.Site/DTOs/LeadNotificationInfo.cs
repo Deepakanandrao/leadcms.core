@@ -3,6 +3,7 @@
 // </copyright>
 
 using LeadCMS.DTOs;
+using LeadCMS.Entities;
 using LeadCMS.Helpers;
 
 namespace LeadCMS.Plugin.Site.DTOs;
@@ -105,6 +106,13 @@ public class LeadNotificationInfo
     /// Gets or sets the contact ID associated with this lead.
     /// </summary>
     public int? ContactId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the contact entity so that notification services can build
+    /// full template arguments via <see cref="TemplateArgumentsBuilder.FromContact"/>.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public Contact? Contact { get; set; }
 
     /// <summary>
     /// Gets the full name of the lead, or <c>null</c> when neither first nor last name is set.

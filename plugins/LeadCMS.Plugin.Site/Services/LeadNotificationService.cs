@@ -102,7 +102,11 @@ public class LeadNotificationService : ILeadNotificationService
                 throw error;
             }
 
-            var templateArgs = leadInfo.ToTemplateArguments();
+            // Start from stored contact (includes Tags, UTMs, account info, etc.)
+            // then overlay the actual submitted values so templates reflect what the user entered.
+            var templateArgs = TemplateArgumentsBuilder.FromContact(leadInfo.Contact, includeNestedObjects: false);
+            TemplateArgumentsBuilder.WithPendingUpdates(templateArgs, leadInfo.Contact);
+            TemplateArgumentsBuilder.Merge(templateArgs, leadInfo.ToTemplateArguments());
             leadNotificationMessageBuilder.EnrichTemplateArguments(templateArgs, leadInfo);
 
             var templateName = string.IsNullOrWhiteSpace(leadInfo.NotificationType)
@@ -272,7 +276,9 @@ public class LeadNotificationService : ILeadNotificationService
             return leadNotificationMessageBuilder.BuildTextMessage(leadInfo);
         }
 
-        var templateArgs = leadInfo.ToTemplateArguments();
+        var templateArgs = TemplateArgumentsBuilder.FromContact(leadInfo.Contact, includeNestedObjects: false);
+        TemplateArgumentsBuilder.WithPendingUpdates(templateArgs, leadInfo.Contact);
+        TemplateArgumentsBuilder.Merge(templateArgs, leadInfo.ToTemplateArguments());
         leadNotificationMessageBuilder.EnrichTemplateArguments(templateArgs, leadInfo);
 
         var rendered = await liquidTemplateService.RenderAsync(templateText, templateArgs);

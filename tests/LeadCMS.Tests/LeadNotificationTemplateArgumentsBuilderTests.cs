@@ -2,7 +2,9 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using LeadCMS.Entities;
 using LeadCMS.Helpers;
+using LeadCMS.Models;
 using LeadCMS.Plugin.Site.DTOs;
 
 namespace LeadCMS.Tests;
@@ -78,5 +80,35 @@ public class LeadNotificationInfoTemplateArgumentsTests
         args["CompanyName"].Should().Be("New Corp");
         args["Timezone"].Should().Be("-300");
         args["TimezoneFormatted"].Should().Be("UTC-5");
+    }
+
+    [Fact]
+    public void MergedOnTopOfContact_IncludesContactTagsAndUtms()
+    {
+        var contact = new Contact
+        {
+            Email = "lead@example.com",
+            Tags = new[] { "trial", "webinar" },
+            Utms = new Utms { Source = "google", Medium = "cpc", Campaign = "spring" },
+        };
+
+        var leadInfo = new LeadNotificationInfo
+        {
+            Email = "lead@example.com",
+            FirstName = "Ada",
+            Contact = contact,
+        };
+
+        var args = TemplateArgumentsBuilder.FromContact(leadInfo.Contact, includeNestedObjects: false);
+        TemplateArgumentsBuilder.Merge(args, leadInfo.ToTemplateArguments());
+
+        // Contact-level data is present
+        args.Should().ContainKey("contact_utm_source").WhoseValue.Should().Be("google");
+        args.Should().ContainKey("contact_utm_medium").WhoseValue.Should().Be("cpc");
+        args.Should().ContainKey("contact_utm_campaign").WhoseValue.Should().Be("spring");
+        args.Should().ContainKey("Tags");
+
+        // Submitted lead data is overlaid
+        args["FirstName"].Should().Be("Ada");
     }
 }

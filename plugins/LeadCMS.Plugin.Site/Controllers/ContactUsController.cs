@@ -183,7 +183,7 @@ public class ContactUsController : Controller
         // Save contact changes
         await dbContext.SaveChangesAsync();
 
-        var leadInfo = BuildLeadNotificationInfo(contactUsDto, attachmentFiles, contact.Id, utcOffset);
+        var leadInfo = BuildLeadNotificationInfo(contactUsDto, attachmentFiles, contact, utcOffset);
 
         // Send lead notifications to all enabled channels (email, Telegram, Slack)
         await leadNotificationService.SendLeadNotificationsAsync(leadInfo);
@@ -198,7 +198,7 @@ public class ContactUsController : Controller
             // Build template args: start from stored contact data,
             // then overlay the actual submitted values so templates always
             // reflect what the user entered (not stale DB data).
-            var templateArgs = TemplateArgumentsBuilder.FromContact(contact, includeNestedObjects: false);
+            var templateArgs = TemplateArgumentsBuilder.FromContact(leadInfo.Contact, includeNestedObjects: false);
             TemplateArgumentsBuilder.Merge(templateArgs, leadInfo.ToTemplateArguments());
             leadNotificationMessageBuilder.EnrichTemplateArguments(templateArgs, leadInfo);
 
@@ -219,7 +219,7 @@ public class ContactUsController : Controller
         return Ok();
     }
 
-    protected virtual LeadNotificationInfo BuildLeadNotificationInfo(ContactUsDto contactUsDto, List<AttachmentDto> attachmentFiles, int contactId, int utcOffset)
+    protected virtual LeadNotificationInfo BuildLeadNotificationInfo(ContactUsDto contactUsDto, List<AttachmentDto> attachmentFiles, Contact contact, int utcOffset)
     {
         return new LeadNotificationInfo
         {
@@ -241,7 +241,8 @@ public class ContactUsController : Controller
             Timezone = utcOffset,
             IpAddressV4 = httpContextHelper?.IpAddressV4,
             UserAgent = httpContextHelper?.UserAgent,
-            ContactId = contactId,
+            ContactId = contact.Id,
+            Contact = contact,
         };
     }
 }
