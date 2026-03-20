@@ -45,6 +45,12 @@ public static class LeadCaptureSettingDefinitions
                 SettingValueTypes.Text,
                 true,
                 "The Telegram chat ID to send lead notifications to."),
+            [LeadCaptureSettingKeys.TelegramMessageTemplate] = CreateDefinition(
+                LeadCaptureSettingKeys.TelegramMessageTemplate,
+                string.Empty,
+                SettingValueTypes.TextArea,
+                false,
+                "Optional Liquid template for Telegram lead notification messages. When set, overrides the default message format. Supports all lead and contact template variables."),
             [LeadCaptureSettingKeys.SlackEnabled] = CreateDefinition(
                 LeadCaptureSettingKeys.SlackEnabled,
                 "false",

@@ -27,6 +27,7 @@ public class LeadNotificationService : ILeadNotificationService
     private readonly ISettingService settingService;
     private readonly PluginSettings pluginSettings;
     private readonly ILeadNotificationMessageBuilder leadNotificationMessageBuilder;
+    private readonly ILiquidTemplateService liquidTemplateService;
     private readonly ILogger<LeadNotificationService> logger;
 
     public LeadNotificationService(
@@ -34,11 +35,13 @@ public class LeadNotificationService : ILeadNotificationService
         ISettingService settingService,
         IConfiguration configuration,
         ILeadNotificationMessageBuilder leadNotificationMessageBuilder,
+        ILiquidTemplateService liquidTemplateService,
         ILogger<LeadNotificationService> logger)
     {
         this.emailService = emailService;
         this.settingService = settingService;
         this.leadNotificationMessageBuilder = leadNotificationMessageBuilder;
+        this.liquidTemplateService = liquidTemplateService;
         this.logger = logger;
 
         var settings = configuration.Get<PluginSettings>();
@@ -152,7 +155,7 @@ public class LeadNotificationService : ILeadNotificationService
 
         try
         {
-            var message = leadNotificationMessageBuilder.BuildTextMessage(leadInfo);
+            var message = await BuildTelegramMessageAsync(leadInfo, settings);
             message = TruncateMessage(message, TelegramMessageMaxLength);
 
             using var httpClient = new HttpClient();
@@ -254,6 +257,29 @@ public class LeadNotificationService : ILeadNotificationService
             logger.LogError(ex, "Failed to send lead notification to Slack");
             throw new SlackException("Failed to send message to Slack", ex);
         }
+    }
+
+    /// <summary>
+    /// Builds the Telegram message from a Liquid template setting if configured,
+    /// otherwise falls back to the hardcoded <see cref="ILeadNotificationMessageBuilder.BuildTextMessage"/> format.
+    /// </summary>
+    internal async Task<string> BuildTelegramMessageAsync(LeadNotificationInfo leadInfo, List<Setting> settings)
+    {
+        var templateText = SettingListHelper.GetString(settings, LeadCaptureSettingKeys.TelegramMessageTemplate);
+
+        if (string.IsNullOrWhiteSpace(templateText))
+        {
+            return leadNotificationMessageBuilder.BuildTextMessage(leadInfo);
+        }
+
+        var templateArgs = leadInfo.ToTemplateArguments();
+        leadNotificationMessageBuilder.EnrichTemplateArguments(templateArgs, leadInfo);
+
+        var rendered = await liquidTemplateService.RenderAsync(templateText, templateArgs);
+
+        // LiquidTemplateService converts \n to <br /> for HTML emails;
+        // restore plain-text newlines for Telegram.
+        return rendered.Replace("<br />", "\n");
     }
 
     private static bool IsValidEmail(string email)

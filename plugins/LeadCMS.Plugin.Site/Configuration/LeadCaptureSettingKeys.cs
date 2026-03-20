@@ -37,6 +37,13 @@ public static class LeadCaptureSettingKeys
     public const string TelegramChatId = "LeadCapture.Telegram.ChatId";
 
     /// <summary>
+    /// Optional Liquid template for Telegram lead notification messages.
+    /// When set, the message is rendered from this template instead of the hardcoded format.
+    /// Supports all variables available in email templates and lead notification info.
+    /// </summary>
+    public const string TelegramMessageTemplate = "LeadCapture.Telegram.MessageTemplate";
+
+    /// <summary>
     /// Whether Slack notifications are enabled for lead capture.
     /// </summary>
     public const string SlackEnabled = "LeadCapture.Slack.Enabled";
@@ -56,6 +63,7 @@ public static class LeadCaptureSettingKeys
         TelegramEnabled,
         TelegramBotId,
         TelegramChatId,
+        TelegramMessageTemplate,
         SlackEnabled,
         SlackWebhookUrl,
     };
