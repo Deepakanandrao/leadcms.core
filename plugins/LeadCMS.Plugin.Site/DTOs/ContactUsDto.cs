@@ -68,8 +68,7 @@ namespace LeadCMS.Plugin.Site.DTOs
         [JsonConverter(typeof(FlexibleStringDictionaryJsonConverter))]
         public Dictionary<string, string> ExtraData { get; set; } = new();
 
-        [Required]
-        public string Message { get; set; } = string.Empty;
+        public string? Message { get; set; }
 
         [EmailAddress]
         public string? Email
