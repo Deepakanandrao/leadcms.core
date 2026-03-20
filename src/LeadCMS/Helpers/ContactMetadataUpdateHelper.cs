@@ -5,7 +5,7 @@
 using LeadCMS.Entities;
 using LeadCMS.Models;
 
-namespace LeadCMS.Plugin.Site.Services;
+namespace LeadCMS.Helpers;
 
 /// <summary>
 /// Applies locale, tag, and UTM metadata to a contact.

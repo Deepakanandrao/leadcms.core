@@ -2,8 +2,8 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using LeadCMS.Helpers;
 using LeadCMS.Models;
-using LeadCMS.Plugin.Site.Services;
 
 namespace LeadCMS.Tests;
 

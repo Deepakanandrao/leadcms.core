@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using LeadCMS.Entities;
 using LeadCMS.Helpers;
 using LeadCMS.Models;
 
@@ -106,5 +107,72 @@ public class TemplateArgumentsBuilderTests
         args.Should().NotContainKey("contact_utm_source");
         args.Should().NotContainKey("contact_utm_medium");
         args.Should().NotContainKey("contact_utm_campaign");
+    }
+
+    [Fact]
+    public void WithPendingUpdates_OverlaysPendingValueOntoExistingArgs()
+    {
+        var contact = new Contact
+        {
+            FirstName = "Alice",
+            PendingUpdates = new List<PendingContactUpdate>
+            {
+                new() { Field = nameof(Contact.FirstName), ProposedValue = "Bob" },
+            },
+        };
+
+        var args = new Dictionary<string, object> { ["FirstName"] = "Alice" };
+
+        TemplateArgumentsBuilder.WithPendingUpdates(args, contact);
+
+        args["FirstName"].Should().Be("Bob");
+    }
+
+    [Fact]
+    public void WithPendingUpdates_RebuildFullNameWhenNamePartPending()
+    {
+        var contact = new Contact
+        {
+            FirstName = "Alice",
+            LastName = "Smith",
+            PendingUpdates = new List<PendingContactUpdate>
+            {
+                new() { Field = nameof(Contact.FirstName), ProposedValue = "Bob" },
+            },
+        };
+
+        var args = new Dictionary<string, object>
+        {
+            ["FirstName"] = "Alice",
+            ["LastName"] = "Smith",
+            ["FullName"] = "Alice Smith",
+        };
+
+        TemplateArgumentsBuilder.WithPendingUpdates(args, contact);
+
+        args["FullName"].Should().Be("Bob Smith");
+    }
+
+    [Fact]
+    public void WithPendingUpdates_NullContact_ReturnsArgsUnchanged()
+    {
+        var args = new Dictionary<string, object> { ["FirstName"] = "Alice" };
+
+        var result = TemplateArgumentsBuilder.WithPendingUpdates(args, null);
+
+        result.Should().BeSameAs(args);
+        args["FirstName"].Should().Be("Alice");
+    }
+
+    [Fact]
+    public void WithPendingUpdates_NoPendingUpdates_ReturnsArgsUnchanged()
+    {
+        var contact = new Contact { FirstName = "Alice" };
+
+        var args = new Dictionary<string, object> { ["FirstName"] = "Alice" };
+
+        TemplateArgumentsBuilder.WithPendingUpdates(args, contact);
+
+        args["FirstName"].Should().Be("Alice");
     }
 }

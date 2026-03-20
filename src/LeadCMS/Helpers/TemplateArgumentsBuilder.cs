@@ -211,6 +211,73 @@ public static class TemplateArgumentsBuilder
         return args;
     }
 
+    /// <summary>
+    /// Overlays pending update values from a contact onto the template arguments dictionary.
+    /// Pending values take priority over the contact's current values so that acknowledgment
+    /// emails reflect what the submitter actually typed, not the stored (possibly different) data.
+    /// Only the latest pending value per field is used (the list is guaranteed to have at most one per field).
+    /// </summary>
+    /// <param name="args">The template arguments dictionary to overlay into.</param>
+    /// <param name="contact">The contact whose <see cref="Contact.PendingUpdates"/> to read.</param>
+    /// <returns>The same <paramref name="args"/> dictionary with pending values merged in, for fluent chaining.</returns>
+    public static Dictionary<string, object> WithPendingUpdates(
+        Dictionary<string, object> args,
+        Contact? contact)
+    {
+        if (contact?.PendingUpdates == null || contact.PendingUpdates.Count == 0)
+        {
+            return args;
+        }
+
+        foreach (var pending in contact.PendingUpdates)
+        {
+            var key = MapPendingFieldToTemplateKey(pending.Field);
+            if (key != null && !string.IsNullOrWhiteSpace(pending.ProposedValue))
+            {
+                args[key] = pending.ProposedValue;
+            }
+        }
+
+        // Rebuild FullName if any name part was overridden by a pending update
+        var hasNamePending = contact.PendingUpdates.Exists(p =>
+            p.Field is nameof(Contact.FirstName)
+                    or nameof(Contact.MiddleName)
+                    or nameof(Contact.LastName));
+
+        if (hasNamePending)
+        {
+            var firstName = args.TryGetValue("FirstName", out var fn) ? fn?.ToString() : null;
+            var middleName = args.TryGetValue("MiddleName", out var mn) ? mn?.ToString() : null;
+            var lastName = args.TryGetValue("LastName", out var ln) ? ln?.ToString() : null;
+            var fullName = BuildFullName(firstName, middleName, lastName);
+            if (!string.IsNullOrWhiteSpace(fullName))
+            {
+                args["FullName"] = fullName;
+            }
+        }
+
+        return args;
+    }
+
+    /// <summary>
+    /// Maps a <see cref="PendingContactUpdate.Field"/> name to the corresponding template argument key.
+    /// Returns <c>null</c> for fields that don't have a direct template mapping.
+    /// </summary>
+    private static string? MapPendingFieldToTemplateKey(string fieldName)
+    {
+        return fieldName switch
+        {
+            nameof(Contact.FirstName) => "FirstName",
+            nameof(Contact.MiddleName) => "MiddleName",
+            nameof(Contact.LastName) => "LastName",
+            nameof(Contact.CompanyName) => "CompanyName",
+            nameof(Contact.Phone) => "Phone",
+            nameof(Contact.PhoneRaw) => "Phone",      // PhoneRaw also maps to Phone template key
+            nameof(Contact.Source) => "Source",
+            _ => null,
+        };
+    }
+
     private static void AddIfHasValue(Dictionary<string, object> args, string key, string? value)
     {
         if (!string.IsNullOrWhiteSpace(value))

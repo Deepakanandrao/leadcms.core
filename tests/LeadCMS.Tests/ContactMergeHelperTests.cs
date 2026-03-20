@@ -259,4 +259,38 @@ public class ContactMergeHelperTests
         contact.PendingUpdates![0].Ip.Should().BeNull();
         contact.PendingUpdates[0].UserAgent.Should().BeNull();
     }
+
+    [Fact]
+    public void ApplyPublicUpdate_SameFieldConflictTwice_ReplacesExistingPending()
+    {
+        var contact = new Contact { FirstName = "Alice" };
+
+        ContactMergeHelper.ApplyPublicUpdate(
+            contact,
+            nameof(Contact.FirstName),
+            contact.FirstName,
+            "Bob",
+            v => contact.FirstName = v,
+            Source,
+            Ip,
+            UserAgent);
+
+        contact.PendingUpdates.Should().HaveCount(1);
+        contact.PendingUpdates![0].ProposedValue.Should().Be("Bob");
+
+        ContactMergeHelper.ApplyPublicUpdate(
+            contact,
+            nameof(Contact.FirstName),
+            contact.FirstName,
+            "Charlie",
+            v => contact.FirstName = v,
+            "AnotherSource",
+            "10.0.0.1",
+            "OtherAgent/2.0");
+
+        contact.PendingUpdates.Should().HaveCount(1, "should replace, not append");
+        contact.PendingUpdates[0].ProposedValue.Should().Be("Charlie");
+        contact.PendingUpdates[0].Source.Should().Be("AnotherSource");
+        contact.PendingUpdates[0].Ip.Should().Be("10.0.0.1");
+    }
 }

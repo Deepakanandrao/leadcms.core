@@ -56,18 +56,34 @@ public static class ContactMergeHelper
             return;
         }
 
-        // Conflict — store in PendingUpdates for admin review
+        // Conflict — store in PendingUpdates for admin review.
+        // Only one pending value per field is kept; a newer submission replaces the previous one.
         contact.PendingUpdates ??= new List<PendingContactUpdate>();
 
-        contact.PendingUpdates.Add(new PendingContactUpdate
+        var existing = contact.PendingUpdates.FirstOrDefault(
+            p => string.Equals(p.Field, fieldName, StringComparison.OrdinalIgnoreCase));
+
+        if (existing != null)
         {
-            Field = fieldName,
-            OldValue = currentValue,
-            ProposedValue = proposedValue,
-            Source = source,
-            Ip = ip,
-            UserAgent = userAgent,
-            CreatedAt = DateTime.UtcNow,
-        });
+            existing.OldValue = currentValue;
+            existing.ProposedValue = proposedValue;
+            existing.Source = source;
+            existing.Ip = ip;
+            existing.UserAgent = userAgent;
+            existing.CreatedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            contact.PendingUpdates.Add(new PendingContactUpdate
+            {
+                Field = fieldName,
+                OldValue = currentValue,
+                ProposedValue = proposedValue,
+                Source = source,
+                Ip = ip,
+                UserAgent = userAgent,
+                CreatedAt = DateTime.UtcNow,
+            });
+        }
     }
 }
