@@ -77,4 +77,21 @@ public interface ISequenceService
     /// <param name="sequence">The sequence to update counters for.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     Task UpdateSequenceCountersAsync(Sequence sequence);
+
+    /// <summary>
+    /// Inserts a scheduled delivery if one does not already exist for the given enrollment and step.
+    /// Handles unique constraint violations from concurrent inserts gracefully.
+    /// </summary>
+    /// <param name="sequenceId">The sequence ID.</param>
+    /// <param name="sequenceEnrollmentId">The enrollment ID.</param>
+    /// <param name="sequenceStepId">The step ID.</param>
+    /// <param name="contactId">The contact ID.</param>
+    /// <param name="scheduledAt">When the delivery should be sent.</param>
+    /// <returns>True if a new delivery was inserted, false if it already existed.</returns>
+    Task<bool> TryInsertScheduledDeliveryAsync(
+        int sequenceId,
+        int sequenceEnrollmentId,
+        int sequenceStepId,
+        int contactId,
+        DateTime scheduledAt);
 }

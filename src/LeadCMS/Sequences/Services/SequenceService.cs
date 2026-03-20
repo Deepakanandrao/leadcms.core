@@ -234,6 +234,12 @@ public class SequenceService : ISequenceService
             enrollment.ExitedAt = DateTime.UtcNow;
         }
 
+        if (activeEnrollments.Count > 0)
+        {
+            var enrollmentIdsToCancel = activeEnrollments.Select(e => e.Id).ToArray();
+            await CancelScheduledDeliveriesAsync(enrollmentIdsToCancel);
+        }
+
         sequence.Status = SequenceStatus.Archived;
         sequence.ArchivedAt = DateTime.UtcNow;
         sequence.ActiveEnrollmentCount = 0;
@@ -404,6 +410,8 @@ public class SequenceService : ISequenceService
         enrollment.ExitReason = SequenceExitReason.ManuallyRemoved;
         enrollment.ExitedAt = DateTime.UtcNow;
 
+        await CancelScheduledDeliveriesAsync(new[] { enrollmentId });
+
         var sequence = await dbContext.Sequences!.FindAsync(sequenceId);
         if (sequence != null)
         {
@@ -437,6 +445,9 @@ public class SequenceService : ISequenceService
             enrollment.ExitReason = SequenceExitReason.ManuallyRemoved;
             enrollment.ExitedAt = now;
         }
+
+        var enrollmentIdsToCancel = enrollments.Select(e => e.Id).ToArray();
+        await CancelScheduledDeliveriesAsync(enrollmentIdsToCancel);
 
         var sequence = await dbContext.Sequences!.FindAsync(sequenceId);
         if (sequence != null)
@@ -612,6 +623,16 @@ public class SequenceService : ISequenceService
         Contact contact,
         string templateName)
     {
+        // Atomically claim the delivery to prevent duplicate sends from concurrent processes
+        var claimed = await dbContext.SequenceDeliveries!
+            .Where(d => d.Id == delivery.Id && d.Status == SequenceDeliveryStatus.Scheduled)
+            .ExecuteUpdateAsync(s => s.SetProperty(d => d.UpdatedAt, DateTime.UtcNow));
+
+        if (claimed == 0)
+        {
+            return false;
+        }
+
         try
         {
             var templateArgs = TemplateArgumentsBuilder.FromContact(contact);
@@ -665,7 +686,8 @@ public class SequenceService : ISequenceService
         var eligibleDeliveries = await dbContext.SequenceDeliveries!
             .Where(d => d.SequenceId == sequence.Id
                 && d.Status == SequenceDeliveryStatus.Scheduled
-                && d.ScheduledAt <= DateTime.UtcNow)
+                && d.ScheduledAt <= DateTime.UtcNow
+                && d.SequenceEnrollment!.Status == SequenceEnrollmentStatus.Active)
             .Include(d => d.SequenceStep)
             .OrderBy(d => d.ScheduledAt)
             .Take(100)
@@ -835,6 +857,45 @@ public class SequenceService : ISequenceService
         await dbContext.SaveChangesAsync();
     }
 
+    public async Task<bool> TryInsertScheduledDeliveryAsync(
+        int sequenceId,
+        int sequenceEnrollmentId,
+        int sequenceStepId,
+        int contactId,
+        DateTime scheduledAt)
+    {
+        var exists = await dbContext.SequenceDeliveries!
+            .AnyAsync(d => d.SequenceEnrollmentId == sequenceEnrollmentId
+                && d.SequenceStepId == sequenceStepId);
+
+        if (exists)
+        {
+            return false;
+        }
+
+        try
+        {
+            dbContext.SequenceDeliveries!.Add(new SequenceDelivery
+            {
+                SequenceId = sequenceId,
+                SequenceEnrollmentId = sequenceEnrollmentId,
+                SequenceStepId = sequenceStepId,
+                ContactId = contactId,
+                Status = SequenceDeliveryStatus.Scheduled,
+                ScheduledAt = scheduledAt,
+            });
+
+            await dbContext.SaveChangesAsync();
+            return true;
+        }
+        catch (DbUpdateException)
+        {
+            // Unique constraint violation — delivery was concurrently created
+            dbContext.ChangeTracker.Clear();
+            return false;
+        }
+    }
+
     private static DateTime AdvanceToAllowedWeekDay(DateTime localTime, string[] allowedWeekDays)
     {
         var allowedDays = allowedWeekDays
@@ -977,16 +1038,16 @@ public class SequenceService : ISequenceService
         }
 
         var contactIds = activeEnrollments.Select(e => e.ContactId).Distinct().ToList();
-        var contacts = await dbContext.Contacts!
-            .Where(c => contactIds.Contains(c.Id))
-            .ToListAsync();
+        var contacts = await TemplateContactLoader.LoadByIdsAsync(dbContext, contactIds);
 
-        var contactsById = contacts.ToDictionary(c => c.Id);
+        var stepTemplateIds = steps.Select(s => s.EmailTemplateId).Distinct().ToList();
+        var templateNames = await dbContext.EmailTemplates!
+            .Where(t => stepTemplateIds.Contains(t.Id))
+            .ToDictionaryAsync(t => t.Id, t => t.Name);
 
-        // Create Scheduled deliveries for all immediate steps (scheduledAt <= now)
         foreach (var enrollment in activeEnrollments)
         {
-            if (!contactsById.TryGetValue(enrollment.ContactId, out var contact))
+            if (!contacts.TryGetValue(enrollment.ContactId, out var contact))
             {
                 continue;
             }
@@ -1004,25 +1065,42 @@ public class SequenceService : ISequenceService
 
                 if (scheduledAt > DateTime.UtcNow)
                 {
+                    // Schedule this future step so it appears in the timeline immediately
+                    await TryInsertScheduledDeliveryAsync(
+                        sequence.Id, enrollment.Id, step.Id, enrollment.ContactId, scheduledAt);
                     break;
                 }
 
-                dbContext.SequenceDeliveries!.Add(new SequenceDelivery
+                if (!await TryInsertScheduledDeliveryAsync(
+                    sequence.Id, enrollment.Id, step.Id, enrollment.ContactId, scheduledAt))
                 {
-                    SequenceId = sequence.Id,
-                    SequenceEnrollmentId = enrollment.Id,
-                    SequenceStepId = step.Id,
-                    ContactId = enrollment.ContactId,
-                    Status = SequenceDeliveryStatus.Scheduled,
-                    ScheduledAt = scheduledAt,
-                });
+                    continue;
+                }
+
+                // Re-load the delivery entity we just inserted so we can update it after sending
+                var delivery = await dbContext.SequenceDeliveries!
+                    .FirstAsync(d => d.SequenceEnrollmentId == enrollment.Id
+                        && d.SequenceStepId == step.Id);
+
+                // Execute immediately to minimize the window where delivery is Scheduled
+                if (templateNames.TryGetValue(step.EmailTemplateId, out var templateName))
+                {
+                    await ExecuteDeliveryAsync(delivery, sequence, contact, templateName);
+
+                    // Update baseTime so the next step's schedule is relative to the actual send time
+                    if (delivery.Status == SequenceDeliveryStatus.Sent)
+                    {
+                        baseTime = delivery.SentAt ?? DateTime.UtcNow;
+                    }
+                }
+                else
+                {
+                    delivery.Status = SequenceDeliveryStatus.Failed;
+                    delivery.ErrorMessage = "Email template not found";
+                    await dbContext.SaveChangesAsync();
+                }
             }
         }
-
-        await dbContext.SaveChangesAsync();
-
-        // Send all eligible deliveries using the shared logic
-        await SendEligibleDeliveriesAsync(sequence);
 
         // Complete enrollments where all steps have been delivered
         await CompleteEnrollmentsAsync(sequence);
@@ -1043,7 +1121,20 @@ public class SequenceService : ISequenceService
             enrollment.Status = SequenceEnrollmentStatus.Exited;
             enrollment.ExitReason = reason;
             enrollment.ExitedAt = DateTime.UtcNow;
+
+            await CancelScheduledDeliveriesAsync(new[] { enrollment.Id });
         }
+    }
+
+    private async Task CancelScheduledDeliveriesAsync(int[] enrollmentIds)
+    {
+        await dbContext.SequenceDeliveries!
+            .Where(d => enrollmentIds.Contains(d.SequenceEnrollmentId)
+                && d.Status == SequenceDeliveryStatus.Scheduled)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(d => d.Status, SequenceDeliveryStatus.Skipped)
+                .SetProperty(d => d.SkipReason, "EnrollmentCancelled")
+                .SetProperty(d => d.UpdatedAt, DateTime.UtcNow));
     }
 
     private async Task<HashSet<int>> GetUnsubscribedContactIdsAsync()

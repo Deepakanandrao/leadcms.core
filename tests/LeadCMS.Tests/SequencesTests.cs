@@ -1034,6 +1034,11 @@ public class SequencesTests : BaseTestAutoLogin
         stats!.SentCount.Should().Be(1);
         stats.ActiveEnrollmentCount.Should().Be(1);
         stats.CompletedEnrollmentCount.Should().Be(0);
+
+        // The delayed step should already be scheduled without needing a task run
+        var scheduled = await GetTest<List<SequenceDeliveryDetailsDto>>(
+            $"{DeliveriesUrl(created.Id)}?filter[where][Status]=Scheduled");
+        scheduled!.Count.Should().Be(1, "next delayed step should be scheduled immediately after enrollment");
     }
 
     [Fact]
@@ -1195,11 +1200,8 @@ public class SequencesTests : BaseTestAutoLogin
             new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
             HttpStatusCode.Created);
 
-        // Execute the task enough times to process all steps
-        for (int i = 0; i < 6; i++)
-        {
-            await ExecuteSequenceSendTask();
-        }
+        // A single task execution should schedule and send all immediate steps
+        await ExecuteSequenceSendTask();
 
         var completedEnrollments = await GetTest<List<SequenceEnrollmentDetailsDto>>(
             $"{SequencesUrl}/{sequenceId}/enrollments?filter[where][Status]=Completed");
@@ -1391,6 +1393,168 @@ public class SequencesTests : BaseTestAutoLogin
         stats.Should().NotBeNull();
         stats!.ActiveEnrollmentCount.Should().Be(0);
         stats.ExitedEnrollmentCount.Should().Be(1);
+    }
+
+    // ──────────────────────────────────────────────────
+    // Cancellation: Scheduled Deliveries Tests
+    // ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task RemoveEnrollment_CancelsScheduledDeliveries()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("cancel-del-remove", delayMinutes: 1440);
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("cancel-del-remove");
+        var enrollments = await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        // Run task to schedule delivery
+        await ExecuteSequenceSendTask();
+
+        // Verify delivery is Scheduled before removal
+        var deliveriesBefore = await GetTest<List<SequenceDeliveryDetailsDto>>(
+            $"{DeliveriesUrl(sequenceId)}?filter[where][Status]=Scheduled");
+        deliveriesBefore!.Count.Should().Be(1);
+
+        // Remove enrollment
+        await DeleteTest($"{SequencesUrl}/{sequenceId}/enrollments/{enrollments![0].Id}", HttpStatusCode.OK);
+
+        // Verify scheduled delivery is now Skipped
+        var scheduledAfter = await GetTest<List<SequenceDeliveryDetailsDto>>(
+            $"{DeliveriesUrl(sequenceId)}?filter[where][Status]=Scheduled");
+        scheduledAfter!.Count.Should().Be(0);
+
+        var skippedAfter = await GetTest<List<SequenceDeliveryDetailsDto>>(
+            $"{DeliveriesUrl(sequenceId)}?filter[where][Status]=Skipped");
+        skippedAfter!.Count.Should().Be(1);
+        skippedAfter[0].SkipReason.Should().Be("EnrollmentCancelled");
+    }
+
+    [Fact]
+    public async Task StopEnrollments_CancelsScheduledDeliveries()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("cancel-del-stop", delayMinutes: 1440);
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contact1 = await CreateContactAsync("cancel-del-stop1");
+        var contact2 = await CreateContactAsync("cancel-del-stop2");
+        var enrollments = await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contact1, contact2 } },
+            HttpStatusCode.Created);
+
+        // Run task to schedule deliveries
+        await ExecuteSequenceSendTask();
+
+        var scheduledBefore = await GetTest<List<SequenceDeliveryDetailsDto>>(
+            $"{DeliveriesUrl(sequenceId)}?filter[where][Status]=Scheduled");
+        scheduledBefore!.Count.Should().Be(2);
+
+        // Stop both enrollments
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments/stop",
+            new SequenceEnrollmentStopDto { EnrollmentIds = new[] { enrollments![0].Id, enrollments[1].Id } },
+            HttpStatusCode.OK);
+
+        // Verify all scheduled deliveries are now Skipped
+        var scheduledAfter = await GetTest<List<SequenceDeliveryDetailsDto>>(
+            $"{DeliveriesUrl(sequenceId)}?filter[where][Status]=Scheduled");
+        scheduledAfter!.Count.Should().Be(0);
+
+        var skippedAfter = await GetTest<List<SequenceDeliveryDetailsDto>>(
+            $"{DeliveriesUrl(sequenceId)}?filter[where][Status]=Skipped");
+        skippedAfter!.Count.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task ArchiveSequence_CancelsScheduledDeliveries()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("cancel-del-archive", delayMinutes: 1440);
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("cancel-del-archive");
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        // Run task to schedule delivery
+        await ExecuteSequenceSendTask();
+
+        var scheduledBefore = await GetTest<List<SequenceDeliveryDetailsDto>>(
+            $"{DeliveriesUrl(sequenceId)}?filter[where][Status]=Scheduled");
+        scheduledBefore!.Count.Should().Be(1);
+
+        // Archive the sequence
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/archive", new { }, HttpStatusCode.OK);
+
+        // Verify scheduled delivery is now Skipped
+        var scheduledAfter = await GetTest<List<SequenceDeliveryDetailsDto>>(
+            $"{DeliveriesUrl(sequenceId)}?filter[where][Status]=Scheduled");
+        scheduledAfter!.Count.Should().Be(0);
+
+        var skippedAfter = await GetTest<List<SequenceDeliveryDetailsDto>>(
+            $"{DeliveriesUrl(sequenceId)}?filter[where][Status]=Skipped");
+        skippedAfter!.Count.Should().Be(1);
+        skippedAfter[0].SkipReason.Should().Be("EnrollmentCancelled");
+    }
+
+    [Fact]
+    public async Task SequenceSendTask_DoesNotSendDeliveriesForExitedEnrollments()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("no-send-exited", delayMinutes: 1440);
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("no-send-exited");
+        var enrollments = await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        // Run task to schedule delivery
+        await ExecuteSequenceSendTask();
+
+        // Remove the enrollment (this should cancel scheduled deliveries)
+        await DeleteTest($"{SequencesUrl}/{sequenceId}/enrollments/{enrollments![0].Id}", HttpStatusCode.OK);
+
+        // Run task again — should NOT send anything
+        await ExecuteSequenceSendTask();
+
+        var stats = await GetTest<SequenceStatisticsDto>($"{SequencesUrl}/{sequenceId}/statistics");
+        stats!.SentCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Enroll_ImmediateStep_TaskDoesNotDuplicateSend()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("no-dup-send");
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("no-dup-send");
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        // Run task multiple times after enrollment — should not duplicate
+        await ExecuteSequenceSendTask();
+        await ExecuteSequenceSendTask();
+        await ExecuteSequenceSendTask();
+
+        var stats = await GetTest<SequenceStatisticsDto>($"{SequencesUrl}/{sequenceId}/statistics");
+        stats!.SentCount.Should().Be(1, "immediate step should be sent exactly once");
+        stats.CompletedEnrollmentCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task DeleteEmailTemplate_UsedInSequenceStep_Fails()
+    {
+        var (_, templateId) = await CreateSequenceWithStepAsync("del-guard");
+
+        await DeleteTest($"{EmailTemplatesUrl}/{templateId}", HttpStatusCode.UnprocessableEntity);
     }
 
     // ──────────────────────────────────────────────────

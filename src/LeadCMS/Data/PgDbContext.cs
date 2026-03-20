@@ -370,6 +370,13 @@ public class PgDbContext : IdentityDbContext<User>
             .HasForeignKey(st => st.SequenceId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // SequenceStep: prevent deleting an EmailTemplate that is referenced by a step
+        builder.Entity<SequenceStep>()
+            .HasOne(st => st.EmailTemplate)
+            .WithMany()
+            .HasForeignKey(st => st.EmailTemplateId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         // SequenceDelivery: avoid multiple cascade paths by restricting Contact delete
         builder.Entity<SequenceDelivery>()
             .HasOne(d => d.Contact)

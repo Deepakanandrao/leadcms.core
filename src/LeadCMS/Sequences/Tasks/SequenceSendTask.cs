@@ -58,11 +58,24 @@ public class SequenceSendTask : BaseTask
                 try
                 {
                     enrolled += await ProcessSegmentEnrollments(sequence);
-                    scheduled += await ScheduleNextDeliveries(sequence);
-                    var (s, f, sk) = await sequenceService.SendEligibleDeliveriesAsync(sequence);
-                    sent += s;
-                    failed += f;
-                    skipped += sk;
+
+                    // Loop schedule→send until no more work is produced,
+                    // so a multi-step sequence with immediate delays
+                    // completes in a single task execution.
+                    int iterationScheduled, iterationSent;
+                    do
+                    {
+                        iterationScheduled = await ScheduleNextDeliveries(sequence);
+                        scheduled += iterationScheduled;
+
+                        var (s, f, sk) = await sequenceService.SendEligibleDeliveriesAsync(sequence);
+                        iterationSent = s;
+                        sent += s;
+                        failed += f;
+                        skipped += sk;
+                    }
+                    while (iterationScheduled > 0 && iterationSent > 0);
+
                     completed += await sequenceService.CompleteEnrollmentsAsync(sequence);
                     await sequenceService.UpdateSequenceCountersAsync(sequence);
                 }
@@ -205,6 +218,16 @@ public class SequenceSendTask : BaseTask
             enrollment.ExitedAt = exitedAt;
         }
 
+        // Cancel all scheduled deliveries for exited enrollments
+        var enrollmentIds = activeEnrollments.Select(e => e.Id).ToArray();
+        await dbContext.SequenceDeliveries!
+            .Where(d => enrollmentIds.Contains(d.SequenceEnrollmentId)
+                && d.Status == SequenceDeliveryStatus.Scheduled)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(d => d.Status, SequenceDeliveryStatus.Skipped)
+                .SetProperty(d => d.SkipReason, "EnrollmentCancelled")
+                .SetProperty(d => d.UpdatedAt, DateTime.UtcNow));
+
         return activeEnrollments.Count;
     }
 
@@ -275,43 +298,13 @@ public class SequenceSendTask : BaseTask
                 sequence.TimeZone,
                 enrollment.Contact?.Timezone);
 
-            if (await TryInsertScheduledDeliveryAsync(sequence.Id, enrollment.Id, nextStep.Id, enrollment.ContactId, scheduledAt))
+            if (await sequenceService.TryInsertScheduledDeliveryAsync(sequence.Id, enrollment.Id, nextStep.Id, enrollment.ContactId, scheduledAt))
             {
                 scheduled++;
             }
         }
 
         return scheduled;
-    }
-
-    private async Task<bool> TryInsertScheduledDeliveryAsync(
-        int sequenceId,
-        int sequenceEnrollmentId,
-        int sequenceStepId,
-        int contactId,
-        DateTime scheduledAt)
-    {
-        var exists = await dbContext.SequenceDeliveries!
-            .AnyAsync(d => d.SequenceEnrollmentId == sequenceEnrollmentId
-                && d.SequenceStepId == sequenceStepId);
-
-        if (exists)
-        {
-            return false;
-        }
-
-        dbContext.SequenceDeliveries!.Add(new SequenceDelivery
-        {
-            SequenceId = sequenceId,
-            SequenceEnrollmentId = sequenceEnrollmentId,
-            SequenceStepId = sequenceStepId,
-            ContactId = contactId,
-            Status = SequenceDeliveryStatus.Scheduled,
-            ScheduledAt = scheduledAt,
-        });
-
-        await dbContext.SaveChangesAsync();
-        return true;
     }
 
     private async Task<HashSet<int>> GetUnsubscribedContactIdsAsync()
