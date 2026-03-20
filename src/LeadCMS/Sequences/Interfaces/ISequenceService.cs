@@ -24,9 +24,9 @@ public interface ISequenceService
 
     Task<SequenceStatisticsDto> GetStatisticsAsync(int sequenceId);
 
-    Task<List<SequenceEnrollment>> EnrollContactsAsync(int sequenceId, int[] contactIds, string? enrollmentReason, Dictionary<string, string>? templateArguments = null, SequenceEnrollmentSource source = SequenceEnrollmentSource.Api);
+    Task<List<SequenceEnrollment>> EnrollContactsAsync(int sequenceId, int[] contactIds, string? enrollmentReason, Dictionary<string, object>? templateArguments = null, SequenceEnrollmentSource source = SequenceEnrollmentSource.Api);
 
-    Task<List<SequenceEnrollment>> EnrollContactBySequenceNameAsync(string sequenceName, int[] contactIds, string? enrollmentReason = null, Dictionary<string, string>? templateArguments = null, SequenceEnrollmentSource source = SequenceEnrollmentSource.Api);
+    Task<List<SequenceEnrollment>> EnrollContactBySequenceNameAsync(string sequenceName, int[] contactIds, string? enrollmentReason = null, Dictionary<string, object>? templateArguments = null, SequenceEnrollmentSource source = SequenceEnrollmentSource.Api);
 
     Task<SequenceEnrollment> RemoveEnrollmentAsync(int sequenceId, int enrollmentId);
 

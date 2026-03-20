@@ -109,5 +109,5 @@ public class SequenceEnrollment : BaseEntityWithIdAndDates
     /// Merged into the template arguments for every email sent in this enrollment.
     /// </summary>
     [Column(TypeName = "jsonb")]
-    public Dictionary<string, string>? TemplateArguments { get; set; }
+    public Dictionary<string, object>? TemplateArguments { get; set; }
 }
