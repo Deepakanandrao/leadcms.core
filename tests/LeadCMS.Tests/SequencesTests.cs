@@ -216,97 +216,6 @@ public class SequencesTests : BaseTestAutoLogin
     }
 
     // ──────────────────────────────────────────────────
-    // Step Management Tests
-    // ──────────────────────────────────────────────────
-
-    [Fact]
-    public async Task CreateStep_AutoAssignsPosition()
-    {
-        var (sequenceId, templateId) = await CreateSequenceWithPrerequisitesAsync("step-pos");
-
-        var step1 = new TestSequenceStep("1", templateId);
-        await PostTest<SequenceStepDetailsDto>(StepsUrl(sequenceId), step1, HttpStatusCode.Created);
-
-        var step2 = new TestSequenceStep("2", templateId);
-        var result = await PostTest<SequenceStepDetailsDto>(StepsUrl(sequenceId), step2, HttpStatusCode.Created);
-
-        result!.Position.Should().Be(2);
-    }
-
-    [Fact]
-    public async Task ListSteps_OrderedByPosition()
-    {
-        var (sequenceId, templateId) = await CreateSequenceWithPrerequisitesAsync("step-list");
-
-        await PostTest<SequenceStepDetailsDto>(StepsUrl(sequenceId), new TestSequenceStep("a", templateId), HttpStatusCode.Created);
-        await PostTest<SequenceStepDetailsDto>(StepsUrl(sequenceId), new TestSequenceStep("b", templateId), HttpStatusCode.Created);
-
-        var steps = await GetTest<List<SequenceStepDetailsDto>>(StepsUrl(sequenceId));
-        steps.Should().NotBeNull();
-        steps!.Count.Should().Be(2);
-        steps[0].Position.Should().BeLessThan(steps[1].Position);
-    }
-
-    [Fact]
-    public async Task DeleteStep_ReordersRemaining()
-    {
-        var (sequenceId, templateId) = await CreateSequenceWithPrerequisitesAsync("step-del");
-
-        var step1 = await PostTest<SequenceStepDetailsDto>(StepsUrl(sequenceId), new TestSequenceStep("x", templateId), HttpStatusCode.Created);
-        var step2 = await PostTest<SequenceStepDetailsDto>(StepsUrl(sequenceId), new TestSequenceStep("y", templateId), HttpStatusCode.Created);
-        await PostTest<SequenceStepDetailsDto>(StepsUrl(sequenceId), new TestSequenceStep("z", templateId), HttpStatusCode.Created);
-
-        // Delete the first step
-        await DeleteTest($"{StepsUrl(sequenceId)}/{step1!.Id}");
-
-        var steps = await GetTest<List<SequenceStepDetailsDto>>(StepsUrl(sequenceId));
-        steps!.Count.Should().Be(2);
-        steps[0].Id.Should().Be(step2!.Id);
-        steps[0].Position.Should().Be(1);
-    }
-
-    [Fact]
-    public async Task ReorderSteps_UpdatesPositions()
-    {
-        var (sequenceId, templateId) = await CreateSequenceWithPrerequisitesAsync("step-reorder");
-
-        var step1 = await PostTest<SequenceStepDetailsDto>(StepsUrl(sequenceId), new TestSequenceStep("r1", templateId), HttpStatusCode.Created);
-        var step2 = await PostTest<SequenceStepDetailsDto>(StepsUrl(sequenceId), new TestSequenceStep("r2", templateId), HttpStatusCode.Created);
-
-        // Reverse order
-        var result = await PostTest<List<SequenceStepDetailsDto>>(
-            $"{StepsUrl(sequenceId)}/reorder",
-            new { StepIds = new[] { step2!.Id, step1!.Id } },
-            HttpStatusCode.OK);
-
-        result!.Count.Should().Be(2);
-        result[0].Id.Should().Be(step2.Id);
-        result[0].Position.Should().Be(1);
-        result[1].Id.Should().Be(step1.Id);
-        result[1].Position.Should().Be(2);
-    }
-
-    [Fact]
-    public async Task UpdateStep_ChangesTiming()
-    {
-        var (sequenceId, templateId) = await CreateSequenceWithPrerequisitesAsync("step-update");
-        var step = await PostTest<SequenceStepDetailsDto>(StepsUrl(sequenceId), new TestSequenceStep("upd", templateId), HttpStatusCode.Created);
-
-        var newTiming = new SequenceStepTiming
-        {
-            Delay = new SequenceStepDelay { Value = 2, Unit = "days" },
-            SendAt = "10:00",
-        };
-
-        await PatchTest($"{StepsUrl(sequenceId)}/{step!.Id}", new { Timing = newTiming });
-
-        var updated = await GetTest<SequenceStepDetailsDto>($"{StepsUrl(sequenceId)}/{step.Id}");
-        updated!.Timing.Delay.Value.Should().Be(2);
-        updated.Timing.Delay.Unit.Should().Be("days");
-        updated.Timing.SendAt.Should().Be("10:00");
-    }
-
-    // ──────────────────────────────────────────────────
     // Enrollment Tests
     // ──────────────────────────────────────────────────
 
@@ -855,9 +764,7 @@ public class SequencesTests : BaseTestAutoLogin
         created.StopOnReply.Should().BeTrue();
         created.Steps.Should().HaveCount(2);
         created.Steps[0].Name.Should().Be("welcome");
-        created.Steps[0].Position.Should().Be(1);
         created.Steps[1].Name.Should().Be("follow-up");
-        created.Steps[1].Position.Should().Be(2);
     }
 
     [Fact]
@@ -913,10 +820,8 @@ public class SequencesTests : BaseTestAutoLogin
         updated.Language.Should().Be("fr");
         updated.Steps.Should().HaveCount(2);
         updated.Steps[0].Name.Should().Be("step-b");
-        updated.Steps[0].Position.Should().Be(1);
         updated.Steps[0].Timing.Delay.Value.Should().Be(2);
         updated.Steps[1].Name.Should().Be("step-c");
-        updated.Steps[1].Position.Should().Be(2);
     }
 
     [Fact]
@@ -1185,12 +1090,14 @@ public class SequencesTests : BaseTestAutoLogin
     public async Task SequenceSendTask_MultiStepSequence_ProcessesInOrder()
     {
         var templateId = await CreateEmailTemplateAsync("multi-step");
-        var sequenceLocation = await PostTest(SequencesUrl, new TestSequence("multi-step"));
-        var sequenceId = ExtractId(sequenceLocation);
-
-        // Add two steps with 0-minute delay
-        await PostTest<SequenceStepDetailsDto>(StepsUrl(sequenceId), new TestSequenceStep("ms1", templateId), HttpStatusCode.Created);
-        await PostTest<SequenceStepDetailsDto>(StepsUrl(sequenceId), new TestSequenceStep("ms2", templateId), HttpStatusCode.Created);
+        var sequence = new TestSequence("multi-step");
+        sequence.Steps = new List<SequenceStepCreateDto>
+        {
+            new() { Name = "ms1", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 0, Unit = "minutes" } } },
+            new() { Name = "ms2", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 0, Unit = "minutes" } } },
+        };
+        var created = await PostTest<SequenceDetailsDto>(SequencesUrl, sequence, HttpStatusCode.Created);
+        var sequenceId = created!.Id;
 
         await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
 
@@ -1215,12 +1122,14 @@ public class SequencesTests : BaseTestAutoLogin
     public async Task SequenceSendTask_DuplicateEnrollments_DoNotResendAfterCompletion()
     {
         var templateId = await CreateEmailTemplateAsync("dup-no-resend");
-        var sequenceLocation = await PostTest(SequencesUrl, new TestSequence("dup-no-resend"));
-        var sequenceId = ExtractId(sequenceLocation);
-
-        // Two steps so the sequence isn't immediately complete
-        await PostTest<SequenceStepDetailsDto>(StepsUrl(sequenceId), new TestSequenceStep("step1", templateId), HttpStatusCode.Created);
-        await PostTest<SequenceStepDetailsDto>(StepsUrl(sequenceId), new TestSequenceStep("step2", templateId), HttpStatusCode.Created);
+        var sequence = new TestSequence("dup-no-resend");
+        sequence.Steps = new List<SequenceStepCreateDto>
+        {
+            new() { Name = "step1", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 0, Unit = "minutes" } } },
+            new() { Name = "step2", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 0, Unit = "minutes" } } },
+        };
+        var created = await PostTest<SequenceDetailsDto>(SequencesUrl, sequence, HttpStatusCode.Created);
+        var sequenceId = created!.Id;
 
         await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
 
@@ -1558,10 +1467,30 @@ public class SequencesTests : BaseTestAutoLogin
     }
 
     // ──────────────────────────────────────────────────
-    // Helper Methods
+    // Sync Tests
     // ──────────────────────────────────────────────────
 
-    private static string StepsUrl(int sequenceId) => $"{SequencesUrl}/{sequenceId}/steps";
+    [Fact]
+    public async Task Sync_WithIncludeSteps_ReturnsSteps()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("sync-inc");
+
+        var response = await GetRequest($"{SequencesUrl}/sync?filter[include]=Steps");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var content = await response.Content.ReadAsStringAsync();
+        var syncResponse = JsonHelper.Deserialize<SyncResponseDto<SequenceDetailsDto, int>>(content);
+
+        syncResponse.Should().NotBeNull();
+        var sequence = syncResponse!.Items.FirstOrDefault(i => i.Id == sequenceId);
+        sequence.Should().NotBeNull();
+        sequence!.Steps.Should().NotBeNullOrEmpty();
+        sequence.Steps.Count.Should().Be(1);
+    }
+
+    // ──────────────────────────────────────────────────
+    // Helper Methods
+    // ──────────────────────────────────────────────────
 
     private static string DeliveriesUrl(int sequenceId) => $"{SequencesUrl}/{sequenceId}/deliveries";
 
@@ -1608,19 +1537,16 @@ public class SequencesTests : BaseTestAutoLogin
         await PostTest("/api/unsubscribes", unsubscribeDto);
     }
 
-    private async Task<(int sequenceId, int templateId)> CreateSequenceWithPrerequisitesAsync(string uid)
-    {
-        var templateId = await CreateEmailTemplateAsync(uid);
-        var location = await PostTest(SequencesUrl, new TestSequence(uid));
-        var sequenceId = ExtractId(location);
-        return (sequenceId, templateId);
-    }
-
     private async Task<(int sequenceId, int templateId)> CreateSequenceWithStepAsync(string uid, int delayMinutes = 0)
     {
-        var (sequenceId, templateId) = await CreateSequenceWithPrerequisitesAsync(uid);
-        await PostTest<SequenceStepDetailsDto>(StepsUrl(sequenceId), new TestSequenceStep(uid, templateId, delayMinutes), HttpStatusCode.Created);
-        return (sequenceId, templateId);
+        var templateId = await CreateEmailTemplateAsync(uid);
+        var sequence = new TestSequence(uid);
+        sequence.Steps = new List<SequenceStepCreateDto>
+        {
+            new() { Name = $"Test Step {uid}", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = delayMinutes, Unit = "minutes" } } },
+        };
+        var created = await PostTest<SequenceDetailsDto>(SequencesUrl, sequence, HttpStatusCode.Created);
+        return (created!.Id, templateId);
     }
 
     private async Task ExecuteSequenceSendTask()

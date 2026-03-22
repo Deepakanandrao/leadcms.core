@@ -206,6 +206,12 @@ public class SyncService : ISyncService
         var qp = queryProviderFactory.BuildQueryProvider();
         var dbQueryProvider = qp as DBQueryProvider<TEntity>;
         var dbSet = dbContext.Set<TEntity>();
+
+        if (dbQueryProvider != null)
+        {
+            dbQueryProvider.ApplyIncludes();
+        }
+
         IQueryable<TEntity> queryable = dbQueryProvider != null ? dbQueryProvider.BuiltQuery : dbSet.AsNoTracking();
 
         // EF Core cannot translate interface casts, so fetch and filter in memory

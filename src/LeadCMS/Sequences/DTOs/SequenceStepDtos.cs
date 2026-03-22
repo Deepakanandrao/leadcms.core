@@ -3,10 +3,7 @@
 // </copyright>
 
 using System.ComponentModel.DataAnnotations;
-using System.Text.Json.Serialization;
-using CsvHelper.Configuration.Attributes;
 using LeadCMS.Entities;
-using LeadCMS.Infrastructure;
 using LeadCMS.Models;
 
 namespace LeadCMS.Core.Sequences.DTOs;
@@ -24,25 +21,10 @@ public class SequenceStepCreateDto
     [Required]
     public string Name { get; set; } = string.Empty;
 
-    public int? Position { get; set; }
-
     public SequenceStepType Type { get; set; } = SequenceStepType.Email;
 
     [Required]
     public SequenceStepTiming Timing { get; set; } = new();
-}
-
-public class SequenceStepUpdateDto : IPatchDto
-{
-    [Ignore]
-    [JsonIgnore]
-    public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-    public int? EmailTemplateId { get; set; }
-
-    public string? Name { get; set; }
-
-    public SequenceStepTiming? Timing { get; set; }
 }
 
 public class SequenceStepDetailsDto
@@ -52,8 +34,6 @@ public class SequenceStepDetailsDto
     public int SequenceId { get; set; }
 
     public int EmailTemplateId { get; set; }
-
-    public int Position { get; set; }
 
     public string Name { get; set; } = string.Empty;
 
@@ -72,10 +52,4 @@ public class SequenceStepDetailsDto
     public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }
-}
-
-public class SequenceStepReorderDto
-{
-    [Required]
-    public int[] StepIds { get; set; } = Array.Empty<int>();
 }

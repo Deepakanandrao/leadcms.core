@@ -281,10 +281,9 @@ public class AutoMapperProfiles : Profile
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<Sequence, SequenceDetailsDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
-        CreateMap<SequenceStepCreateDto, SequenceStep>().ReverseMap();
-        CreateMap<SequenceStepUpdateDto, SequenceStep>()
-            .WithPatchDtoSupport()
-            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+        CreateMap<SequenceStepCreateDto, SequenceStep>()
+            .ForMember(dest => dest.Position, opt => opt.Ignore())
+            .ReverseMap();
         CreateMap<SequenceStep, SequenceStepDetailsDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<SequenceEnrollment, SequenceEnrollmentDetailsDto>()

@@ -43,7 +43,7 @@ namespace LeadCMS.Infrastructure
             var totalCount = BuiltQuery.Count();
             IList<T>? records;
 
-            AddIncludeCommands();
+            ApplyIncludes();
             AddOrderCommands();
             AddSkipCommand();
             AddLimitCommand();
@@ -60,6 +60,19 @@ namespace LeadCMS.Infrastructure
             }
 
             return new QueryResult<T>(records, totalCount, "DB");
+        }
+
+        /// <summary>
+        /// Applies include commands parsed from the query string to <see cref="BuiltQuery"/>.
+        /// Called automatically by <see cref="GetResult"/>, but can also be invoked
+        /// directly when the caller needs the includes without executing the full query pipeline.
+        /// </summary>
+        public void ApplyIncludes()
+        {
+            foreach (var data in queryBuilder.IncludeData)
+            {
+                BuiltQuery = BuiltQuery.Include(data.Name);
+            }
         }
 
         private static bool CanTranslateToString(Type propertyType)
@@ -122,14 +135,6 @@ namespace LeadCMS.Infrastructure
             }
 
             return results;
-        }
-
-        private void AddIncludeCommands()
-        {
-            foreach (var data in queryBuilder.IncludeData)
-            {
-                BuiltQuery = BuiltQuery.Include(data.Name);
-            }
         }
 
         private void AddOrderCommands()
