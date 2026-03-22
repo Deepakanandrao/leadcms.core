@@ -323,13 +323,62 @@ public class SegmentService : ISegmentService
     {
         var expressions = new List<Expression<Func<Contact, bool>>>();
 
-        // Process individual rules
-        foreach (var rule in ruleGroup.Rules)
+        // When using AND connector, group rules by top-level collection navigation so that
+        // multiple conditions on the same collection (e.g., emailLogs.status AND emailLogs.createdAt)
+        // are evaluated against the same record via a single .Any() call.
+        if (ruleGroup.Connector == RuleConnector.And)
         {
-            var ruleExpression = BuildRuleExpression(rule);
-            if (ruleExpression != null)
+            var collectionRuleGroups = new Dictionary<string, List<SegmentRule>>(StringComparer.OrdinalIgnoreCase);
+            var otherRules = new List<SegmentRule>();
+
+            foreach (var rule in ruleGroup.Rules)
             {
-                expressions.Add(ruleExpression);
+                var segments = rule.FieldId.Split('.');
+                if (segments.Length >= 2 && ContactCollectionNavigations.ContainsKey(segments[0]))
+                {
+                    if (!collectionRuleGroups.TryGetValue(segments[0], out var group))
+                    {
+                        group = new List<SegmentRule>();
+                        collectionRuleGroups[segments[0]] = group;
+                    }
+
+                    group.Add(rule);
+                }
+                else
+                {
+                    otherRules.Add(rule);
+                }
+            }
+
+            foreach (var (collectionKey, rules) in collectionRuleGroups)
+            {
+                var navInfo = ContactCollectionNavigations[collectionKey];
+                var expr = BuildCombinedCollectionExpression(navInfo, rules);
+                if (expr != null)
+                {
+                    expressions.Add(expr);
+                }
+            }
+
+            foreach (var rule in otherRules)
+            {
+                var ruleExpression = BuildRuleExpression(rule);
+                if (ruleExpression != null)
+                {
+                    expressions.Add(ruleExpression);
+                }
+            }
+        }
+        else
+        {
+            // For OR connector, process rules individually (separate .Any() calls are semantically equivalent)
+            foreach (var rule in ruleGroup.Rules)
+            {
+                var ruleExpression = BuildRuleExpression(rule);
+                if (ruleExpression != null)
+                {
+                    expressions.Add(ruleExpression);
+                }
             }
         }
 
@@ -594,6 +643,100 @@ public class SegmentService : ISegmentService
     }
 
     /// <summary>
+    /// Builds a single .Any() expression that combines inner predicates from multiple rules
+    /// targeting the same collection navigation with AND, ensuring all conditions are evaluated
+    /// against the same collection element.
+    /// </summary>
+    private Expression<Func<Contact, bool>>? BuildCombinedCollectionExpression(
+        (string PropertyName, Type ElementType) navInfo,
+        List<SegmentRule> rules)
+    {
+        var contactParam = Expression.Parameter(typeof(Contact), "c");
+        var innerParam = Expression.Parameter(navInfo.ElementType, navInfo.ElementType.Name[0..1].ToLower());
+        Expression? combinedPredicate = null;
+
+        foreach (var rule in rules)
+        {
+            var segments = rule.FieldId.Split('.');
+            var remainingPath = segments.Skip(1).ToArray();
+
+            var predicate = BuildCollectionInnerPredicate(innerParam, navInfo.ElementType, remainingPath, rule);
+            if (predicate == null)
+            {
+                continue;
+            }
+
+            combinedPredicate = combinedPredicate == null
+                ? predicate
+                : Expression.AndAlso(combinedPredicate, predicate);
+        }
+
+        if (combinedPredicate == null)
+        {
+            return null;
+        }
+
+        var innerLambda = Expression.Lambda(combinedPredicate, innerParam);
+        var collectionProperty = Expression.Property(contactParam, navInfo.PropertyName);
+
+        var anyMethod = typeof(Enumerable).GetMethods()
+            .First(m => m.Name == "Any" && m.GetParameters().Length == 2)
+            .MakeGenericMethod(navInfo.ElementType);
+
+        var anyCall = Expression.Call(anyMethod, collectionProperty, innerLambda);
+        return Expression.Lambda<Func<Contact, bool>>(anyCall, contactParam);
+    }
+
+    /// <summary>
+    /// Builds the inner predicate for a single rule within a collection element context.
+    /// This handles both leaf properties and sub-collection navigations.
+    /// </summary>
+    private Expression? BuildCollectionInnerPredicate(
+        ParameterExpression elementParam,
+        Type elementType,
+        string[] remainingPath,
+        SegmentRule rule)
+    {
+        if (remainingPath.Length == 0)
+        {
+            return null;
+        }
+
+        if (remainingPath.Length == 1)
+        {
+            var leafPropertyName = GetMappedPropertyName(elementType, remainingPath[0]);
+            if (leafPropertyName == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                var leafProperty = Expression.Property(elementParam, leafPropertyName);
+                return ApplyOperator(leafProperty, rule);
+            }
+            catch (ArgumentException)
+            {
+                return null;
+            }
+        }
+
+        // Sub-collection navigation (e.g., orderItems on Order)
+        if (SubCollectionNavigations.TryGetValue(elementType.Name, out var subNavs) &&
+            subNavs.TryGetValue(remainingPath[0], out var subNavInfo))
+        {
+            return BuildCollectionAnyExpression(
+                elementParam,
+                subNavInfo.PropertyName,
+                subNavInfo.ElementType,
+                remainingPath.Skip(1).ToArray(),
+                rule);
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Recursively builds nested Any() expressions for collection navigation paths.
     /// E.g., for "orders.orderItems.productName" with Contains("Automation"):
     ///   c.Orders.Any(o =&gt; o.OrderItems.Any(oi =&gt; oi.ProductName.ToLower().Contains("automation"))).
@@ -611,45 +754,7 @@ public class SegmentService : ISegmentService
         }
 
         var innerParam = Expression.Parameter(elementType, elementType.Name[0..1].ToLower());
-        Expression? innerPredicate;
-
-        if (remainingPath.Length == 1)
-        {
-            // Leaf property — apply the operator
-            var leafPropertyName = GetMappedPropertyName(elementType, remainingPath[0]);
-            if (leafPropertyName == null)
-            {
-                return null;
-            }
-
-            try
-            {
-                var leafProperty = Expression.Property(innerParam, leafPropertyName);
-                innerPredicate = ApplyOperator(leafProperty, rule);
-            }
-            catch (ArgumentException)
-            {
-                return null;
-            }
-        }
-        else
-        {
-            // Check for sub-collection navigation (e.g., orderItems on Order)
-            if (SubCollectionNavigations.TryGetValue(elementType.Name, out var subNavs) &&
-                subNavs.TryGetValue(remainingPath[0], out var subNavInfo))
-            {
-                innerPredicate = BuildCollectionAnyExpression(
-                    innerParam,
-                    subNavInfo.PropertyName,
-                    subNavInfo.ElementType,
-                    remainingPath.Skip(1).ToArray(),
-                    rule);
-            }
-            else
-            {
-                return null;
-            }
-        }
+        var innerPredicate = BuildCollectionInnerPredicate(innerParam, elementType, remainingPath, rule);
 
         if (innerPredicate == null)
         {

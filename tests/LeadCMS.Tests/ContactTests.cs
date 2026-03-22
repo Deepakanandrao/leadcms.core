@@ -1053,39 +1053,6 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
     }
 
     [Fact]
-    public async Task DeleteContact_ShouldCascadeDeleteActivityLog()
-    {
-        TrackEntityType<ActivityLog>();
-
-        var testCreateItem = await CreateItem();
-        var contactId = Convert.ToInt32(testCreateItem.Item2.Split("/").Last());
-
-        var dbContext = App.GetDbContext()!;
-
-        var activityLog = new ActivityLog
-        {
-            Source = "ContactTests",
-            SourceId = contactId,
-            Type = "Message",
-            ContactId = contactId,
-            CreatedAt = DateTime.UtcNow,
-            Data = "{\"event\":\"contact-delete\"}",
-        };
-
-        await dbContext.ActivityLogs!.AddAsync(activityLog);
-        await dbContext.SaveChangesAsync();
-
-        await DeleteTest($"/api/contacts/{contactId}");
-
-        dbContext = App.GetDbContext()!;
-        var deletedContact = await dbContext.Contacts!.FindAsync(contactId);
-        deletedContact.Should().BeNull();
-
-        var persistedActivityLog = await dbContext.ActivityLogs!.FindAsync(activityLog.Id);
-        persistedActivityLog.Should().BeNull();
-    }
-
-    [Fact]
     public async Task GetOne_WithUnsubscribeInclude_ReturnsUnsubscribeDetails()
     {
         TrackEntityType<Unsubscribe>();

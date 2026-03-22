@@ -1711,6 +1711,93 @@ public class SegmentsTests : BaseTestAutoLogin
         preview.Contacts.Select(c => c.FirstName).Should().BeEquivalentTo("TagOnly", "OrderOnly");
     }
 
+    [Fact]
+    public async Task PreviewSegment_EmailLogsStatusAndCreatedAt_OnlySameRecordMatches()
+    {
+        var dbContext = App.GetDbContext()!;
+        var marker = $"emaillog-same-{Guid.NewGuid().ToString()[..8]}";
+        var threshold = DateTime.UtcNow.AddHours(-1);
+
+        var domain = new Domain { Name = $"{marker}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        // Contact A has two email logs:
+        //   - One with Status=Received but CreatedAt BEFORE threshold
+        //   - One with Status=Sent but CreatedAt AFTER threshold
+        // No single email log satisfies BOTH conditions.
+        var contactA = new Contact
+        {
+            Email = $"a-{marker}@example.test",
+            FirstName = "ShouldNotMatch",
+            DomainId = domain.Id,
+        };
+
+        // Contact B has one email log that satisfies both conditions.
+        var contactB = new Contact
+        {
+            Email = $"b-{marker}@example.test",
+            FirstName = "ShouldMatch",
+            DomainId = domain.Id,
+        };
+
+        dbContext.Contacts!.AddRange(contactA, contactB);
+        await dbContext.SaveChangesAsync();
+
+        await dbContext.EmailLogs!.AddRangeAsync(
+            new EmailLog
+            {
+                ContactId = contactA.Id,
+                Subject = $"Old received {marker}",
+                Recipients = contactA.Email!,
+                FromEmail = "noreply@example.test",
+                MessageId = $"msg-{marker}-a1",
+                Status = EmailStatus.Received,
+                CreatedAt = threshold.AddMinutes(-10),
+            },
+            new EmailLog
+            {
+                ContactId = contactA.Id,
+                Subject = $"Recent sent {marker}",
+                Recipients = contactA.Email!,
+                FromEmail = "noreply@example.test",
+                MessageId = $"msg-{marker}-a2",
+                Status = EmailStatus.Sent,
+                CreatedAt = threshold.AddMinutes(10),
+            },
+            new EmailLog
+            {
+                ContactId = contactB.Id,
+                Subject = $"Recent received {marker}",
+                Recipients = contactB.Email!,
+                FromEmail = "noreply@example.test",
+                MessageId = $"msg-{marker}-b1",
+                Status = EmailStatus.Received,
+                CreatedAt = threshold.AddMinutes(5),
+            });
+        await dbContext.SaveChangesAsync();
+
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "emailLogs.status", Operator = FieldOperator.Equals, Value = "Received" },
+                    new SegmentRule { FieldId = "emailLogs.createdAt", Operator = FieldOperator.GreaterThan, Value = threshold.ToString("O") },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts.Should().ContainSingle();
+        preview.Contacts[0].FirstName.Should().Be("ShouldMatch");
+    }
+
     private static int ExtractId(string location)
     {
         return int.Parse(location.Split("/").Last());
