@@ -351,6 +351,18 @@ public class PgDbContext : IdentityDbContext<User>
             .HasForeignKey(e => e.CampaignId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        builder.Entity<EmailLog>()
+            .HasOne(e => e.Contact)
+            .WithMany(c => c.EmailLogs)
+            .HasForeignKey(e => e.ContactId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<Unsubscribe>()
+            .HasOne(u => u.Contact)
+            .WithMany()
+            .HasForeignKey(u => u.ContactId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         builder.Entity<Deal>()
             .HasOne(d => d.Campaign)
             .WithMany()

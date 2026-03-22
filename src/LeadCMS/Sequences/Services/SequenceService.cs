@@ -510,6 +510,12 @@ public class SequenceService : ISequenceService
         // Build template arguments for preview rendering
         var templateArgs = TemplateArgumentsBuilder.FromContact(contact);
 
+        if (contact != null)
+        {
+            var (lastSent, lastReceived) = await TemplateContactLoader.LoadLastEmailLogsAsync(dbContext, contact.Id);
+            TemplateArgumentsBuilder.WithEmailHistory(templateArgs, lastSent, lastReceived);
+        }
+
         var utmParams = UtmsBuilder.Create()
             .WithDefaults()
             .WithContext(new Utms { Campaign = sequence.Name })
@@ -636,6 +642,9 @@ public class SequenceService : ISequenceService
         try
         {
             var templateArgs = TemplateArgumentsBuilder.FromContact(contact);
+
+            var (lastSent, lastReceived) = await TemplateContactLoader.LoadLastEmailLogsAsync(dbContext, contact.Id);
+            TemplateArgumentsBuilder.WithEmailHistory(templateArgs, lastSent, lastReceived);
 
             var utmParams = UtmsBuilder.Create()
                 .WithDefaults()

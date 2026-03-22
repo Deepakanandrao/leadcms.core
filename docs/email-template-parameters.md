@@ -57,7 +57,29 @@ These are the core top-level variables added by `TemplateArgumentsBuilder.FromCo
 - `{{ AccountSiteUrl }}`
 - `{{ DomainName }}`
 
-## 2) Nested objects and collections
+## 2) Email history parameters
+
+These are populated from the contact's `EmailLog` records (most recent sent and received emails):
+
+### Last sent email
+
+- `{{ LastSentEmailDate }}` (format: `yyyy-MM-dd HH:mm:ss`)
+- `{{ LastSentEmailTitle }}`
+- `{{ LastSentEmailBody }}`
+- `{{ LastSentEmailFromName }}`
+- `{{ LastSentEmailFromEmail }}`
+
+### Last received email
+
+- `{{ LastReceivedEmailDate }}` (format: `yyyy-MM-dd HH:mm:ss`)
+- `{{ LastReceivedEmailTitle }}`
+- `{{ LastReceivedEmailBody }}`
+- `{{ LastReceivedEmailFromName }}`
+- `{{ LastReceivedEmailFromEmail }}`
+
+These values are only present when the contact has corresponding email log entries (Status = Sent or Status = Received).
+
+## 3) Nested objects and collections
 
 When nested objects are enabled (default behavior in most sending paths), these variables are also available:
 
@@ -75,7 +97,7 @@ Examples:
 - `{% for order in Orders limit:1 %}{{ order.RefNo }}{% endfor %}`
 - `{% for item in order.OrderItems %}{{ item.ProductName }} × {{ item.Quantity }}{% endfor %}`
 
-## 3) UTM parameters
+## 4) UTM parameters
 
 When UTM data is provided for the sending context, these are available:
 
@@ -92,7 +114,7 @@ Typical usage:
 - `https://example.com/page?{{ utm_query }}`
 - `https://example.com/page?existing=1&{{ utm_query }}`
 
-## 4) Site link parameters (centrally injected)
+## 5) Site link parameters (centrally injected)
 
 These are injected in the central Liquid renderer (`LiquidTemplateService`) for every template render:
 
@@ -120,12 +142,12 @@ These are injected in the central Liquid renderer (`LiquidTemplateService`) for 
 2. Appsettings: `General.PrivacyUrl`
 3. If still empty and `site_url` exists: `${site_url}/privacy`
 
-## 5) Custom template variables
+## 6) Custom template variables
 
 Callers can pass custom variables (for example via API request `TemplateVariables` / custom template args).
 These are merged into the same dictionary and override existing keys with the same name.
 
-## 6) Liquid syntax and legacy placeholders
+## 7) Liquid syntax and legacy placeholders
 
 Supported Liquid patterns:
 

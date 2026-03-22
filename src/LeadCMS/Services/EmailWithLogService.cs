@@ -44,7 +44,7 @@ namespace LeadCMS.Services
             }
             finally
             {
-                await AddEmailLogEntry(subject, fromEmail, body, emails, emailStatus, messageId, contactId, templateId: templateId, campaignId: campaignId);
+                await AddEmailLogEntry(subject, fromEmail, body, emails, emailStatus, messageId, contactId, templateId: templateId, campaignId: campaignId, fromName: fromName);
             }
         }
 
@@ -73,13 +73,13 @@ namespace LeadCMS.Services
             }
             finally
             {
-                await AddEmailLogEntry(subject, fromEmail, body, recipient, emailStatus, messageId, contactId, scheduleId, templateId, campaignId);
+                await AddEmailLogEntry(subject, fromEmail, body, recipient, emailStatus, messageId, contactId, scheduleId, templateId, campaignId, fromName: fromName);
             }
 
             return lastEmailLogId;
         }
 
-        private async Task AddEmailLogEntry(string subject, string fromEmail, string body, string recipient, bool status, string messageId, int contactId = 0, int scheduleId = 0, int templateId = 0, int campaignId = 0)
+        private async Task AddEmailLogEntry(string subject, string fromEmail, string body, string recipient, bool status, string messageId, int contactId = 0, int scheduleId = 0, int templateId = 0, int campaignId = 0, string? fromName = null)
         {
             try
             {
@@ -107,6 +107,7 @@ namespace LeadCMS.Services
 
                 log.Subject = subject;
                 log.FromEmail = fromEmail;
+                log.FromName = fromName;
                 log.HtmlBody = body;
                 log.Recipients = recipient;
                 log.Status = status ? EmailStatus.Sent : EmailStatus.NotSent;

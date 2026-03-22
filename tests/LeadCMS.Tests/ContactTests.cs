@@ -937,7 +937,7 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
     }
 
     [Fact]
-    public async Task DeleteContact_ShouldSetEmailLogContactIdToNull()
+    public async Task DeleteContact_ShouldCascadeDeleteEmailLog()
     {
         TrackEntityType<EmailLog>();
 
@@ -970,8 +970,7 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
         deletedContact.Should().BeNull();
 
         var persistedEmailLog = await dbContext.EmailLogs!.FindAsync(emailLog.Id);
-        persistedEmailLog.Should().NotBeNull();
-        persistedEmailLog!.ContactId.Should().BeNull();
+        persistedEmailLog.Should().BeNull();
     }
 
     [Fact]
@@ -1023,7 +1022,7 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
     }
 
     [Fact]
-    public async Task DeleteContact_ShouldSetUnsubscribeContactIdToNull()
+    public async Task DeleteContact_ShouldCascadeDeleteUnsubscribe()
     {
         TrackEntityType<Unsubscribe>();
 
@@ -1050,8 +1049,40 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
         deletedContact.Should().BeNull();
 
         var persistedUnsubscribe = await dbContext.Unsubscribes!.FindAsync(unsubscribe.Id);
-        persistedUnsubscribe.Should().NotBeNull();
-        persistedUnsubscribe!.ContactId.Should().BeNull();
+        persistedUnsubscribe.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task DeleteContact_ShouldCascadeDeleteActivityLog()
+    {
+        TrackEntityType<ActivityLog>();
+
+        var testCreateItem = await CreateItem();
+        var contactId = Convert.ToInt32(testCreateItem.Item2.Split("/").Last());
+
+        var dbContext = App.GetDbContext()!;
+
+        var activityLog = new ActivityLog
+        {
+            Source = "ContactTests",
+            SourceId = contactId,
+            Type = "Message",
+            ContactId = contactId,
+            CreatedAt = DateTime.UtcNow,
+            Data = "{\"event\":\"contact-delete\"}",
+        };
+
+        await dbContext.ActivityLogs!.AddAsync(activityLog);
+        await dbContext.SaveChangesAsync();
+
+        await DeleteTest($"/api/contacts/{contactId}");
+
+        dbContext = App.GetDbContext()!;
+        var deletedContact = await dbContext.Contacts!.FindAsync(contactId);
+        deletedContact.Should().BeNull();
+
+        var persistedActivityLog = await dbContext.ActivityLogs!.FindAsync(activityLog.Id);
+        persistedActivityLog.Should().BeNull();
     }
 
     [Fact]

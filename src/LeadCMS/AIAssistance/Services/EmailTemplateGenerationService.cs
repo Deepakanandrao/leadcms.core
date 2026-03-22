@@ -731,6 +731,10 @@ public class EmailTemplateGenerationService : IEmailTemplateGenerationService
     {
         var contact = EmailTemplateService.BuildDummyContact(PreviewContactType.Full);
         var args = TemplateArgumentsBuilder.FromContact(contact);
+        TemplateArgumentsBuilder.WithEmailHistory(
+            args,
+            EmailTemplateService.BuildDummySentEmailLog(),
+            EmailTemplateService.BuildDummyReceivedEmailLog());
 
         var sb = new StringBuilder();
         sb.AppendLine();

@@ -212,6 +212,41 @@ public static class TemplateArgumentsBuilder
     }
 
     /// <summary>
+    /// Merges email history parameters into an existing template arguments dictionary.
+    /// Adds the last sent and last received email details for the contact so templates can
+    /// reference them, e.g. <c>{{ LastSentEmailTitle }}</c> or <c>{{ LastReceivedEmailFromName }}</c>.
+    /// </summary>
+    /// <param name="args">The template arguments dictionary to merge into.</param>
+    /// <param name="lastSentEmail">The most recent <see cref="EmailLog"/> with <see cref="EmailStatus.Sent"/> for the contact, or <c>null</c>.</param>
+    /// <param name="lastReceivedEmail">The most recent <see cref="EmailLog"/> with <see cref="EmailStatus.Received"/> for the contact, or <c>null</c>.</param>
+    /// <returns>The same <paramref name="args"/> dictionary with email history values merged in, for fluent chaining.</returns>
+    public static Dictionary<string, object> WithEmailHistory(
+        Dictionary<string, object> args,
+        EmailLog? lastSentEmail,
+        EmailLog? lastReceivedEmail)
+    {
+        if (lastSentEmail != null)
+        {
+            args["LastSentEmailDate"] = lastSentEmail.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss");
+            AddIfHasValue(args, "LastSentEmailTitle", lastSentEmail.Subject);
+            AddIfHasValue(args, "LastSentEmailBody", lastSentEmail.HtmlBody);
+            AddIfHasValue(args, "LastSentEmailFromName", lastSentEmail.FromName);
+            AddIfHasValue(args, "LastSentEmailFromEmail", lastSentEmail.FromEmail);
+        }
+
+        if (lastReceivedEmail != null)
+        {
+            args["LastReceivedEmailDate"] = lastReceivedEmail.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss");
+            AddIfHasValue(args, "LastReceivedEmailTitle", lastReceivedEmail.Subject);
+            AddIfHasValue(args, "LastReceivedEmailBody", lastReceivedEmail.HtmlBody);
+            AddIfHasValue(args, "LastReceivedEmailFromName", lastReceivedEmail.FromName);
+            AddIfHasValue(args, "LastReceivedEmailFromEmail", lastReceivedEmail.FromEmail);
+        }
+
+        return args;
+    }
+
+    /// <summary>
     /// Overlays pending update values from a contact onto the template arguments dictionary.
     /// Pending values take priority over the contact's current values so that acknowledgment
     /// emails reflect what the submitter actually typed, not the stored (possibly different) data.

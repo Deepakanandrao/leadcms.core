@@ -47,6 +47,17 @@ public class EmailTemplateService : IEmailTemplateService
             ? FromContact(previewContact)
             : FromContact(BuildDummyContact(contactType), includeNestedObjects: contactType == PreviewContactType.Full);
 
+        // Add email history parameters
+        if (previewContact != null)
+        {
+            var (lastSent, lastReceived) = await TemplateContactLoader.LoadLastEmailLogsAsync(dbContext, previewContact.Id);
+            WithEmailHistory(templateArgs, lastSent, lastReceived);
+        }
+        else
+        {
+            WithEmailHistory(templateArgs, BuildDummySentEmailLog(), BuildDummyReceivedEmailLog());
+        }
+
         var customTemplateArgs = ConvertCustomTemplateParameters(dto.CustomTemplateParameters);
         templateArgs = Merge(templateArgs, customTemplateArgs);
 
@@ -103,6 +114,17 @@ public class EmailTemplateService : IEmailTemplateService
         var templateArgs = contact != null
             ? FromContact(contact)
             : FromContact(BuildDummyContact(sendContactType), includeNestedObjects: sendContactType == PreviewContactType.Full);
+
+        // Add email history parameters
+        if (contact != null)
+        {
+            var (lastSent, lastReceived) = await TemplateContactLoader.LoadLastEmailLogsAsync(dbContext, contact.Id);
+            WithEmailHistory(templateArgs, lastSent, lastReceived);
+        }
+        else
+        {
+            WithEmailHistory(templateArgs, BuildDummySentEmailLog(), BuildDummyReceivedEmailLog());
+        }
 
         var customTemplateArgs = ConvertCustomTemplateParameters(dto.CustomTemplateParameters);
         templateArgs = Merge(templateArgs, customTemplateArgs);
@@ -323,5 +345,31 @@ public class EmailTemplateService : IEmailTemplateService
         };
 
         return contact;
+    }
+
+    internal static EmailLog BuildDummySentEmailLog()
+    {
+        return new EmailLog
+        {
+            Subject = "Your order has been confirmed",
+            FromEmail = "orders@acme-corp.com",
+            FromName = "Acme Corp Orders",
+            HtmlBody = "<p>Thank you for your purchase! Your order #ORD-2025-001 has been confirmed.</p>",
+            Status = EmailStatus.Sent,
+            CreatedAt = new DateTime(2025, 12, 1, 10, 30, 0, DateTimeKind.Utc),
+        };
+    }
+
+    internal static EmailLog BuildDummyReceivedEmailLog()
+    {
+        return new EmailLog
+        {
+            Subject = "Re: Your order has been confirmed",
+            FromEmail = "jane.doe@example.com",
+            FromName = "Jane Doe",
+            HtmlBody = "<p>Thanks! When will my order ship?</p>",
+            Status = EmailStatus.Received,
+            CreatedAt = new DateTime(2025, 12, 2, 14, 15, 0, DateTimeKind.Utc),
+        };
     }
 }

@@ -21,6 +21,6 @@ public class Unsubscribe : BaseCreateByEntity
 
     [JsonIgnore]
     [ForeignKey("ContactId")]
-    [DeleteBehavior(DeleteBehavior.SetNull)]
+    [DeleteBehavior(DeleteBehavior.Cascade)]
     public virtual Contact? Contact { get; set; }
 }

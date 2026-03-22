@@ -332,6 +332,7 @@ public class CampaignService : ICampaignService
             .ToList();
 
         var contactsById = await TemplateContactLoader.LoadByIdsAsync(dbContext, contactIds);
+        var emailLogsByContact = await TemplateContactLoader.LoadLastEmailLogsBatchAsync(dbContext, contactIds);
 
         foreach (var recipient in pendingRecipients)
         {
@@ -367,6 +368,11 @@ public class CampaignService : ICampaignService
             try
             {
                 var templateArgs = FromContact(contact);
+
+                if (emailLogsByContact.TryGetValue(recipient.ContactId, out var emailHistory))
+                {
+                    WithEmailHistory(templateArgs, emailHistory.LastSent, emailHistory.LastReceived);
+                }
 
                 var utmParams = UtmsBuilder.Create()
                     .WithDefaults()

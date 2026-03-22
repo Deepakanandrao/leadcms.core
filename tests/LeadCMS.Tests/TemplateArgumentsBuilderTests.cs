@@ -175,4 +175,103 @@ public class TemplateArgumentsBuilderTests
 
         args["FirstName"].Should().Be("Alice");
     }
+
+    [Fact]
+    public void WithEmailHistory_BothSentAndReceived_AddsAllParameters()
+    {
+        var sentLog = new EmailLog
+        {
+            Subject = "Welcome!",
+            FromEmail = "team@example.com",
+            FromName = "Team",
+            HtmlBody = "<p>Welcome aboard</p>",
+            Status = EmailStatus.Sent,
+            CreatedAt = new DateTime(2025, 11, 1, 10, 30, 0, DateTimeKind.Utc),
+        };
+
+        var receivedLog = new EmailLog
+        {
+            Subject = "Re: Welcome!",
+            FromEmail = "user@example.com",
+            FromName = "Jane Doe",
+            HtmlBody = "<p>Thanks!</p>",
+            Status = EmailStatus.Received,
+            CreatedAt = new DateTime(2025, 11, 2, 14, 0, 0, DateTimeKind.Utc),
+        };
+
+        var args = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
+        TemplateArgumentsBuilder.WithEmailHistory(args, sentLog, receivedLog);
+
+        args.Should().ContainKey("LastSentEmailDate").WhoseValue.Should().Be("2025-11-01 10:30:00");
+        args.Should().ContainKey("LastSentEmailTitle").WhoseValue.Should().Be("Welcome!");
+        args.Should().ContainKey("LastSentEmailBody").WhoseValue.Should().Be("<p>Welcome aboard</p>");
+        args.Should().ContainKey("LastSentEmailFromName").WhoseValue.Should().Be("Team");
+        args.Should().ContainKey("LastSentEmailFromEmail").WhoseValue.Should().Be("team@example.com");
+
+        args.Should().ContainKey("LastReceivedEmailDate").WhoseValue.Should().Be("2025-11-02 14:00:00");
+        args.Should().ContainKey("LastReceivedEmailTitle").WhoseValue.Should().Be("Re: Welcome!");
+        args.Should().ContainKey("LastReceivedEmailBody").WhoseValue.Should().Be("<p>Thanks!</p>");
+        args.Should().ContainKey("LastReceivedEmailFromName").WhoseValue.Should().Be("Jane Doe");
+        args.Should().ContainKey("LastReceivedEmailFromEmail").WhoseValue.Should().Be("user@example.com");
+    }
+
+    [Fact]
+    public void WithEmailHistory_OnlySentEmail_AddsOnlySentParameters()
+    {
+        var sentLog = new EmailLog
+        {
+            Subject = "Newsletter",
+            FromEmail = "news@example.com",
+            FromName = "Newsletter Team",
+            HtmlBody = "<p>Latest news</p>",
+            Status = EmailStatus.Sent,
+            CreatedAt = new DateTime(2025, 10, 15, 9, 0, 0, DateTimeKind.Utc),
+        };
+
+        var args = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
+        TemplateArgumentsBuilder.WithEmailHistory(args, sentLog, null);
+
+        args.Should().ContainKey("LastSentEmailTitle").WhoseValue.Should().Be("Newsletter");
+        args.Should().ContainKey("LastSentEmailFromEmail").WhoseValue.Should().Be("news@example.com");
+        args.Should().NotContainKey("LastReceivedEmailDate");
+        args.Should().NotContainKey("LastReceivedEmailTitle");
+    }
+
+    [Fact]
+    public void WithEmailHistory_NullBoth_ReturnsArgsUnchanged()
+    {
+        var args = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["FirstName"] = "Alice",
+        };
+
+        var result = TemplateArgumentsBuilder.WithEmailHistory(args, null, null);
+
+        result.Should().BeSameAs(args);
+        args.Should().HaveCount(1);
+        args.Should().ContainKey("FirstName");
+    }
+
+    [Fact]
+    public void WithEmailHistory_MissingFromName_DoesNotAddFromNameKey()
+    {
+        var sentLog = new EmailLog
+        {
+            Subject = "Hello",
+            FromEmail = "noreply@example.com",
+            HtmlBody = "<p>Hi</p>",
+            Status = EmailStatus.Sent,
+            CreatedAt = new DateTime(2025, 10, 1, 8, 0, 0, DateTimeKind.Utc),
+        };
+
+        var args = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
+        TemplateArgumentsBuilder.WithEmailHistory(args, sentLog, null);
+
+        args.Should().ContainKey("LastSentEmailTitle");
+        args.Should().ContainKey("LastSentEmailFromEmail");
+        args.Should().NotContainKey("LastSentEmailFromName");
+    }
 }

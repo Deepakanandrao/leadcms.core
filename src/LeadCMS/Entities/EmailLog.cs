@@ -47,7 +47,7 @@ namespace LeadCMS.Entities
 
         [JsonIgnore]
         [ForeignKey("ContactId")]
-        [DeleteBehavior(DeleteBehavior.SetNull)]
+        [DeleteBehavior(DeleteBehavior.Cascade)]
         public virtual Contact? Contact { get; set; }
 
         /// <summary>
@@ -91,6 +91,9 @@ namespace LeadCMS.Entities
                 fromEmail = value.ToLower();
             }
         }
+
+        [Searchable]
+        public string? FromName { get; set; }
 
         /// <summary>
         /// Gets or sets the email body.
