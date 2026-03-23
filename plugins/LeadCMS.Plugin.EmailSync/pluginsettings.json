@@ -2,6 +2,25 @@
   "EmailSync": {
     "InternalDomains": [],
     "IgnoredEmails": [],
+    "IgnoredFolderKeywords": [
+      "Spam",
+      "Junk",
+      "Draft",
+      "Archive",
+      "Deleted",
+      "Trash",
+      "Bin",
+      "Starred",
+      "Important",
+      "Flagged",
+      "Bulk",
+      "Clutter",
+      "Conversation History",
+      "Notes",
+      "Calendar",
+      "Contacts",
+      "Tasks"
+    ],
     "EncryptionKey": "fTjWnZr4u7x!A%D*"
   },
   "Tasks": {

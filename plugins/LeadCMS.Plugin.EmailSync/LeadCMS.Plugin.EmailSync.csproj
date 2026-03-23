@@ -11,6 +11,10 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="LeadCMS.Tests" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputPath>..\..\src\LeadCMS\bin\$(Configuration)\$(TargetFramework)\plugins\$(AssemblyName)</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>

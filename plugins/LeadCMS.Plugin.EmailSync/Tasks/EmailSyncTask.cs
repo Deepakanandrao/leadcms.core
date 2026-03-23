@@ -30,6 +30,8 @@ namespace LeadCMS.EmailSync.Tasks
 
         private readonly string[] ignoredEmails;
 
+        private readonly string[] ignoredFolderKeywords;
+
         private readonly IDomainService domainService;
         private readonly IContactService contactsService;
 
@@ -55,6 +57,9 @@ namespace LeadCMS.EmailSync.Tasks
 
             var ignored = configuration.GetSection("EmailSync:IgnoredEmails")!.Get<string[]>();
             ignoredEmails = (ignored != null) ? ignored : new string[0];
+
+            var folderKeywords = configuration.GetSection("EmailSync:IgnoredFolderKeywords")!.Get<string[]>();
+            ignoredFolderKeywords = (folderKeywords != null) ? folderKeywords : new string[0];
 
             domainService.SetDBContext(dbContext);
             contactsService.SetDBContext(dbContext);
@@ -82,6 +87,11 @@ namespace LeadCMS.EmailSync.Tasks
 
                             foreach (var folder in folders)
                             {
+                                if (IsFolderIgnored(folder.FullName, ignoredFolderKeywords))
+                                {
+                                    continue;
+                                }
+
                                 await GetEmailLogsFromFolder(imapAccount.UserName, imapAccountFolders, folder, imapAccount);
                             }
 
@@ -96,6 +106,17 @@ namespace LeadCMS.EmailSync.Tasks
             }
 
             return true;
+        }
+
+        internal static bool IsFolderIgnored(string folderFullName, string[] keywords)
+        {
+            if (keywords.Length == 0)
+            {
+                return false;
+            }
+
+            return Array.Exists(keywords, keyword =>
+                folderFullName.Contains(keyword, StringComparison.OrdinalIgnoreCase));
         }
 
         private async Task DeleteUnexistedFolders(List<ImapAccountFolder> imapAccountFolders, IList<IMailFolder> folders)
