@@ -351,6 +351,13 @@ public class PgDbContext : IdentityDbContext<User>
             .HasForeignKey(e => e.CampaignId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // Set SequenceId to null when a sequence is deleted
+        builder.Entity<EmailLog>()
+            .HasOne(e => e.Sequence)
+            .WithMany()
+            .HasForeignKey(e => e.SequenceId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         builder.Entity<EmailLog>()
             .HasOne(e => e.Contact)
             .WithMany(c => c.EmailLogs)

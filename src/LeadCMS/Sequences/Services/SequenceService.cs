@@ -667,7 +667,8 @@ public class SequenceService : ISequenceService
                 delivery.ContactId,
                 templateName,
                 templateArgs,
-                attachments: null);
+                attachments: null,
+                sequenceId: sequence.Id);
 
             delivery.Status = SequenceDeliveryStatus.Sent;
             delivery.SentAt = DateTime.UtcNow;

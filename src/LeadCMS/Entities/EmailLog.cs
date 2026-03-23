@@ -41,6 +41,16 @@ namespace LeadCMS.Entities
         public virtual Campaign? Campaign { get; set; }
 
         /// <summary>
+        /// Gets or sets reference to the sequence table.
+        /// </summary>
+        public int? SequenceId { get; set; }
+
+        [JsonIgnore]
+        [ForeignKey("SequenceId")]
+        [DeleteBehavior(DeleteBehavior.SetNull)]
+        public virtual Sequence? Sequence { get; set; }
+
+        /// <summary>
         /// Gets or sets reference to the contact table.
         /// </summary>
         public int? ContactId { get; set; }

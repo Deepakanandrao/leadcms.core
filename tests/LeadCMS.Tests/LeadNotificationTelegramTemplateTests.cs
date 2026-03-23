@@ -194,7 +194,8 @@ public class LeadNotificationTelegramTemplateTests
             Dictionary<string, object>? templateArguments,
             List<AttachmentDto>? attachments,
             int contactId = 0,
-            int campaignId = 0)
+            int campaignId = 0,
+            int sequenceId = 0)
             => Task.CompletedTask;
 
         public Task<int> SendToContactAsync(
@@ -203,7 +204,8 @@ public class LeadNotificationTelegramTemplateTests
             Dictionary<string, object>? templateArguments,
             List<AttachmentDto>? attachments,
             int scheduleId = 0,
-            int campaignId = 0)
+            int campaignId = 0,
+            int sequenceId = 0)
             => Task.FromResult(0);
     }
 
