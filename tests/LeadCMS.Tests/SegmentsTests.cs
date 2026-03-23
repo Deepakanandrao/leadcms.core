@@ -1880,6 +1880,246 @@ public class SegmentsTests : BaseTestAutoLogin
         fetched.Definition.ExcludeRules.Rules[0].Operator.Should().Be(FieldOperator.Equals);
     }
 
+    [Fact]
+    public async Task PreviewSegment_LastEmailStatus_FiltersOnMostRecentEmailOnly()
+    {
+        var dbContext = App.GetDbContext()!;
+        var marker = $"lastemail-status-{Guid.NewGuid().ToString()[..8]}";
+
+        var domain = new Domain { Name = $"{marker}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        // Contact A: most recent email is Sent, older email is Received
+        var contactA = new Contact
+        {
+            Email = $"a-{marker}@example.test",
+            FirstName = "LastSent",
+            DomainId = domain.Id,
+        };
+
+        // Contact B: most recent email is Received
+        var contactB = new Contact
+        {
+            Email = $"b-{marker}@example.test",
+            FirstName = "LastReceived",
+            DomainId = domain.Id,
+        };
+
+        dbContext.Contacts!.AddRange(contactA, contactB);
+        await dbContext.SaveChangesAsync();
+
+        await dbContext.EmailLogs!.AddRangeAsync(
+            new EmailLog
+            {
+                ContactId = contactA.Id,
+                Subject = "Older received",
+                Recipients = contactA.Email!,
+                FromEmail = "noreply@example.test",
+                MessageId = $"msg-{marker}-a1",
+                Status = EmailStatus.Received,
+                CreatedAt = DateTime.UtcNow.AddHours(-2),
+            },
+            new EmailLog
+            {
+                ContactId = contactA.Id,
+                Subject = "Latest sent",
+                Recipients = contactA.Email!,
+                FromEmail = "noreply@example.test",
+                MessageId = $"msg-{marker}-a2",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow.AddHours(-1),
+            },
+            new EmailLog
+            {
+                ContactId = contactB.Id,
+                Subject = "Latest received",
+                Recipients = contactB.Email!,
+                FromEmail = "noreply@example.test",
+                MessageId = $"msg-{marker}-b1",
+                Status = EmailStatus.Received,
+                CreatedAt = DateTime.UtcNow.AddHours(-1),
+            });
+        await dbContext.SaveChangesAsync();
+
+        // lastEmail.status = Sent → should only match contact A (whose LAST email is Sent)
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "lastEmail.status", Operator = FieldOperator.Equals, Value = "Sent" },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts.Should().ContainSingle();
+        preview.Contacts[0].FirstName.Should().Be("LastSent");
+    }
+
+    [Fact]
+    public async Task PreviewSegment_LastEmailSubjectContains_FiltersOnMostRecentEmail()
+    {
+        var dbContext = App.GetDbContext()!;
+        var marker = $"lastemail-subj-{Guid.NewGuid().ToString()[..8]}";
+
+        var domain = new Domain { Name = $"{marker}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        // Contact A: most recent email has subject containing "promo"
+        var contactA = new Contact
+        {
+            Email = $"a-{marker}@example.test",
+            FirstName = "HasPromo",
+            DomainId = domain.Id,
+        };
+
+        // Contact B: most recent email has subject "invoice" (older one has "promo")
+        var contactB = new Contact
+        {
+            Email = $"b-{marker}@example.test",
+            FirstName = "NoPromoRecent",
+            DomainId = domain.Id,
+        };
+
+        dbContext.Contacts!.AddRange(contactA, contactB);
+        await dbContext.SaveChangesAsync();
+
+        await dbContext.EmailLogs!.AddRangeAsync(
+            new EmailLog
+            {
+                ContactId = contactA.Id,
+                Subject = $"Big promo sale {marker}",
+                Recipients = contactA.Email!,
+                FromEmail = "noreply@example.test",
+                MessageId = $"msg-{marker}-a1",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow.AddHours(-1),
+            },
+            new EmailLog
+            {
+                ContactId = contactB.Id,
+                Subject = $"Old promo {marker}",
+                Recipients = contactB.Email!,
+                FromEmail = "noreply@example.test",
+                MessageId = $"msg-{marker}-b1",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow.AddHours(-3),
+            },
+            new EmailLog
+            {
+                ContactId = contactB.Id,
+                Subject = $"Monthly invoice {marker}",
+                Recipients = contactB.Email!,
+                FromEmail = "noreply@example.test",
+                MessageId = $"msg-{marker}-b2",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow.AddHours(-1),
+            });
+        await dbContext.SaveChangesAsync();
+
+        // lastEmail.subject Contains "promo" → only contact A
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "lastEmail.subject", Operator = FieldOperator.Contains, Value = "promo" },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts.Should().ContainSingle();
+        preview.Contacts[0].FirstName.Should().Be("HasPromo");
+    }
+
+    [Fact]
+    public async Task PreviewSegment_LastEmailCombinedRules_AllApplyToSameLastEmail()
+    {
+        var dbContext = App.GetDbContext()!;
+        var marker = $"lastemail-combo-{Guid.NewGuid().ToString()[..8]}";
+
+        var domain = new Domain { Name = $"{marker}.com" };
+        dbContext.Domains!.Add(domain);
+        await dbContext.SaveChangesAsync();
+
+        // Contact A: last email is Sent with subject containing "welcome"
+        var contactA = new Contact
+        {
+            Email = $"a-{marker}@example.test",
+            FirstName = "BothMatch",
+            DomainId = domain.Id,
+        };
+
+        // Contact B: last email is Received with subject "welcome" → status won't match
+        var contactB = new Contact
+        {
+            Email = $"b-{marker}@example.test",
+            FirstName = "StatusMismatch",
+            DomainId = domain.Id,
+        };
+
+        dbContext.Contacts!.AddRange(contactA, contactB);
+        await dbContext.SaveChangesAsync();
+
+        await dbContext.EmailLogs!.AddRangeAsync(
+            new EmailLog
+            {
+                ContactId = contactA.Id,
+                Subject = $"Welcome aboard {marker}",
+                Recipients = contactA.Email!,
+                FromEmail = "noreply@example.test",
+                MessageId = $"msg-{marker}-a1",
+                Status = EmailStatus.Sent,
+                CreatedAt = DateTime.UtcNow.AddHours(-1),
+            },
+            new EmailLog
+            {
+                ContactId = contactB.Id,
+                Subject = $"Welcome aboard {marker}",
+                Recipients = contactB.Email!,
+                FromEmail = "noreply@example.test",
+                MessageId = $"msg-{marker}-b1",
+                Status = EmailStatus.Received,
+                CreatedAt = DateTime.UtcNow.AddHours(-1),
+            });
+        await dbContext.SaveChangesAsync();
+
+        // lastEmail.status = Sent AND lastEmail.subject Contains "welcome"
+        var definition = new SegmentDefinition
+        {
+            IncludeRules = new RuleGroup
+            {
+                Connector = RuleConnector.And,
+                Rules = new List<SegmentRule>
+                {
+                    new SegmentRule { FieldId = "lastEmail.status", Operator = FieldOperator.Equals, Value = "Sent" },
+                    new SegmentRule { FieldId = "lastEmail.subject", Operator = FieldOperator.Contains, Value = "welcome" },
+                },
+            },
+        };
+
+        var preview = await PostTest<SegmentPreviewResultDto>($"{SegmentsUrl}/preview", definition, HttpStatusCode.OK);
+
+        preview.Should().NotBeNull();
+        preview!.ContactCount.Should().Be(1);
+        preview.Contacts.Should().ContainSingle();
+        preview.Contacts[0].FirstName.Should().Be("BothMatch");
+    }
+
     private static int ExtractId(string location)
     {
         return int.Parse(location.Split("/").Last());

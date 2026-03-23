@@ -16,6 +16,8 @@ namespace LeadCMS.Services;
 
 public class SegmentService : ISegmentService
 {
+    private const string LastEmailPrefix = "lastEmail";
+
     private static readonly Dictionary<string, (string PropertyName, Type ElementType)> ContactCollectionNavigations = new(StringComparer.OrdinalIgnoreCase)
     {
         ["orders"] = ("Orders", typeof(Order)),
@@ -329,12 +331,17 @@ public class SegmentService : ISegmentService
         if (ruleGroup.Connector == RuleConnector.And)
         {
             var collectionRuleGroups = new Dictionary<string, List<SegmentRule>>(StringComparer.OrdinalIgnoreCase);
+            var lastEmailRules = new List<SegmentRule>();
             var otherRules = new List<SegmentRule>();
 
             foreach (var rule in ruleGroup.Rules)
             {
                 var segments = rule.FieldId.Split('.');
-                if (segments.Length >= 2 && ContactCollectionNavigations.ContainsKey(segments[0]))
+                if (segments.Length >= 2 && segments[0].Equals(LastEmailPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    lastEmailRules.Add(rule);
+                }
+                else if (segments.Length >= 2 && ContactCollectionNavigations.ContainsKey(segments[0]))
                 {
                     if (!collectionRuleGroups.TryGetValue(segments[0], out var group))
                     {
@@ -357,6 +364,15 @@ public class SegmentService : ISegmentService
                 if (expr != null)
                 {
                     expressions.Add(expr);
+                }
+            }
+
+            if (lastEmailRules.Count > 0)
+            {
+                var lastEmailExpr = BuildLastEmailExpression(lastEmailRules);
+                if (lastEmailExpr != null)
+                {
+                    expressions.Add(lastEmailExpr);
                 }
             }
 
@@ -433,14 +449,20 @@ public class SegmentService : ISegmentService
             return comparison == null ? null : Expression.Lambda<Func<Contact, bool>>(comparison, parameter);
         }
 
-        // 2. Try collection navigation path (e.g., orders.status, orders.orderItems.productName, deals.dealPipelineStageId)
+        // 2. Handle lastEmail.* rules (most recent email log)
+        if (rule.FieldId.StartsWith(LastEmailPrefix + ".", StringComparison.OrdinalIgnoreCase))
+        {
+            return BuildLastEmailExpression(new List<SegmentRule> { rule });
+        }
+
+        // 3. Try collection navigation path (e.g., orders.status, orders.orderItems.productName, deals.dealPipelineStageId)
         var collectionResult = TryBuildCollectionFilterExpression(parameter, rule);
         if (collectionResult != null)
         {
             return collectionResult;
         }
 
-        // 3. Direct or single-navigation property (existing logic)
+        // 4. Direct or single-navigation property (existing logic)
         var property = GetPropertyExpression(parameter, rule.FieldId);
         if (property == null)
         {
@@ -684,6 +706,100 @@ public class SegmentService : ISegmentService
             .MakeGenericMethod(navInfo.ElementType);
 
         var anyCall = Expression.Call(anyMethod, collectionProperty, innerLambda);
+        return Expression.Lambda<Func<Contact, bool>>(anyCall, contactParam);
+    }
+
+    /// <summary>
+    /// Builds an expression that filters contacts based on their most recent email log.
+    /// Uses a correlated subquery: EXISTS(SELECT 1 FROM (SELECT * FROM email_log WHERE contact_id = c.id ORDER BY created_at DESC LIMIT 1) t WHERE predicate).
+    /// Multiple rules are combined with AND so they all apply to the same last email.
+    /// </summary>
+    private Expression<Func<Contact, bool>>? BuildLastEmailExpression(List<SegmentRule> rules)
+    {
+        var contactParam = Expression.Parameter(typeof(Contact), "c");
+        var emailParam = Expression.Parameter(typeof(EmailLog), "e");
+        Expression? combinedPredicate = null;
+
+        foreach (var rule in rules)
+        {
+            var segments = rule.FieldId.Split('.');
+            if (segments.Length < 2)
+            {
+                continue;
+            }
+
+            var propertyName = GetMappedPropertyName(typeof(EmailLog), segments[1]);
+            if (propertyName == null)
+            {
+                continue;
+            }
+
+            try
+            {
+                var leafProperty = Expression.Property(emailParam, propertyName);
+                var predicate = ApplyOperator(leafProperty, rule);
+                if (predicate == null)
+                {
+                    continue;
+                }
+
+                combinedPredicate = combinedPredicate == null
+                    ? predicate
+                    : Expression.AndAlso(combinedPredicate, predicate);
+            }
+            catch (ArgumentException)
+            {
+                continue;
+            }
+        }
+
+        if (combinedPredicate == null)
+        {
+            return null;
+        }
+
+        // Build: dbContext.EmailLogs.Where(e => e.ContactId == c.Id)
+        //            .OrderByDescending(e => e.CreatedAt)
+        //            .Take(1)
+        //            .Any(e => <combinedPredicate>)
+        var emailLogsSet = Expression.Property(Expression.Constant(dbContext), nameof(PgDbContext.EmailLogs));
+
+        // Where(e => e.ContactId == c.Id)
+        var filterParam = Expression.Parameter(typeof(EmailLog), "ef");
+        var contactIdProp = Expression.Property(filterParam, nameof(EmailLog.ContactId));
+        var contactId = Expression.Property(contactParam, nameof(Contact.Id));
+        var contactIdAsNullable = Expression.Convert(contactId, typeof(int?));
+        var contactIdMatch = Expression.Equal(contactIdProp, contactIdAsNullable);
+        var filterLambda = Expression.Lambda<Func<EmailLog, bool>>(contactIdMatch, filterParam);
+
+        var whereMethod = typeof(Queryable).GetMethods()
+            .First(m => m.Name == nameof(Queryable.Where) && m.GetParameters()[1].ParameterType.GetGenericArguments()[0].GetGenericArguments().Length == 2)
+            .MakeGenericMethod(typeof(EmailLog));
+        var whereCall = Expression.Call(whereMethod, emailLogsSet!, filterLambda);
+
+        // OrderByDescending(e => e.CreatedAt)
+        var orderParam = Expression.Parameter(typeof(EmailLog), "eo");
+        var createdAtProp = Expression.Property(orderParam, nameof(EmailLog.CreatedAt));
+        var orderLambda = Expression.Lambda<Func<EmailLog, DateTime>>(createdAtProp, orderParam);
+
+        var orderByDescMethod = typeof(Queryable).GetMethods()
+            .First(m => m.Name == nameof(Queryable.OrderByDescending) && m.GetParameters().Length == 2)
+            .MakeGenericMethod(typeof(EmailLog), typeof(DateTime));
+        var orderByCall = Expression.Call(orderByDescMethod, whereCall, orderLambda);
+
+        // Take(1)
+        var takeMethod = typeof(Queryable).GetMethods()
+            .First(m => m.Name == nameof(Queryable.Take) && m.GetParameters().Length == 2)
+            .MakeGenericMethod(typeof(EmailLog));
+        var takeCall = Expression.Call(takeMethod, orderByCall, Expression.Constant(1));
+
+        // Any(e => <combinedPredicate>)
+        var anyLambda = Expression.Lambda<Func<EmailLog, bool>>(combinedPredicate, emailParam);
+        var anyMethod = typeof(Queryable).GetMethods()
+            .First(m => m.Name == nameof(Queryable.Any) && m.GetParameters().Length == 2)
+            .MakeGenericMethod(typeof(EmailLog));
+        var anyCall = Expression.Call(anyMethod, takeCall, anyLambda);
+
         return Expression.Lambda<Func<Contact, bool>>(anyCall, contactParam);
     }
 
