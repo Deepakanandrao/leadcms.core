@@ -61,6 +61,14 @@ namespace LeadCMS.Entities
         public EmailTemplateCategory Category { get; set; } = EmailTemplateCategory.General;
 
         /// <summary>
+        /// Gets or sets media attachment paths in the format "scopeUid/fileName".
+        /// Each path is resolved at send-time by looking up the Media entity by ScopeUid and Name.
+        /// Paths may contain Liquid template variables (e.g. "pdfs/{{ fileName }}") that are rendered
+        /// using the template arguments before media lookup.
+        /// </summary>
+        public string[]? Attachments { get; set; }
+
+        /// <summary>
         /// Gets or sets how many times an email should resend once sending failed.
         /// </summary>
         public int RetryCount { get; set; }

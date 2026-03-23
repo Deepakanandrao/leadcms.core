@@ -3,7 +3,7 @@
 // </copyright>
 
 using LeadCMS.Constants;
-using LeadCMS.Data;
+using LeadCMS.Tests.TestServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -25,6 +25,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
         TrackEntityType<EmailGroup>();
         TrackEntityType<EmailTemplate>();
         TrackEntityType<EmailLog>();
+        TrackEntityType<Media>();
     }
 
     // ────────────────────────────────────────────────────────
@@ -431,6 +432,177 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
     }
 
     // ────────────────────────────────────────────────────────
+    //  Template media attachments
+    // ────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Template_WithStaticAttachment_ShouldResolveMediaAndAttach()
+    {
+        var groupId = await CreateEmailGroupAsync();
+        var mediaData = new byte[] { 0x25, 0x50, 0x44, 0x46 }; // PDF magic bytes
+        await InsertMediaAsync("invoices", "receipt.pdf", "application/pdf", mediaData);
+
+        await CreateTemplateWithAttachmentsAsync(
+            groupId,
+            "static_attach",
+            "Your receipt",
+            "<p>See attached.</p>",
+            new[] { "invoices/receipt.pdf" });
+
+        var (_, attachments) = await SendEmailAndCaptureAsync("static_attach", "en", "user@test.net", null);
+
+        attachments.Should().NotBeNull();
+        attachments.Should().HaveCount(1);
+        attachments![0].FileName.Should().Be("receipt.pdf");
+        attachments[0].File.Should().BeEquivalentTo(mediaData);
+    }
+
+    [Fact]
+    public async Task Template_WithLiquidAttachmentPath_ShouldRenderPathThenResolveMedia()
+    {
+        var groupId = await CreateEmailGroupAsync();
+        var mediaData = new byte[] { 0x89, 0x50, 0x4E, 0x47 }; // PNG magic bytes
+        await InsertMediaAsync("reports", "q1-summary.pdf", "application/pdf", mediaData);
+
+        await CreateTemplateWithAttachmentsAsync(
+            groupId,
+            "liquid_attach",
+            "Report for {{ quarter }}",
+            "<p>Report attached.</p>",
+            new[] { "reports/{{ fileName }}" });
+
+        var variables = new Dictionary<string, object>
+        {
+            ["quarter"] = "Q1",
+            ["fileName"] = "q1-summary.pdf",
+        };
+
+        var (_, attachments) = await SendEmailAndCaptureAsync("liquid_attach", "en", "mgr@test.net", variables);
+
+        attachments.Should().NotBeNull();
+        attachments.Should().HaveCount(1);
+        attachments![0].FileName.Should().Be("q1-summary.pdf");
+        attachments[0].File.Should().BeEquivalentTo(mediaData);
+    }
+
+    [Fact]
+    public async Task Template_WithMultipleAttachments_ShouldResolveAll()
+    {
+        var groupId = await CreateEmailGroupAsync();
+        var pdfData = new byte[] { 0x25, 0x50, 0x44, 0x46 };
+        var imgData = new byte[] { 0x89, 0x50, 0x4E, 0x47 };
+        await InsertMediaAsync("docs", "terms.pdf", "application/pdf", pdfData);
+        await InsertMediaAsync("brand", "logo.png", "image/png", imgData);
+
+        await CreateTemplateWithAttachmentsAsync(
+            groupId,
+            "multi_attach",
+            "Welcome",
+            "<p>Welcome aboard!</p>",
+            new[] { "docs/terms.pdf", "brand/logo.png" });
+
+        var (_, attachments) = await SendEmailAndCaptureAsync("multi_attach", "en", "new@test.net", null);
+
+        attachments.Should().NotBeNull();
+        attachments.Should().HaveCount(2);
+        attachments!.Select(a => a.FileName).Should().BeEquivalentTo("terms.pdf", "logo.png");
+    }
+
+    [Fact]
+    public async Task Template_WithMissingMedia_ShouldSkipAndSendWithoutAttachment()
+    {
+        var groupId = await CreateEmailGroupAsync();
+
+        await CreateTemplateWithAttachmentsAsync(
+            groupId,
+            "missing_attach",
+            "Info",
+            "<p>Some info.</p>",
+            new[] { "nonexistent/file.pdf" });
+
+        var (log, attachments) = await SendEmailAndCaptureAsync("missing_attach", "en", "test@test.net", null);
+
+        // Email should still be sent successfully
+        log.Should().NotBeNull();
+        attachments.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Template_WithNoAttachments_ShouldSendNormally()
+    {
+        var groupId = await CreateEmailGroupAsync();
+        await CreateTemplateViaApiAsync(
+            groupId,
+            "no_attach",
+            "Plain email",
+            "<p>No attachments here.</p>");
+
+        var (log, attachments) = await SendEmailAndCaptureAsync("no_attach", "en", "plain@test.net", null);
+
+        log.Should().NotBeNull();
+        attachments.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Template_WithAttachments_ShouldPersistViaApi()
+    {
+        var groupId = await CreateEmailGroupAsync();
+
+        var dto = new EmailTemplateCreateDto
+        {
+            Name = "persist_attach",
+            Subject = "Test",
+            BodyTemplate = "<p>Test</p>",
+            FromEmail = "sender@test.net",
+            FromName = "Sender",
+            Language = "en",
+            EmailGroupId = groupId,
+            Attachments = new[] { "scope1/file1.pdf", "scope2/{{ dynamic }}" },
+        };
+
+        var created = await PostTest<EmailTemplateDetailsDto>(EmailTemplatesApi, dto);
+        created.Should().NotBeNull();
+        created!.Attachments.Should().BeEquivalentTo("scope1/file1.pdf", "scope2/{{ dynamic }}");
+
+        // Verify GET returns the same attachments
+        var fetched = await GetTest<EmailTemplateDetailsDto>($"{EmailTemplatesApi}/{created.Id}");
+        fetched.Should().NotBeNull();
+        fetched!.Attachments.Should().BeEquivalentTo("scope1/file1.pdf", "scope2/{{ dynamic }}");
+    }
+
+    [Fact]
+    public async Task Template_WithAttachments_ShouldUpdateViaApi()
+    {
+        var groupId = await CreateEmailGroupAsync();
+
+        var dto = new EmailTemplateCreateDto
+        {
+            Name = "update_attach",
+            Subject = "Test",
+            BodyTemplate = "<p>Test</p>",
+            FromEmail = "sender@test.net",
+            FromName = "Sender",
+            Language = "en",
+            EmailGroupId = groupId,
+            Attachments = new[] { "scope1/file1.pdf" },
+        };
+
+        var created = await PostTest<EmailTemplateDetailsDto>(EmailTemplatesApi, dto);
+        created.Should().NotBeNull();
+
+        var updateDto = new EmailTemplateUpdateDto
+        {
+            Attachments = new[] { "scope2/file2.png", "scope3/file3.docx" },
+        };
+
+        await PatchTest($"{EmailTemplatesApi}/{created!.Id}", updateDto);
+
+        var updated = await GetTest<EmailTemplateDetailsDto>($"{EmailTemplatesApi}/{created.Id}");
+        updated.Should().NotBeNull();
+        updated!.Attachments.Should().BeEquivalentTo("scope2/file2.png", "scope3/file3.docx");
+    }
+
+    // ────────────────────────────────────────────────────────
     //  Helpers — static first (SA1204)
     // ────────────────────────────────────────────────────────
 
@@ -449,6 +621,16 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
         string subject,
         string body)
     {
+        await CreateTemplateWithAttachmentsAsync(groupId, name, subject, body, Array.Empty<string>());
+    }
+
+    private async Task CreateTemplateWithAttachmentsAsync(
+        int groupId,
+        string name,
+        string subject,
+        string body,
+        string[] attachments)
+    {
         var dto = new EmailTemplateCreateDto
         {
             Name = name,
@@ -458,11 +640,27 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             FromName = "Test Sender",
             Language = "en",
             EmailGroupId = groupId,
+            Attachments = attachments,
         };
 
         var created = await PostTest<EmailTemplateDetailsDto>(EmailTemplatesApi, dto);
         created.Should().NotBeNull();
         created!.Name.Should().Be(name);
+    }
+
+    private async Task InsertMediaAsync(string scopeUid, string name, string mimeType, byte[] data)
+    {
+        var dbContext = App.GetDbContext()!;
+        dbContext.Media!.Add(new Media
+        {
+            ScopeUid = scopeUid,
+            Name = name,
+            MimeType = mimeType,
+            Extension = Path.GetExtension(name),
+            Data = data,
+            Size = data.Length,
+        });
+        await dbContext.SaveChangesAsync();
     }
 
     private async Task SendEmailAsync(
@@ -479,6 +677,27 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
             new[] { recipient },
             variables,
             null);
+    }
+
+    private async Task<(EmailLog log, List<AttachmentDto>? attachments)> SendEmailAndCaptureAsync(
+        string templateName,
+        string language,
+        string recipient,
+        Dictionary<string, object>? variables)
+    {
+        using var scope = App.Services.CreateScope();
+        var emailFromTemplateService = scope.ServiceProvider.GetRequiredService<IEmailFromTemplateService>();
+        var testEmailService = scope.ServiceProvider.GetRequiredService<IEmailService>() as TestEmailService;
+
+        await emailFromTemplateService.SendAsync(
+            templateName,
+            language,
+            new[] { recipient },
+            variables,
+            null);
+
+        var log = await GetLastEmailLogAsync();
+        return (log, testEmailService?.LastSentAttachments);
     }
 
     private async Task<EmailLog> GetLastEmailLogAsync()

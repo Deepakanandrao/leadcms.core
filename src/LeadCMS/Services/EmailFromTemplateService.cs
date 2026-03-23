@@ -79,7 +79,9 @@ namespace LeadCMS.Services
             var body = await liquidTemplateService.RenderAsync(bodySource, templateArguments);
             var subject = await liquidTemplateService.RenderAsync(template.Subject, templateArguments);
 
-            await emailWithLogService.SendAsync(subject, template.FromEmail, template.FromName, recipients, body, attachments, template.Id, contactId, campaignId, sequenceId);
+            var mergedAttachments = await ResolveTemplateAttachmentsAsync(template, templateArguments, attachments);
+
+            await emailWithLogService.SendAsync(subject, template.FromEmail, template.FromName, recipients, body, mergedAttachments, template.Id, contactId, campaignId, sequenceId);
         }
 
         public async Task<int> SendToContactAsync(int contactId, string templateName, Dictionary<string, object>? templateArguments, List<AttachmentDto>? attachments, int scheduleId = 0, int campaignId = 0, int sequenceId = 0)
@@ -92,7 +94,9 @@ namespace LeadCMS.Services
             var body = await liquidTemplateService.RenderAsync(bodySource, templateArguments);
             var subject = await liquidTemplateService.RenderAsync(template.Subject, templateArguments);
 
-            return await emailWithLogService.SendToContactAsync(contactId, subject, template.FromEmail, template.FromName, body, attachments, scheduleId, template.Id, campaignId, sequenceId);
+            var mergedAttachments = await ResolveTemplateAttachmentsAsync(template, templateArguments, attachments);
+
+            return await emailWithLogService.SendToContactAsync(contactId, subject, template.FromEmail, template.FromName, body, mergedAttachments, scheduleId, template.Id, campaignId, sequenceId);
         }
 
         private async Task<EmailTemplate> GetEmailTemplate(string name, int contactId)
@@ -156,6 +160,78 @@ namespace LeadCMS.Services
             }
 
             throw new InvalidOperationException($"No email template found for '{name}' and language '{language}'.");
+        }
+
+        /// <summary>
+        /// Resolves template-level media attachment paths into binary AttachmentDto objects.
+        /// Each path is rendered through Liquid to resolve any template variables,
+        /// then split into scopeUid/name to look up the Media entity.
+        /// Results are merged with any explicitly provided attachments.
+        /// </summary>
+        private async Task<List<AttachmentDto>?> ResolveTemplateAttachmentsAsync(
+            EmailTemplate template,
+            Dictionary<string, object>? templateArguments,
+            List<AttachmentDto>? explicitAttachments)
+        {
+            if (template.Attachments == null || template.Attachments.Length == 0)
+            {
+                return explicitAttachments;
+            }
+
+            var resolved = new List<AttachmentDto>();
+
+            foreach (var attachmentPath in template.Attachments)
+            {
+                if (string.IsNullOrWhiteSpace(attachmentPath))
+                {
+                    continue;
+                }
+
+                var renderedPath = await liquidTemplateService.RenderAsync(attachmentPath, templateArguments);
+                renderedPath = renderedPath.Trim();
+
+                if (string.IsNullOrWhiteSpace(renderedPath))
+                {
+                    continue;
+                }
+
+                var separatorIndex = renderedPath.IndexOf('/');
+                if (separatorIndex <= 0 || separatorIndex == renderedPath.Length - 1)
+                {
+                    Log.Warning("Invalid template attachment path format: {Path}. Expected 'scopeUid/fileName'.", renderedPath);
+                    continue;
+                }
+
+                var scopeUid = renderedPath[..separatorIndex];
+                var fileName = renderedPath[(separatorIndex + 1)..];
+
+                var media = await pgDbContext.Media!
+                    .FirstOrDefaultAsync(m => m.ScopeUid == scopeUid && m.Name == fileName);
+
+                if (media == null)
+                {
+                    Log.Warning("Media not found for template attachment path: {Path} (scopeUid={ScopeUid}, name={FileName}).", renderedPath, scopeUid, fileName);
+                    continue;
+                }
+
+                resolved.Add(new AttachmentDto
+                {
+                    File = media.Data,
+                    FileName = media.Name,
+                });
+            }
+
+            if (resolved.Count == 0)
+            {
+                return explicitAttachments;
+            }
+
+            if (explicitAttachments != null && explicitAttachments.Count > 0)
+            {
+                resolved.AddRange(explicitAttachments);
+            }
+
+            return resolved;
         }
     }
 }

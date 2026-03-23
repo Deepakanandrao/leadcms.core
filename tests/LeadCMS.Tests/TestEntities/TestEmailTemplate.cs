@@ -15,5 +15,6 @@ public class TestEmailTemplate : EmailTemplateCreateDto
         FromName = "TestEmailTemaplteFromName";
         Language = "en";
         EmailGroupId = groupId;
+        Attachments = Array.Empty<string>();
     }
 }

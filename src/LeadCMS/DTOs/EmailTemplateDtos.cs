@@ -35,6 +35,8 @@ public class EmailTemplateCreateDto
 
     public string? TranslationKey { get; set; }
 
+    public string[] Attachments { get; set; } = Array.Empty<string>();
+
     [Required]
     public int EmailGroupId { get; set; }
 }
@@ -65,6 +67,8 @@ public class EmailTemplateUpdateDto : IPatchDto
     public string? Language { get; set; }
 
     public string? TranslationKey { get; set; }
+
+    public string[]? Attachments { get; set; }
 
     public int? EmailGroupId { get; set; }
 }

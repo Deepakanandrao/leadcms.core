@@ -6,8 +6,12 @@ namespace LeadCMS.Tests.TestServices
 {
     public class TestEmailService : IEmailService
     {
+        public List<AttachmentDto>? LastSentAttachments { get; private set; }
+
         public Task<string> SendAsync(string subject, string fromEmail, string fromName, string[] recipients, string body, List<AttachmentDto>? attachments)
         {
+            LastSentAttachments = attachments;
+
             // Test email sender method returns success.
             return Task.FromResult("test-message-id");
         }
