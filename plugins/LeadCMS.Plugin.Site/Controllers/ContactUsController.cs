@@ -3,6 +3,7 @@
 // </copyright>
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using LeadCMS.Core.Sequences.Interfaces;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;
@@ -33,6 +34,7 @@ public class ContactUsController : Controller
     protected readonly ILeadNotificationMessageBuilder leadNotificationMessageBuilder;
     protected readonly IHttpContextHelper? httpContextHelper;
     protected readonly IPhoneNormalizationService phoneNormalizationService;
+    protected readonly ISequenceService? sequenceService;
 
     private static readonly JsonSerializerOptions ExtraDataJsonOptions = new()
     {
@@ -47,7 +49,8 @@ public class ContactUsController : Controller
         ILeadNotificationService leadNotificationService,
         ILeadNotificationMessageBuilder leadNotificationMessageBuilder,
         IHttpContextHelper httpContextHelper,
-        IPhoneNormalizationService phoneNormalizationService)
+        IPhoneNormalizationService phoneNormalizationService,
+        ISequenceService? sequenceService = null)
     {
         this.emailService = emailService;
         this.dbContext = dbContext;
@@ -57,6 +60,7 @@ public class ContactUsController : Controller
         this.leadNotificationMessageBuilder = leadNotificationMessageBuilder;
         this.httpContextHelper = httpContextHelper;
         this.phoneNormalizationService = phoneNormalizationService;
+        this.sequenceService = sequenceService;
         var settings = configuration.Get<PluginSettings>();
 
         if (settings != null)
@@ -195,25 +199,31 @@ public class ContactUsController : Controller
                 ? "Acknowledgment"
                 : contactUsDto.AcknowledgmentType;
 
-            // Build template args: start from stored contact data,
-            // then overlay the actual submitted values so templates always
-            // reflect what the user entered (not stale DB data).
-            var templateArgs = TemplateArgumentsBuilder.FromContact(leadInfo.Contact, includeNestedObjects: false);
-            TemplateArgumentsBuilder.Merge(templateArgs, leadInfo.ToTemplateArguments());
-            leadNotificationMessageBuilder.EnrichTemplateArguments(templateArgs, leadInfo);
+            // Try to enroll the contact in a sequence matching the acknowledgment type.
+            // If a matching active sequence with api enrollment is found, skip the one-off template email.
+            var enrolled = sequenceService != null
+                && await sequenceService.TryEnrollContactBySequenceNameAsync(
+                    acknowledgmentTemplate,
+                    [contact.Id],
+                    enrollmentReason: proposedSource,
+                    templateArguments: leadInfo.ToTemplateArguments(),
+                    source: SequenceEnrollmentSource.Api);
 
-            var utmParams = UtmsBuilder.Create()
-                .WithDefaults()
-                .WithContext(new Utms { Campaign = acknowledgmentTemplate.ToLowerInvariant(), Content = "acknowledgment" })
-                .Build();
+            if (!enrolled)
+            {
+                var templateArgs = TemplateArgumentsBuilder.ForAcknowledgment(
+                    contact,
+                    acknowledgmentTemplate,
+                    leadInfo.ToTemplateArguments());
 
-            TemplateArgumentsBuilder.WithUtmParameters(templateArgs, utmParams);
+                leadNotificationMessageBuilder.EnrichTemplateArguments(templateArgs, leadInfo);
 
-            await emailService.SendToContactAsync(
-                contact.Id,
-                acknowledgmentTemplate,
-                templateArgs,
-                null);
+                await emailService.SendToContactAsync(
+                    contact.Id,
+                    acknowledgmentTemplate,
+                    templateArgs,
+                    null);
+            }
         }
 
         return Ok();

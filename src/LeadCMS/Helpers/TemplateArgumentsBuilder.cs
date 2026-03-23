@@ -127,6 +127,35 @@ public static class TemplateArgumentsBuilder
     }
 
     /// <summary>
+    /// Builds a complete template arguments dictionary suitable for acknowledgment emails.
+    /// Composes <see cref="FromContact"/> (scalar fields only) with caller-supplied overrides
+    /// and standard UTM parameters.
+    /// </summary>
+    /// <param name="contact">The contact whose stored data provides fallback template values.</param>
+    /// <param name="templateName">The email template (or sequence) name — used as the
+    /// <c>utm_campaign</c> value so link attribution is automatic.</param>
+    /// <param name="customArgs">Optional caller-supplied arguments that override contact-based
+    /// values with the same key (e.g. submitted form fields).</param>
+    /// <returns>A ready-to-use template arguments dictionary.</returns>
+    public static Dictionary<string, object> ForAcknowledgment(
+        Contact contact,
+        string templateName,
+        Dictionary<string, object>? customArgs = null)
+    {
+        var args = FromContact(contact, includeNestedObjects: false);
+        Merge(args, customArgs);
+
+        var utmParams = UtmsBuilder.Create()
+            .WithDefaults()
+            .WithContext(new Utms { Campaign = templateName.ToLowerInvariant(), Content = "acknowledgment" })
+            .Build();
+
+        WithUtmParameters(args, utmParams);
+
+        return args;
+    }
+
+    /// <summary>
     /// Merges additional custom arguments into an existing arguments dictionary.
     /// Custom arguments take precedence over existing values with the same key.
     /// </summary>

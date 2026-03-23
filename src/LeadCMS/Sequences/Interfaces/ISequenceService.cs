@@ -28,6 +28,20 @@ public interface ISequenceService
 
     Task<List<SequenceEnrollment>> EnrollContactBySequenceNameAsync(string sequenceName, int[] contactIds, string? enrollmentReason = null, Dictionary<string, object>? templateArguments = null, SequenceEnrollmentSource source = SequenceEnrollmentSource.Api);
 
+    /// <summary>
+    /// Attempts to enroll contacts in a sequence identified by name.
+    /// Returns true if a matching active sequence with the requested enrollment mode was found
+    /// and enrollment succeeded. Returns false if no matching sequence exists, the sequence is
+    /// not active, the enrollment mode is not enabled, or the reentry policy prevents enrollment.
+    /// </summary>
+    /// <param name="sequenceName">The name of the sequence to enroll into.</param>
+    /// <param name="contactIds">The IDs of the contacts to enroll.</param>
+    /// <param name="enrollmentReason">An optional reason for the enrollment.</param>
+    /// <param name="templateArguments">Optional template arguments to store with the enrollment.</param>
+    /// <param name="source">The enrollment source mode.</param>
+    /// <returns>True if enrollment succeeded; false otherwise.</returns>
+    Task<bool> TryEnrollContactBySequenceNameAsync(string sequenceName, int[] contactIds, string? enrollmentReason = null, Dictionary<string, object>? templateArguments = null, SequenceEnrollmentSource source = SequenceEnrollmentSource.Api);
+
     Task<SequenceEnrollment> RemoveEnrollmentAsync(int sequenceId, int enrollmentId);
 
     Task<List<SequenceEnrollment>> StopEnrollmentsAsync(int sequenceId, int[] enrollmentIds);

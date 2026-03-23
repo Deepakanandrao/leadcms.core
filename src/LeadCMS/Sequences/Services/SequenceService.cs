@@ -394,6 +394,42 @@ public class SequenceService : ISequenceService
         return await EnrollContactsAsync(sequence.Id, contactIds, enrollmentReason, templateArguments, source);
     }
 
+    public async Task<bool> TryEnrollContactBySequenceNameAsync(string sequenceName, int[] contactIds, string? enrollmentReason = null, Dictionary<string, object>? templateArguments = null, SequenceEnrollmentSource source = SequenceEnrollmentSource.Api)
+    {
+        var sequence = await dbContext.Sequences!
+            .FirstOrDefaultAsync(s => s.Name == sequenceName);
+
+        if (sequence == null || sequence.Status != SequenceStatus.Active)
+        {
+            return false;
+        }
+
+        var modeName = source switch
+        {
+            SequenceEnrollmentSource.Manual => "manual",
+            SequenceEnrollmentSource.Api => "api",
+            SequenceEnrollmentSource.Segment => "segment",
+            _ => source.ToString().ToLowerInvariant(),
+        };
+
+        var enrollmentConfig = sequence.Enrollment;
+        if (enrollmentConfig != null && !enrollmentConfig.Modes.Contains(modeName))
+        {
+            return false;
+        }
+
+        try
+        {
+            await EnrollContactsAsync(sequence.Id, contactIds, enrollmentReason, templateArguments, source);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            // Reentry policy violation — treat as non-enrollable
+            return false;
+        }
+    }
+
     public async Task<SequenceEnrollment> RemoveEnrollmentAsync(int sequenceId, int enrollmentId)
     {
         var enrollment = await dbContext.SequenceEnrollments!

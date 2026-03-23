@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using LeadCMS.Core.Sequences.Interfaces;
 using LeadCMS.Data;
 using LeadCMS.Helpers;
 using LeadCMS.Models;
@@ -1486,6 +1487,115 @@ public class SequencesTests : BaseTestAutoLogin
         sequence.Should().NotBeNull();
         sequence!.Steps.Should().NotBeNullOrEmpty();
         sequence.Steps.Count.Should().Be(1);
+    }
+
+    // ──────────────────────────────────────────────────
+    // TryEnrollContactBySequenceNameAsync Tests
+    // ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task TryEnrollByName_ActiveSequence_ReturnsTrue()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("try-enroll", delayMinutes: 1440);
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("try-enroll");
+
+        using var scope = App.Services.CreateScope();
+        var sequenceService = scope.ServiceProvider.GetRequiredService<ISequenceService>();
+
+        var result = await sequenceService.TryEnrollContactBySequenceNameAsync(
+            "TestSequencetry-enroll",
+            new[] { contactId },
+            enrollmentReason: "ContactFormSubmission");
+
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task TryEnrollByName_NonExistentSequence_ReturnsFalse()
+    {
+        var contactId = await CreateContactAsync("try-noexist");
+
+        using var scope = App.Services.CreateScope();
+        var sequenceService = scope.ServiceProvider.GetRequiredService<ISequenceService>();
+
+        var result = await sequenceService.TryEnrollContactBySequenceNameAsync(
+            "NonExistentSequence",
+            new[] { contactId });
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task TryEnrollByName_DraftSequence_ReturnsFalse()
+    {
+        await CreateSequenceWithStepAsync("try-draft", delayMinutes: 1440);
+        var contactId = await CreateContactAsync("try-draft");
+
+        using var scope = App.Services.CreateScope();
+        var sequenceService = scope.ServiceProvider.GetRequiredService<ISequenceService>();
+
+        var result = await sequenceService.TryEnrollContactBySequenceNameAsync(
+            "TestSequencetry-draft",
+            new[] { contactId });
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task TryEnrollByName_ModeNotEnabled_ReturnsFalse()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("try-nomode", delayMinutes: 1440);
+
+        // Restrict enrollment to manual only (remove api)
+        await PatchTest($"{SequencesUrl}/{sequenceId}", new
+        {
+            Enrollment = new SequenceEnrollmentConfig
+            {
+                Modes = new[] { "manual" },
+                ReentryPolicy = ReentryPolicy.OnceEver,
+            },
+        });
+
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("try-nomode");
+
+        using var scope = App.Services.CreateScope();
+        var sequenceService = scope.ServiceProvider.GetRequiredService<ISequenceService>();
+
+        var result = await sequenceService.TryEnrollContactBySequenceNameAsync(
+            "TestSequencetry-nomode",
+            new[] { contactId },
+            source: SequenceEnrollmentSource.Api);
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task TryEnrollByName_ReentryPolicyViolation_ReturnsFalse()
+    {
+        var (sequenceId, _) = await CreateSequenceWithStepAsync("try-reentry", delayMinutes: 1440);
+        await PostTest<SequenceDetailsDto>($"{SequencesUrl}/{sequenceId}/activate", new { }, HttpStatusCode.OK);
+
+        var contactId = await CreateContactAsync("try-reentry");
+
+        // First enrollment via API (succeeds normally)
+        await PostTest<List<SequenceEnrollmentDetailsDto>>(
+            $"{SequencesUrl}/{sequenceId}/enrollments",
+            new SequenceEnrollmentCreateDto { ContactIds = new[] { contactId } },
+            HttpStatusCode.Created);
+
+        // Second enrollment via TryEnroll should return false (OnceEver policy)
+        using var scope = App.Services.CreateScope();
+        var sequenceService = scope.ServiceProvider.GetRequiredService<ISequenceService>();
+
+        var result = await sequenceService.TryEnrollContactBySequenceNameAsync(
+            "TestSequencetry-reentry",
+            new[] { contactId });
+
+        result.Should().BeFalse();
     }
 
     // ──────────────────────────────────────────────────
