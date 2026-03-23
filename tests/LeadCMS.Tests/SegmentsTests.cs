@@ -1798,6 +1798,88 @@ public class SegmentsTests : BaseTestAutoLogin
         preview.Contacts[0].FirstName.Should().Be("ShouldMatch");
     }
 
+    [Fact]
+    public async Task PatchSegmentWithExcludeRules_ExcludeRulesPersistedOnGet()
+    {
+        await CreateContactAsync("exclpatch1", "exclpatch1@test.net", "Test", "User");
+        await CreateContactAsync("exclpatch2", "exclpatch2@test.net", "Test", "Excluded");
+
+        // Create segment WITH exclude rules from the start
+        var createDto = new SegmentCreateDto
+        {
+            Name = $"ExclPatch Test {Guid.NewGuid().ToString()[..8]}",
+            Type = SegmentType.Dynamic,
+            Definition = new SegmentDefinition
+            {
+                IncludeRules = new RuleGroup
+                {
+                    Connector = RuleConnector.And,
+                    Rules = new List<SegmentRule>
+                    {
+                        new SegmentRule { FieldId = "email", Operator = FieldOperator.Contains, Value = "exclpatch" },
+                    },
+                },
+                ExcludeRules = new RuleGroup
+                {
+                    Connector = RuleConnector.And,
+                    Rules = new List<SegmentRule>
+                    {
+                        new SegmentRule { FieldId = "lastName", Operator = FieldOperator.Equals, Value = "Excluded" },
+                    },
+                },
+            },
+        };
+
+        var segmentLocation = await PostTest(SegmentsUrl, createDto);
+
+        // GET to verify exclude rules are persisted after creation
+        var created = await GetTest<SegmentDetailsDto>(segmentLocation);
+        created.Should().NotBeNull();
+        created!.Definition.Should().NotBeNull();
+        created.Definition!.ExcludeRules.Should().NotBeNull("exclude rules should be persisted after POST");
+        created.Definition.ExcludeRules!.Rules.Should().HaveCount(1);
+
+        // PATCH to update exclude rules
+        var updateDto = new SegmentUpdateDto
+        {
+            Definition = new SegmentDefinition
+            {
+                IncludeRules = new RuleGroup
+                {
+                    Connector = RuleConnector.And,
+                    Rules = new List<SegmentRule>
+                    {
+                        new SegmentRule { FieldId = "email", Operator = FieldOperator.Contains, Value = "exclpatch" },
+                    },
+                },
+                ExcludeRules = new RuleGroup
+                {
+                    Connector = RuleConnector.And,
+                    Rules = new List<SegmentRule>
+                    {
+                        new SegmentRule { FieldId = "lastName", Operator = FieldOperator.Equals, Value = "Excluded" },
+                    },
+                },
+            },
+        };
+
+        var patchResponse = await PatchTest(segmentLocation, updateDto);
+        var patchContent = await patchResponse.Content.ReadAsStringAsync();
+        var patched = JsonHelper.Deserialize<SegmentDetailsDto>(patchContent);
+        patched.Should().NotBeNull();
+        patched!.Definition.Should().NotBeNull();
+        patched.Definition!.ExcludeRules.Should().NotBeNull("PATCH response should include exclude rules");
+
+        // GET to verify exclude rules are persisted after PATCH
+        var fetched = await GetTest<SegmentDetailsDto>(segmentLocation);
+        fetched.Should().NotBeNull();
+        fetched!.Definition.Should().NotBeNull();
+        fetched.Definition!.ExcludeRules.Should().NotBeNull("exclude rules should be persisted after PATCH");
+        fetched.Definition.ExcludeRules!.Rules.Should().HaveCount(1);
+        fetched.Definition.ExcludeRules.Rules[0].FieldId.Should().Be("lastName");
+        fetched.Definition.ExcludeRules.Rules[0].Operator.Should().Be(FieldOperator.Equals);
+    }
+
     private static int ExtractId(string location)
     {
         return int.Parse(location.Split("/").Last());

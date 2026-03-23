@@ -122,6 +122,7 @@ public static class DtoCleanupHelper
 
     private static bool IsDto(Type type)
     {
-        return type.IsClass && type != typeof(string) && type.Namespace?.Contains(".DTOs") == true;
+        return type.IsClass && type != typeof(string) && type.Namespace?.Contains(".DTOs") == true
+            && type.Name.EndsWith("Dto", StringComparison.Ordinal);
     }
 }
