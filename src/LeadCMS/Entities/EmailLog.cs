@@ -17,8 +17,6 @@ namespace LeadCMS.Entities
         Received = 2,
     }
 
-    [SupportsElastic]
-    [SupportsChangeLog]
     [Table("email_log")]
     public class EmailLog : BaseEntity
     {
