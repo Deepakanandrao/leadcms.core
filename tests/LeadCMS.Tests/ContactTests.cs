@@ -13,6 +13,8 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
     public ContactTests()
         : base("/api/contacts")
     {
+        TrackEntityType<Sequence>();
+        TrackEntityType<SequenceEnrollment>();
     }
 
     [Fact]
@@ -151,6 +153,52 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
         result.Should().NotBeNull();
         var singleResult = result!.Should().ContainSingle().Subject;
         singleResult.UserDeviceSummary.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetOne_WithEnrollmentsInclude_ReturnsEnrollments()
+    {
+        var dbContext = App.GetDbContext()!;
+        var uid = Guid.NewGuid().ToString("N")[..8];
+        var contact = new Contact
+        {
+            Email = $"contact-enrollment-one-{uid}@test.net",
+            FirstName = "Enrollment",
+            LastName = "One",
+            Language = "en",
+        };
+        var sequence = new Sequence
+        {
+            Name = $"ContactEnrollmentsOne{uid}",
+            Language = "en",
+        };
+
+        dbContext.Contacts!.Add(contact);
+        dbContext.Sequences!.Add(sequence);
+        await dbContext.SaveChangesAsync();
+
+        var enrollment = new SequenceEnrollment
+        {
+            ContactId = contact.Id,
+            SequenceId = sequence.Id,
+            Status = SequenceEnrollmentStatus.Active,
+            EnrollmentSource = SequenceEnrollmentSource.Manual,
+            EnrollmentReason = "Include enrollments test",
+            EnteredAt = DateTime.UtcNow,
+        };
+
+        dbContext.SequenceEnrollments!.Add(enrollment);
+        await dbContext.SaveChangesAsync();
+
+        var result = await GetTest<ContactDetailsDto>($"{itemsUrl}/{contact.Id}?filter[include]=Enrollments");
+
+        result.Should().NotBeNull();
+        result!.Enrollments.Should().NotBeNull();
+        var returnedEnrollment = result.Enrollments!.Should().ContainSingle().Subject;
+        returnedEnrollment.Id.Should().Be(enrollment.Id);
+        returnedEnrollment.ContactId.Should().Be(contact.Id);
+        returnedEnrollment.SequenceId.Should().Be(sequence.Id);
+        returnedEnrollment.Contact.Should().BeNull();
     }
 
     [Fact]

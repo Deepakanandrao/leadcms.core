@@ -151,6 +151,9 @@ public class Contact : BaseEntity, ICommentable
     [JsonIgnore]
     public virtual ICollection<EmailLog>? EmailLogs { get; set; }
 
+    [JsonIgnore]
+    public virtual ICollection<SequenceEnrollment>? Enrollments { get; set; }
+
     public static string GetCommentableType()
     {
         return "Contact";

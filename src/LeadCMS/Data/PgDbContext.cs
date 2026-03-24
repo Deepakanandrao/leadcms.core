@@ -418,7 +418,7 @@ public class PgDbContext : IdentityDbContext<User>
         // SequenceEnrollment: Contact cascade
         builder.Entity<SequenceEnrollment>()
             .HasOne(e => e.Contact)
-            .WithMany()
+            .WithMany(c => c.Enrollments)
             .HasForeignKey(e => e.ContactId)
             .OnDelete(DeleteBehavior.Cascade);
     }

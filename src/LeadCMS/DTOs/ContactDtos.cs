@@ -5,6 +5,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using CsvHelper.Configuration.Attributes;
+using LeadCMS.Core.Sequences.DTOs;
 using LeadCMS.DataAnnotations;
 using LeadCMS.Entities;
 using LeadCMS.Geography;
@@ -157,6 +158,9 @@ public class ContactDetailsDto : ContactCreateDto
 
     [Ignore]
     public List<OrderDetailsDto>? Orders { get; set; }
+
+    [Ignore]
+    public List<SequenceEnrollmentDetailsDto>? Enrollments { get; set; }
 }
 
 public class ContactImportDto : BaseImportDto
