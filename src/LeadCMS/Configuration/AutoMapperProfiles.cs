@@ -280,6 +280,7 @@ public class AutoMapperProfiles : Profile
         CreateMap<Sequence, SequenceUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<Sequence, SequenceDetailsDto>()
+            .ForMember(dest => dest.Steps, opt => opt.MapFrom(src => (src.Steps ?? new List<SequenceStep>()).OrderBy(step => step.Position)))
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<SequenceStepCreateDto, SequenceStep>()
             .ForMember(dest => dest.Position, opt => opt.Ignore())

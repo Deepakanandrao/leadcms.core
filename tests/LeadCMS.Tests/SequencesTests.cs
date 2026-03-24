@@ -1489,6 +1489,54 @@ public class SequencesTests : BaseTestAutoLogin
         sequence.Steps.Count.Should().Be(1);
     }
 
+    [Fact]
+    public async Task Sync_WithIncludeSteps_ReturnsStepsInSequenceOrder()
+    {
+        var templateId = await CreateEmailTemplateAsync("sync-ordered-steps");
+        var created = await PostTest<SequenceDetailsDto>(
+            SequencesUrl,
+            new SequenceCreateDto
+            {
+                Name = "SyncOrderedSteps",
+                Language = "en",
+                Steps = new List<SequenceStepCreateDto>
+                {
+                    new() { Name = "step-1", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 0, Unit = "minutes" } } },
+                    new() { Name = "step-2", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 1, Unit = "days" } } },
+                    new() { Name = "step-3", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 2, Unit = "days" } } },
+                },
+            },
+            HttpStatusCode.Created);
+
+        created.Should().NotBeNull();
+
+        await PatchTest(
+            $"{SequencesUrl}/{created!.Id}",
+            new SequenceUpdateDto
+            {
+                Steps = new List<SequenceStepCreateDto>
+                {
+                    new() { Id = created.Steps[2].Id, Name = "step-3", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 2, Unit = "days" } } },
+                    new() { Id = created.Steps[0].Id, Name = "step-1", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 0, Unit = "minutes" } } },
+                    new() { Id = created.Steps[1].Id, Name = "step-2", EmailTemplateId = templateId, Timing = new SequenceStepTiming { Delay = new SequenceStepDelay { Value = 1, Unit = "days" } } },
+                },
+            });
+
+        var directResult = await GetTest<SequenceDetailsDto>($"{SequencesUrl}/{created.Id}");
+        directResult.Should().NotBeNull();
+        directResult!.Steps.Select(step => step.Name).Should().ContainInOrder("step-3", "step-1", "step-2");
+
+        var response = await GetRequest($"{SequencesUrl}/sync?filter[include]=Steps&filter[where][id]={created.Id}");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var content = await response.Content.ReadAsStringAsync();
+        var syncResponse = JsonHelper.Deserialize<SyncResponseDto<SequenceDetailsDto, int>>(content);
+
+        syncResponse.Should().NotBeNull();
+        var sequence = syncResponse!.Items.Should().ContainSingle().Subject;
+        sequence.Steps.Select(step => step.Name).Should().ContainInOrder("step-3", "step-1", "step-2");
+    }
+
     // ──────────────────────────────────────────────────
     // TryEnrollContactBySequenceNameAsync Tests
     // ──────────────────────────────────────────────────
