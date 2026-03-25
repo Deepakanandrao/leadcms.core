@@ -1407,6 +1407,117 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
         contact.DomainId.Should().BeNull();
     }
 
+    [Fact]
+    public async Task ImportJsonWithTags_ShouldPreserveTagsArray()
+    {
+        await PostImportTest(itemsUrl, "contactsWithTags.json");
+
+        var dbContext = App.GetDbContext()!;
+        var contact1 = dbContext.Contacts!.First(c => c.Email == "tagged1@test.com");
+        contact1.Tags.Should().BeEquivalentTo("VIP", "Newsletter");
+
+        var contact2 = dbContext.Contacts!.First(c => c.Email == "tagged2@test.com");
+        contact2.Tags.Should().BeEquivalentTo("Premium");
+    }
+
+    [Fact]
+    public async Task ImportCsvWithTags_ShouldParseCommaSeparatedTags()
+    {
+        await PostImportTest(itemsUrl, "contactsWithTags.csv");
+
+        var dbContext = App.GetDbContext()!;
+        var contact1 = dbContext.Contacts!.First(c => c.Email == "tagged1@test.com");
+        contact1.Tags.Should().BeEquivalentTo("VIP", "Newsletter");
+
+        var contact2 = dbContext.Contacts!.First(c => c.Email == "tagged2@test.com");
+        contact2.Tags.Should().BeEquivalentTo("Premium");
+    }
+
+    [Fact]
+    public async Task ImportJsonWithEmptyTags_ShouldClearTags()
+    {
+        // First import contacts with tags
+        await PostImportTest(itemsUrl, "contactsWithTags.json");
+
+        var dbContext = App.GetDbContext()!;
+        var contact = dbContext.Contacts!.First(c => c.Email == "tagged1@test.com");
+        contact.Tags.Should().NotBeEmpty();
+        contact.FirstName.Should().Be("Tag");
+
+        // Now import with empty tags and null firstName
+        await PostImportTest(itemsUrl, "contactsResetFields.json");
+
+        dbContext.ChangeTracker.Clear();
+        contact = dbContext.Contacts!.First(c => c.Email == "tagged1@test.com");
+        contact.Tags.Should().BeEmpty();
+        contact.FirstName.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ImportCsvWithEmptyTags_ShouldClearTags()
+    {
+        // First import contacts with tags
+        await PostImportTest(itemsUrl, "contactsWithTags.csv");
+
+        var dbContext = App.GetDbContext()!;
+        var contact = dbContext.Contacts!.First(c => c.Email == "tagged1@test.com");
+        contact.Tags.Should().NotBeEmpty();
+
+        // Now import with empty tags and empty firstName
+        await PostImportTest(itemsUrl, "contactsResetFields.csv");
+
+        dbContext.ChangeTracker.Clear();
+        contact = dbContext.Contacts!.First(c => c.Email == "tagged1@test.com");
+        contact.Tags.Should().BeEmpty();
+        contact.FirstName.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ExportContactsWithTags_CsvShouldContainTags()
+    {
+        // Create a contact with tags
+        var contactCreate = new ContactCreateDto
+        {
+            Email = "export-tags@test.com",
+            FirstName = "Export",
+            LastName = "TagUser",
+            Tags = new[] { "VIP", "Newsletter" },
+        };
+        await PostTest(itemsUrl, contactCreate, HttpStatusCode.Created);
+
+        // Export as CSV
+        var request = new HttpRequestMessage(HttpMethod.Get, $"{itemsUrl}/export");
+        request.Headers.Authorization = GetAuthenticationHeaderValue();
+        request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("text/csv"));
+        var response = await client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var csvContent = await response.Content.ReadAsStringAsync();
+
+        // Tags with commas must be quoted in CSV to avoid extra columns
+        csvContent.Should().Contain("\"VIP,Newsletter\"");
+    }
+
+    [Fact]
+    public async Task ExportContactsWithTags_JsonShouldContainTagsArray()
+    {
+        // Create a contact with tags
+        var contactCreate = new ContactCreateDto
+        {
+            Email = "export-tags@test.com",
+            FirstName = "Export",
+            LastName = "TagUser",
+            Tags = new[] { "VIP", "Newsletter" },
+        };
+        await PostTest(itemsUrl, contactCreate, HttpStatusCode.Created);
+
+        // Export as JSON
+        var exported = await GetTest<List<ContactDetailsDto>>($"{itemsUrl}/export");
+        exported.Should().NotBeNull();
+        var exportedContact = exported!.First(c => c.Email == "export-tags@test.com");
+        exportedContact.Tags.Should().BeEquivalentTo("VIP", "Newsletter");
+    }
+
     protected override ContactUpdateDto UpdateItem(TestContact to)
     {
         var from = new ContactUpdateDto();

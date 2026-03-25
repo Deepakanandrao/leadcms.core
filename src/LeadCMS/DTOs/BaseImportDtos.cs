@@ -2,12 +2,18 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Text.Json.Serialization;
 using CsvHelper.Configuration.Attributes;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
 
-public class BaseImportDtoWithIdAndSource
+public class BaseImportDtoWithIdAndSource : IPatchDto
 {
+    [Ignore]
+    [JsonIgnore]
+    public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     [Optional]
     public int? Id { get; set; }
 

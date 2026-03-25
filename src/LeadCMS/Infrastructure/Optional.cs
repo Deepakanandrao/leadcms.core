@@ -123,6 +123,13 @@ public static class PatchDtoExtensions
 
             if (propertyInfo != null && propertyInfo.CanWrite)
             {
+                // Skip non-nullable value types (they can't be set to null)
+                var propertyType = propertyInfo.PropertyType;
+                if (propertyType.IsValueType && Nullable.GetUnderlyingType(propertyType) == null)
+                {
+                    continue;
+                }
+
                 // Skip required properties (they can't be set to null)
                 var isRequired = propertyInfo.GetCustomAttributes(
                     typeof(System.ComponentModel.DataAnnotations.RequiredAttribute), true).Any();

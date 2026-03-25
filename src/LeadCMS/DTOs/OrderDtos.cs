@@ -109,7 +109,7 @@ public class OrderImportDto : BaseImportDto
 {
     [Optional]
     [SwaggerUnique]
-    public string? RefNo { get; set; } = string.Empty;
+    public string? RefNo { get; set; }
 
     [Optional]
     public string? OrderNumber { get; set; }
@@ -118,10 +118,10 @@ public class OrderImportDto : BaseImportDto
     public string? AffiliateName { get; set; }
 
     [Optional]
-    public decimal? ExchangeRate { get; set; } = 1;
+    public decimal? ExchangeRate { get; set; }
 
-    [Required]
-    public string? Currency { get; set; } = string.Empty;
+    [Optional]
+    public string? Currency { get; set; }
 
     [Optional]
     public int? ContactId { get; set; }
@@ -132,7 +132,7 @@ public class OrderImportDto : BaseImportDto
     public string? ContactEmail { get; set; }
 
     [Optional]
-    public bool? TestOrder { get; set; } = false;
+    public bool? TestOrder { get; set; }
 
     [Optional]
     public string? Data { get; set; }

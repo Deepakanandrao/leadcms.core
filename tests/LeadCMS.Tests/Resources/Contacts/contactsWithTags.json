@@ -1,0 +1,14 @@
+[
+  {
+    "email": "tagged1@test.com",
+    "firstName": "Tag",
+    "lastName": "User1",
+    "tags": ["VIP", "Newsletter"]
+  },
+  {
+    "email": "tagged2@test.com",
+    "firstName": "Tag",
+    "lastName": "User2",
+    "tags": ["Premium"]
+  }
+]

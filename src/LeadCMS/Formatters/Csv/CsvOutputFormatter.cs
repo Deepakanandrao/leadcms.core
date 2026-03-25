@@ -55,6 +55,7 @@ public class CsvOutputFormatter : OutputFormatter
             await using (var csv = new CsvWriter(streamWriter, CultureInfo.InvariantCulture))
             {
                 csv.Context.TypeConverterCache.AddConverter<DateTime>(new JsonStyleDateTimeConverter());
+                csv.Context.TypeConverterCache.AddConverter<string[]>(new StringArrayConverter());
                 csv.Context.RegisterCamelCaseClassMap(itemType!);
 
                 await csv.WriteRecordsAsync(context.Object as IEnumerable);
@@ -81,6 +82,7 @@ public class CsvOutputFormatter : OutputFormatter
     {
         await using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
         csv.Context.TypeConverterCache.AddConverter<DateTime>(new JsonStyleDateTimeConverter());
+        csv.Context.TypeConverterCache.AddConverter<string[]>(new StringArrayConverter());
 
         var enumerator = collection.GetEnumerator();
         if (!enumerator.MoveNext())
@@ -123,7 +125,15 @@ public class CsvOutputFormatter : OutputFormatter
             try
             {
                 object? value = prop.GetValue(item);
-                csv.WriteField(value);
+
+                if (value is string[] array)
+                {
+                    csv.WriteField(array.Length > 0 ? string.Join(",", array) : string.Empty);
+                }
+                else
+                {
+                    csv.WriteField(value);
+                }
             }
             catch
             {

@@ -510,6 +510,69 @@ public class OrdersTests : TableWithFKTests<Order, TestOrder, OrderUpdateDto, IE
     }
 
     [Fact]
+    public async Task ImportPartialUpdate_ShouldPreserveExistingFields()
+    {
+        TrackEntityType<Order>();
+
+        // Create an order with a known currency
+        var fkItem = await CreateFKItem();
+        var testOrder = new TestOrder(Guid.NewGuid().ToString("N")[..8], fkItem.Item1);
+        testOrder.Currency = "USD";
+        testOrder.Status = OrderStatus.Pending;
+        var orderUrl = await PostTest(itemsUrl, testOrder);
+        var orderId = int.Parse(orderUrl.Split('/').Last());
+
+        var dbContext = App.GetDbContext()!;
+        var order = dbContext.Orders!.First(o => o.Id == orderId);
+        order.Currency.Should().Be("USD");
+        order.Status.Should().Be(OrderStatus.Pending);
+
+        // Import with only id + status — Currency must NOT be required
+        var importPayload = new[] { new { id = orderId, status = OrderStatus.Paid } };
+        var response = await Request(HttpMethod.Post, $"{itemsUrl}/import", importPayload);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        dbContext.ChangeTracker.Clear();
+        order = dbContext.Orders!.First(o => o.Id == orderId);
+        order.Status.Should().Be(OrderStatus.Paid);
+        order.Currency.Should().Be("USD");
+    }
+
+    [Fact]
+    public async Task ImportExplicitNullReset_ShouldClearNullableFields()
+    {
+        TrackEntityType<Order>();
+
+        // Create an order with affiliateName set
+        var fkItem = await CreateFKItem();
+        var testOrder = new TestOrder(Guid.NewGuid().ToString("N")[..8], fkItem.Item1);
+        testOrder.Currency = "USD";
+        testOrder.AffiliateName = "PartnerCo";
+        testOrder.Tags = new[] { "VIP", "Bulk" };
+        var orderUrl = await PostTest(itemsUrl, testOrder);
+        var orderId = int.Parse(orderUrl.Split('/').Last());
+
+        var dbContext = App.GetDbContext()!;
+        var order = dbContext.Orders!.First(o => o.Id == orderId);
+        order.AffiliateName.Should().Be("PartnerCo");
+        order.Tags.Should().BeEquivalentTo("VIP", "Bulk");
+
+        // Import with explicit null for affiliateName and empty tags — should reset them
+        var json = $@"[{{""id"":{orderId},""affiliateName"":null,""tags"":[]}}]";
+        var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{itemsUrl}/import") { Content = content };
+        request.Headers.Authorization = GetAuthenticationHeaderValue();
+        var response = await client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        dbContext.ChangeTracker.Clear();
+        order = dbContext.Orders!.First(o => o.Id == orderId);
+        order.AffiliateName.Should().BeNull();
+        order.Tags.Should().BeEmpty();
+        order.Currency.Should().Be("USD");
+    }
+
+    [Fact]
 
     public async Task CommentsTest()
     {

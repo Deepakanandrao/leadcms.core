@@ -9,6 +9,7 @@ using System.Text;
 using CsvHelper;
 using CsvHelper.Configuration;
 using CsvHelper.TypeConversion;
+using LeadCMS.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Formatters;
 using Microsoft.Net.Http.Headers;
 
@@ -65,13 +66,35 @@ public class CsvInputFormatter : InputFormatter
         using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
         {
             csv.Context.TypeConverterCache.AddConverter<string?>(new NullableStringConverter());
+            csv.Context.TypeConverterCache.AddConverter<string[]>(new StringArrayConverter());
             csv.Context.TypeConverterCache.RemoveConverter<DateTime?>();
             csv.Context.TypeConverterCache.AddConverter<DateTime?>(new NullableDateTimeToUtcConverter(typeof(DateTime?), csv.Context.TypeConverterCache));
 
             csv.Context.RegisterCamelCaseClassMap(itemType!);
 
+            var trackNullProperties = typeof(IPatchDto).IsAssignableFrom(itemTypeInGeneric);
+
             await foreach (var record in csv.GetRecordsAsync(itemTypeInGeneric))
             {
+                if (trackNullProperties && record is IPatchDto patchDto)
+                {
+                    var headers = csv.HeaderRecord;
+                    if (headers != null)
+                    {
+                        foreach (var header in headers)
+                        {
+                            var prop = itemTypeInGeneric.GetProperty(
+                                header,
+                                BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+
+                            if (prop != null && prop.GetValue(record) == null)
+                            {
+                                patchDto.NullProperties.Add(prop.Name);
+                            }
+                        }
+                    }
+                }
+
                 list.Add(record);
             }
         }
@@ -115,6 +138,29 @@ public class NullableStringConverter : DefaultTypeConverter
         }
 
         return text;
+    }
+}
+
+public class StringArrayConverter : DefaultTypeConverter
+{
+    public override object? ConvertFromString(string? text, IReaderRow row, MemberMapData memberMapData)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return Array.Empty<string>();
+        }
+
+        return text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+    }
+
+    public override string? ConvertToString(object? value, IWriterRow row, MemberMapData memberMapData)
+    {
+        if (value is string[] array && array.Length > 0)
+        {
+            return string.Join(",", array);
+        }
+
+        return string.Empty;
     }
 }
 

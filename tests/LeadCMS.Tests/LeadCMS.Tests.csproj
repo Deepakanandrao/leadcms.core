@@ -98,6 +98,14 @@
     <EmbeddedResource Include="Resources\Contacts\contactsWithDuplicatesUpdate.csv">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>
+    <EmbeddedResource Include="Resources\Contacts\contactsWithTags.json" />
+    <EmbeddedResource Include="Resources\Contacts\contactsWithTags.csv">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\Contacts\contactsResetFields.json" />
+    <EmbeddedResource Include="Resources\Contacts\contactsResetFields.csv">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
     <EmbeddedResource Include="Resources\Orders\orderItems.csv">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>
