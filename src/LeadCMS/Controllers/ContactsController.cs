@@ -15,6 +15,7 @@ using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Controllers;
 
@@ -74,6 +75,23 @@ public class ContactsController : BaseControllerWithImport<Contact, ContactCreat
         var items = (List<ContactDetailsDto>)((ObjectResult)returnedItems!).Value!;
 
         return Ok(items);
+    }
+
+    [HttpGet("tags")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<string[]>> GetTags([FromQuery] string? language = null)
+    {
+        var query = dbSet.AsQueryable();
+
+        if (!string.IsNullOrEmpty(language))
+        {
+            query = query.Where(contact => contact.Language == language);
+        }
+
+        var tags = TagsHelper.ToDistinctTags(await query.Select(contact => contact.Tags).ToArrayAsync());
+        return Ok(tags);
     }
 
     [HttpGet("export")]

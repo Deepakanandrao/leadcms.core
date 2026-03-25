@@ -6,6 +6,7 @@ using AutoMapper;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
+using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -33,6 +34,16 @@ public class OrdersController : BaseControllerWithImport<Order, OrderCreateDto, 
     {
         this.commentableControllerExtension = commentableControllerExtension;
         this.orderService = orderService;
+    }
+
+    [HttpGet("tags")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<string[]>> GetTags()
+    {
+        var tags = TagsHelper.ToDistinctTags(await dbSet.Select(order => order.Tags).ToArrayAsync());
+        return Ok(tags);
     }
 
     [AllowAnonymous]

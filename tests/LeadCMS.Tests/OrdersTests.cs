@@ -16,6 +16,23 @@ public class OrdersTests : TableWithFKTests<Order, TestOrder, OrderUpdateDto, IE
     }
 
     [Fact]
+    public async Task CheckTags()
+    {
+        var fkItem = await CreateFKItem();
+        var tag = $"order-tag-{Guid.NewGuid():N}";
+        var order = new TestOrder(Guid.NewGuid().ToString("N")[..8], fkItem.Item1)
+        {
+            Tags = new[] { tag },
+        };
+
+        await PostTest(itemsUrl, order, HttpStatusCode.Created);
+
+        var tags = await GetTest<string[]>($"{itemsUrl}/tags", HttpStatusCode.OK);
+        tags.Should().NotBeNull();
+        tags.Should().Contain(tag);
+    }
+
+    [Fact]
     public async Task GetWithWhereLikeTest()
     {
         var fkItem = await CreateFKItem();

@@ -12,6 +12,22 @@ public class DomainTests : SimpleTableTests<Domain, TestDomain, DomainUpdateDto,
     }
 
     [Fact]
+    public async Task CheckTags()
+    {
+        var tag = $"domain-tag-{Guid.NewGuid():N}";
+        var domain = new TestDomain(Guid.NewGuid().ToString("N"))
+        {
+            Tags = new[] { tag },
+        };
+
+        await PostTest(itemsUrl, domain, HttpStatusCode.Created);
+
+        var tags = await GetTest<string[]>($"{itemsUrl}/tags", HttpStatusCode.OK);
+        tags.Should().NotBeNull();
+        tags.Should().Contain(tag);
+    }
+
+    [Fact]
     public async Task CreateAndGetItemByNameTest()
     {
         var testDomain = new TestDomain();

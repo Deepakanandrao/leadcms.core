@@ -116,6 +116,23 @@ public class CommentsController : BaseControllerWithImport<Comment, CommentCreat
         }
     }
 
+    [HttpGet("tags")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<string[]>> GetTags([FromQuery] string? language = null)
+    {
+        var query = dbSet.AsQueryable();
+
+        if (!string.IsNullOrEmpty(language))
+        {
+            query = query.Where(comment => comment.Language == language);
+        }
+
+        var tags = TagsHelper.ToDistinctTags(await query.Select(comment => comment.Tags).ToArrayAsync());
+        return Ok(tags);
+    }
+
     // POST api/{entity}s
     [HttpPost]
     [AllowAnonymous]

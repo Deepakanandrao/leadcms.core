@@ -214,7 +214,7 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
             query = query.Where(c => c.Language == language);
         }
 
-        var tags = (await query.Select(c => c.Tags).ToArrayAsync()).SelectMany(z => z).Distinct().Where(str => !string.IsNullOrEmpty(str)).ToArray();
+        var tags = TagsHelper.ToDistinctTags(await query.Select(c => c.Tags).ToArrayAsync());
         return Ok(tags);
     }
 

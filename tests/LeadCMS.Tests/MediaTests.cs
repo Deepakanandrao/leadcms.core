@@ -23,6 +23,20 @@ public class MediaTests : BaseTestAutoLogin
         TrackEntityType<Setting>();
     }
 
+    [Fact]
+    public async Task CheckTags()
+    {
+        var tag = $"media-tag-{Guid.NewGuid():N}";
+        var scopeUid = $"media-tags-{Guid.NewGuid():N}";
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+
+        await UploadMediaWithTagsAsync(imageBytes, "tags-cover.png", scopeUid, new[] { tag });
+
+        var tags = await GetTest<string[]>("/api/media/tags", HttpStatusCode.OK);
+        tags.Should().NotBeNull();
+        tags.Should().Contain(tag);
+    }
+
     [Theory]
     [InlineData("test1.png", 1024000, false)]
     [InlineData("test2.png", 1024, true)]

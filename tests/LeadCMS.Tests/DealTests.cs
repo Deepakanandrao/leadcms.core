@@ -36,6 +36,23 @@ public class DealTests : SimpleTableTests<Deal, TestDeal, DealUpdateDto, IDealSe
     }
 
     [Fact]
+    public async Task CheckTags()
+    {
+        var fkData = await CreateFKItems(new List<TestContact>());
+        var tag = $"deal-tag-{Guid.NewGuid():N}";
+        var deal = new TestDeal(Guid.NewGuid().ToString("N")[..8], fkData.ContactIds, fkData.AccountId, fkData.PipelineId, fkData.UserId)
+        {
+            Tags = new[] { tag },
+        };
+
+        await PostTest(itemsUrl, deal, HttpStatusCode.Created);
+
+        var tags = await GetTest<string[]>($"{itemsUrl}/tags", HttpStatusCode.OK);
+        tags.Should().NotBeNull();
+        tags.Should().Contain(tag);
+    }
+
+    [Fact]
     public async Task CreateAndUpdateItemTestWithContacts()
     {
         // successful creation

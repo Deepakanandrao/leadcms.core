@@ -350,6 +350,16 @@ public class MediaController : ControllerBase
             });
     }
 
+    [HttpGet("tags")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<string[]>> GetTags()
+    {
+        var tags = TagsHelper.ToDistinctTags(await pgDbContext.Media!.Select(media => media.Tags).ToArrayAsync());
+        return Ok(tags);
+    }
+
     /// <summary>
     /// Retrieves a list of media files, optionally including folder structure.
     /// Supports X-Media-Resolution header or mediaResolution query parameter: "absolute" for full URLs, otherwise returns relative paths.

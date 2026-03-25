@@ -17,6 +17,37 @@ public class CommentsTests : TableWithFKTests<Comment, TestComment, CommentUpdat
     }
 
     [Fact]
+    public async Task CheckTags_WithLanguageFilter()
+    {
+        await CreateFKItemsWithUid(1);
+
+        var englishTag = $"comment-en-{Guid.NewGuid():N}";
+        var germanTag = $"comment-de-{Guid.NewGuid():N}";
+
+        await PostTest(
+            itemsUrl,
+            new TestComment("en", 1)
+            {
+                Language = "en",
+                Tags = new[] { englishTag },
+            },
+            HttpStatusCode.Created);
+
+        await PostTest(
+            itemsUrl,
+            new TestComment("de", 1)
+            {
+                Language = "de",
+                Tags = new[] { germanTag },
+            },
+            HttpStatusCode.Created);
+
+        var tags = await GetTest<string[]>($"{itemsUrl}/tags?language=en", HttpStatusCode.OK);
+        tags.Should().NotBeNull();
+        tags.Should().BeEquivalentTo(englishTag);
+    }
+
+    [Fact]
     public async Task GetAllTestAnonymous()
     {
         await GetAllRecords(true);

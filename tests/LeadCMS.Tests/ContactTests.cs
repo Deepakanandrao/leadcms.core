@@ -18,6 +18,35 @@ public class ContactTests : SimpleTableTests<Contact, TestContact, ContactUpdate
     }
 
     [Fact]
+    public async Task CheckTags_WithLanguageFilter()
+    {
+        var englishTag = $"contact-en-{Guid.NewGuid():N}";
+        var germanTag = $"contact-de-{Guid.NewGuid():N}";
+
+        await PostTest(
+            itemsUrl,
+            new TestContact(Guid.NewGuid().ToString("N"))
+            {
+                Language = "en",
+                Tags = new[] { englishTag },
+            },
+            HttpStatusCode.Created);
+
+        await PostTest(
+            itemsUrl,
+            new TestContact(Guid.NewGuid().ToString("N"))
+            {
+                Language = "de",
+                Tags = new[] { germanTag },
+            },
+            HttpStatusCode.Created);
+
+        var tags = await GetTest<string[]>($"{itemsUrl}/tags?language=en", HttpStatusCode.OK);
+        tags.Should().NotBeNull();
+        tags.Should().BeEquivalentTo(englishTag);
+    }
+
+    [Fact]
     public async Task ContactAccountTaskTest()
     {
         var notinitializedEmail = "email@notinitializeddomain.com";
