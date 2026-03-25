@@ -93,45 +93,70 @@ namespace LeadCMS.EmailSync.Tasks
 
         public override async Task<bool> Execute(TaskExecutionLog currentJob)
         {
-            var accounts = dbContext.ImapAccounts!.OrderBy(ia => ia.Id).ToList();
-
-            foreach (var imapAccount in accounts)
+            try
             {
-                try
+                var accounts = dbContext.ImapAccounts!.OrderBy(ia => ia.Id).ToList();
+                var totalAccounts = accounts.Count;
+                var successfulAccounts = 0;
+                var failedAccounts = 0;
+                var syncedFolders = 0;
+                var skippedFolders = 0;
+                var removedFolders = 0;
+                var importedEmails = 0;
+                var createdContacts = 0;
+
+                foreach (var imapAccount in accounts)
                 {
-                    using (var client = new ImapClient())
+                    try
                     {
-                        client.Connect(imapAccount.Host, imapAccount.Port, imapAccount.UseSsl);
-
-                        client.Authenticate(imapAccount.UserName, imapAccount.Password);
-
-                        foreach (var personalNamespace in client.PersonalNamespaces)
+                        using (var client = new ImapClient())
                         {
-                            var folders = client.GetFolders(personalNamespace);
+                            client.Connect(imapAccount.Host, imapAccount.Port, imapAccount.UseSsl);
 
-                            var imapAccountFolders = dbContext.ImapAccountFolders!.Where(f => f.ImapAccountId == imapAccount.Id).ToList();
+                            client.Authenticate(imapAccount.UserName, imapAccount.Password);
 
-                            foreach (var folder in folders)
+                            foreach (var personalNamespace in client.PersonalNamespaces)
                             {
-                                if (!ShouldSyncFolder(folder.FullName, whitelistedFolders, ignoredFolderKeywords))
+                                var folders = client.GetFolders(personalNamespace);
+
+                                var imapAccountFolders = dbContext.ImapAccountFolders!.Where(f => f.ImapAccountId == imapAccount.Id).ToList();
+
+                                foreach (var folder in folders)
                                 {
-                                    continue;
+                                    if (!ShouldSyncFolder(folder.FullName, whitelistedFolders, ignoredFolderKeywords))
+                                    {
+                                        skippedFolders++;
+                                        continue;
+                                    }
+
+                                    var summary = await GetEmailLogsFromFolder(imapAccount.UserName, imapAccountFolders, folder, imapAccount);
+                                    syncedFolders++;
+                                    importedEmails += summary.ImportedEmails;
+                                    createdContacts += summary.CreatedContacts;
                                 }
 
-                                await GetEmailLogsFromFolder(imapAccount.UserName, imapAccountFolders, folder, imapAccount);
+                                removedFolders += await DeleteUnexistedFolders(imapAccountFolders, folders);
                             }
 
-                            await DeleteUnexistedFolders(imapAccountFolders, folders);
+                            successfulAccounts++;
                         }
                     }
+                    catch (Exception e)
+                    {
+                        failedAccounts++;
+                        Log.Error(e, $"Error occured during imap syncronization, imap: {imapAccount.Host}, userName: {imapAccount.UserName}");
+                    }
                 }
-                catch (Exception e)
-                {
-                    Log.Error(e, $"Error occured during imap syncronization, imap: {imapAccount.Host}, userName: {imapAccount.UserName}");
-                }
-            }
 
-            return true;
+                currentJob.Result = $"Processed {totalAccounts} IMAP accounts ({successfulAccounts} successful, {failedAccounts} failed), synced {syncedFolders} folders, skipped {skippedFolders} folders, imported {importedEmails} emails, created {createdContacts} contacts, removed {removedFolders} stale folders";
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, $"Failed to execute {Name} in task runner {currentJob.Id}");
+                currentJob.Result = $"Email sync failed: {ex.Message}";
+                return false;
+            }
         }
 
         internal static bool IsFolderIgnored(string folderFullName, string[] keywords)
@@ -197,16 +222,26 @@ namespace LeadCMS.EmailSync.Tasks
             return separator == '/' || separator == '\\' || separator == '.';
         }
 
-        private async Task DeleteUnexistedFolders(List<ImapAccountFolder> imapAccountFolders, IList<IMailFolder> folders)
+        private async Task<int> DeleteUnexistedFolders(List<ImapAccountFolder> imapAccountFolders, IList<IMailFolder> folders)
         {
-            var foldersToDelete = imapAccountFolders.Where(iaf => !folders.Select(f => f.FullName).Contains(iaf.FullName));
+            var existingFolderNames = folders.Select(f => f.FullName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var foldersToDelete = imapAccountFolders.Where(iaf => !existingFolderNames.Contains(iaf.FullName)).ToList();
+
+            if (foldersToDelete.Count == 0)
+            {
+                return 0;
+            }
+
             dbContext.ImapAccountFolders!.RemoveRange(foldersToDelete);
             await dbContext.SaveChangesAsync();
+            return foldersToDelete.Count;
         }
 
-        private async Task GetEmailLogsFromFolder(string userName, List<ImapAccountFolder> imapAccountFolders, IMailFolder folder, ImapAccount imapAccount)
+        private async Task<EmailSyncSummary> GetEmailLogsFromFolder(string userName, List<ImapAccountFolder> imapAccountFolders, IMailFolder folder, ImapAccount imapAccount)
         {
             await folder.OpenAsync(FolderAccess.ReadOnly);
+
+            var summary = new EmailSyncSummary();
 
             var dbFolder = imapAccountFolders.FirstOrDefault(f => f.FullName == folder.FullName);
 
@@ -234,12 +269,16 @@ namespace LeadCMS.EmailSync.Tasks
             while (position < uids.Count)
             {
                 var batch = uids.Skip(position).Take(batchSize);
-                await GetEmailLogs(userName, dbFolder, folder, batch);
+                var batchSummary = await GetEmailLogs(userName, dbFolder, folder, batch);
+                summary.ImportedEmails += batchSummary.ImportedEmails;
+                summary.CreatedContacts += batchSummary.CreatedContacts;
                 position += batchSize;
             }
+
+            return summary;
         }
 
-        private async Task GetEmailLogs(string userName, ImapAccountFolder dbFolder, IMailFolder folder, IEnumerable<UniqueId> uids)
+        private async Task<EmailSyncSummary> GetEmailLogs(string userName, ImapAccountFolder dbFolder, IMailFolder folder, IEnumerable<UniqueId> uids)
         {
             var emailLogs = new List<EmailLog>();
             var resultLastId = dbFolder.LastUid;
@@ -306,17 +345,29 @@ namespace LeadCMS.EmailSync.Tasks
 
             if (emailLogs.Count > 0)
             {
-                await EnrichWithContactIdAsync(emailLogs);
+                var createdContacts = await EnrichWithContactIdAsync(emailLogs);
 
                 await dbContext.EmailLogs!.AddRangeAsync(emailLogs);
+
+                dbFolder.LastUid = resultLastId;
+
+                await dbContext.SaveChangesAsync();
+
+                return new EmailSyncSummary
+                {
+                    ImportedEmails = emailLogs.Count,
+                    CreatedContacts = createdContacts,
+                };
             }
 
             dbFolder.LastUid = resultLastId;
 
             await dbContext.SaveChangesAsync();
+
+            return new EmailSyncSummary();
         }
 
-        private async Task EnrichWithContactIdAsync(List<EmailLog> emailLogs)
+        private async Task<int> EnrichWithContactIdAsync(List<EmailLog> emailLogs)
         {
             var emails = emailLogs
                 .SelectMany(emailLog => new[] { emailLog.FromEmail }
@@ -360,6 +411,7 @@ namespace LeadCMS.EmailSync.Tasks
             }
 
             await contactsService.SaveRangeAsync(newContacts);
+            return newContacts.Count;
         }
 
         private bool IsInternalDomain(string email)
@@ -370,6 +422,13 @@ namespace LeadCMS.EmailSync.Tasks
         private bool IsInternalEmails(string fromEmail, List<string> toEmails)
         {
             return IsInternalDomain(fromEmail) && toEmails.TrueForAll(email => IsInternalDomain(email));
+        }
+
+        private sealed class EmailSyncSummary
+        {
+            public int ImportedEmails { get; set; }
+
+            public int CreatedContacts { get; set; }
         }
     }
 }
