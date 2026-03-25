@@ -6,6 +6,7 @@ using LeadCMS.Configuration;
 using LeadCMS.Entities;
 using LeadCMS.Exceptions;
 using LeadCMS.Interfaces;
+using LeadCMS.Plugin.EmailSync.Configuration;
 using LeadCMS.Plugin.EmailSync.Data;
 using LeadCMS.Plugin.EmailSync.Entities;
 using LeadCMS.Services;
@@ -45,6 +46,8 @@ namespace LeadCMS.EmailSync.Tasks
 
         private readonly EmailSyncDbContext dbContext;
 
+        private readonly IConfiguration configuration;
+
         private readonly int batchSize;
 
         private readonly string[] internalDomains;
@@ -55,12 +58,17 @@ namespace LeadCMS.EmailSync.Tasks
 
         private readonly string[] ignoredFolderKeywords;
 
+        private readonly bool createContactsForUnknownEmails;
+
+        private readonly string[] autoCreatedContactTags;
+
         private readonly IDomainService domainService;
         private readonly IContactService contactsService;
 
         public EmailSyncTask(IConfiguration configuration, EmailSyncDbContext dbContext, TaskStatusService taskStatusService, IDomainService domainService, IContactService contactsService)
             : base("Tasks:EmailSyncTask", configuration, taskStatusService)
         {
+            this.configuration = configuration;
             this.dbContext = dbContext;
             this.domainService = domainService;
             this.contactsService = contactsService;
@@ -75,17 +83,14 @@ namespace LeadCMS.EmailSync.Tasks
                 throw new MissingConfigurationException($"The specified configuration section for the provided configKey {configKey} could not be found in the settings file.");
             }
 
-            var domains = configuration.GetSection("EmailSync:InternalDomains")!.Get<string[]>();
-            internalDomains = (domains != null) ? domains : new string[0];
+            var emailSyncConfig = configuration.GetSection("EmailSync").Get<EmailSyncConfig>() ?? new EmailSyncConfig();
 
-            var ignored = configuration.GetSection("EmailSync:IgnoredEmails")!.Get<string[]>();
-            ignoredEmails = (ignored != null) ? ignored : new string[0];
-
-            var whitelist = configuration.GetSection("EmailSync:WhitelistedFolders")!.Get<string[]>();
-            whitelistedFolders = (whitelist != null) ? whitelist : new string[0];
-
-            var folderKeywords = configuration.GetSection("EmailSync:IgnoredFolderKeywords")!.Get<string[]>();
-            ignoredFolderKeywords = GetIgnoredFolderKeywords(folderKeywords);
+            internalDomains = emailSyncConfig.InternalDomains ?? Array.Empty<string>();
+            ignoredEmails = emailSyncConfig.IgnoredEmails ?? Array.Empty<string>();
+            whitelistedFolders = emailSyncConfig.WhitelistedFolders ?? Array.Empty<string>();
+            ignoredFolderKeywords = GetIgnoredFolderKeywords(emailSyncConfig.IgnoredFolderKeywords);
+            createContactsForUnknownEmails = emailSyncConfig.CreateContactsForUnknownEmails;
+            autoCreatedContactTags = NormalizeTags(emailSyncConfig.AutoCreatedContactTags);
 
             domainService.SetDBContext(dbContext);
             contactsService.SetDBContext(dbContext);
@@ -95,6 +100,14 @@ namespace LeadCMS.EmailSync.Tasks
         {
             try
             {
+                var configurationError = EmailSyncConfigurationValidator.GetProductionEncryptionKeyError(configuration);
+                if (configurationError != null)
+                {
+                    Log.Error("{TaskName} aborted: {ConfigurationError}", Name, configurationError);
+                    currentJob.Result = configurationError;
+                    return false;
+                }
+
                 var accounts = dbContext.ImapAccounts!.OrderBy(ia => ia.Id).ToList();
                 var totalAccounts = accounts.Count;
                 var successfulAccounts = 0;
@@ -199,6 +212,85 @@ namespace LeadCMS.EmailSync.Tasks
         {
             return IsFolderWhitelisted(folderFullName, whitelistedFolders)
                 && !IsFolderIgnored(folderFullName, ignoredKeywords);
+        }
+
+        internal static string[] NormalizeTags(string[]? tags)
+        {
+            if (tags == null || tags.Length == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            return tags
+                .Where(tag => !string.IsNullOrWhiteSpace(tag))
+                .Select(tag => tag.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        internal async Task<int> EnrichWithContactIdAsync(List<EmailLog> emailLogs)
+        {
+            var emails = emailLogs
+                .SelectMany(emailLog => new[] { emailLog.FromEmail }
+                    .Concat(emailLog.Recipients.Split(';')))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(email => !IsInternalDomain(email) && !ignoredEmails.Contains(email))
+                .ToList();
+
+            var normalizedEmails = emails
+                .Select(email => email.ToLowerInvariant())
+                .ToList();
+
+            var existingContacts = await dbContext.Contacts!
+                                    .Where(contact => contact.Email != null && normalizedEmails.Contains(contact.Email))
+                                    .ToDictionaryAsync(contact => contact.Email!, contact => contact, StringComparer.OrdinalIgnoreCase);
+
+            var newContacts = new List<Contact>();
+
+            foreach (var emailLog in emailLogs)
+            {
+                if (emailLog.ContactId > 0)
+                {
+                    continue;
+                }
+
+                var participants = new List<string> { emailLog.FromEmail };
+                participants.AddRange(emailLog.Recipients.Split(';'));
+                var contactEmail = participants.FirstOrDefault(email => !IsInternalDomain(email) && !ignoredEmails.Contains(email));
+
+                if (string.IsNullOrEmpty(contactEmail))
+                {
+                    continue;
+                }
+
+                Contact? contact;
+
+                if (!existingContacts.TryGetValue(contactEmail, out contact))
+                {
+                    if (!createContactsForUnknownEmails)
+                    {
+                        continue;
+                    }
+
+                    contact = new Contact { Email = contactEmail };
+
+                    if (autoCreatedContactTags.Length > 0)
+                    {
+                        contact.Tags = autoCreatedContactTags.ToArray();
+                    }
+
+                    newContacts.Add(contact);
+                    existingContacts[contact.Email!] = contact;
+                }
+
+                emailLog.Contact = contact;
+            }
+
+            await contactsService.SaveRangeAsync(newContacts);
+
+            emailLogs.RemoveAll(emailLog => emailLog.Contact == null && !emailLog.ContactId.HasValue);
+
+            return newContacts.Count;
         }
 
         private static bool FolderMatchesWhitelist(string folderFullName, string whitelistedFolder)
@@ -365,53 +457,6 @@ namespace LeadCMS.EmailSync.Tasks
             await dbContext.SaveChangesAsync();
 
             return new EmailSyncSummary();
-        }
-
-        private async Task<int> EnrichWithContactIdAsync(List<EmailLog> emailLogs)
-        {
-            var emails = emailLogs
-                .SelectMany(emailLog => new[] { emailLog.FromEmail }
-                    .Concat(emailLog.Recipients.Split(';')))
-                .Distinct()
-                .Where(email => !IsInternalDomain(email) && !ignoredEmails.Contains(email))
-                .ToList();
-
-            var existingContacts = await dbContext.Contacts!
-                                    .Where(contact => contact.Email != null && emails.Contains(contact.Email))
-                                    .ToDictionaryAsync(contact => contact.Email!, contact => contact);
-
-            var newContacts = new List<Contact>();
-
-            foreach (var emailLog in emailLogs)
-            {
-                if (emailLog.ContactId > 0)
-                {
-                    continue;
-                }
-
-                var participants = new List<string> { emailLog.FromEmail };
-                participants.AddRange(emailLog.Recipients.Split(';'));
-                var contactEmail = participants.FirstOrDefault(email => !IsInternalDomain(email) && !ignoredEmails.Contains(email));
-
-                if (string.IsNullOrEmpty(contactEmail))
-                {
-                    continue;
-                }
-
-                Contact? contact;
-
-                if (!existingContacts.TryGetValue(contactEmail, out contact))
-                {
-                    contact = new Contact { Email = contactEmail };
-                    newContacts.Add(contact);
-                    existingContacts[contact.Email!] = contact;
-                }
-
-                emailLog.Contact = contact;
-            }
-
-            await contactsService.SaveRangeAsync(newContacts);
-            return newContacts.Count;
         }
 
         private bool IsInternalDomain(string email)

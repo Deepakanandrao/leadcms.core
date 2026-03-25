@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.Text;
 using LeadCMS.Configuration;
 using LeadCMS.Controllers;
 using LeadCMS.Core.AIAssistance.Interfaces;
@@ -53,6 +54,8 @@ public class Program
 
     public static async Task Main(string[] args)
     {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
         var builder = WebApplication.CreateBuilder(args);
 
         ConfigureCORS(builder);

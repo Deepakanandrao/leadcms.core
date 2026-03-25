@@ -7,6 +7,7 @@ using EntityFrameworkCore.EncryptColumn.Interfaces;
 using EntityFrameworkCore.EncryptColumn.Util;
 using LeadCMS.Data;
 using LeadCMS.Interfaces;
+using LeadCMS.Plugin.EmailSync.Configuration;
 using LeadCMS.Plugin.EmailSync.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -25,13 +26,8 @@ public class EmailSyncDbContext : PluginDbContextBase
     public EmailSyncDbContext(DbContextOptions<PgDbContext> options, IConfiguration configuration, IHttpContextHelper httpContextHelper)
         : base(options, configuration, httpContextHelper)
     {
-        var key = configuration.GetSection("EmailSync:EncryptionKey").Get<string>();
-        if (key == null)
-        {
-            throw new ArgumentNullException(key);
-        }
-
-        encryptionProvider = new GenerateEncryptionProvider(key);
+        var encryptionKey = EmailSyncConfigurationValidator.GetEncryptionKey(configuration);
+        encryptionProvider = new GenerateEncryptionProvider(encryptionKey);
     }
 
     public DbSet<ImapAccount>? ImapAccounts { get; set; }

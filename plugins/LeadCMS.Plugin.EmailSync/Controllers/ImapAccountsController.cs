@@ -5,6 +5,7 @@
 using AutoMapper;
 using LeadCMS.Exceptions;
 using LeadCMS.Helpers;
+using LeadCMS.Plugin.EmailSync.Configuration;
 using LeadCMS.Plugin.EmailSync.Data;
 using LeadCMS.Plugin.EmailSync.DTOs;
 using LeadCMS.Plugin.EmailSync.Entities;
@@ -12,6 +13,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Swashbuckle.AspNetCore.Annotations;
 
 namespace LeadCMS.Plugin.EmailSync.Controllers;
@@ -20,11 +22,13 @@ namespace LeadCMS.Plugin.EmailSync.Controllers;
 [Route("api/users")]
 public class ImapAccountsController : ControllerBase
 {
+    private readonly IConfiguration configuration;
     private readonly EmailSyncDbContext dbContext;
     private readonly IMapper mapper;
 
-    public ImapAccountsController(EmailSyncDbContext dbContext, IMapper mapper)
+    public ImapAccountsController(EmailSyncDbContext dbContext, IMapper mapper, IConfiguration configuration)
     {
+        this.configuration = configuration;
         this.dbContext = dbContext;
         this.mapper = mapper;
     }
@@ -59,9 +63,12 @@ public class ImapAccountsController : ControllerBase
     [HttpPost("{userId}/imap-accounts")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<ImapAccountDetailsDto>> PostAccountForUser(string userId, [FromBody] ImapAccountCreateDto imapAccount)
     {
+        EmailSyncConfigurationValidator.EnsureProductionReady(configuration);
+
         var newValue = mapper.Map<ImapAccount>(imapAccount);
         newValue.UserId = userId;
         var result = await dbContext.ImapAccounts!.AddAsync(newValue);
@@ -80,6 +87,8 @@ public class ImapAccountsController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public virtual async Task<ActionResult<ImapAccountDetailsDto>> PatchAccountForUser(string userId, int id, [FromBody] ImapAccountUpdateDto value)
     {
+        EmailSyncConfigurationValidator.EnsureProductionReady(configuration);
+
         var existingEntity = await FindOrThrowNotFound(userId, id);
 
         mapper.Map(value, existingEntity);

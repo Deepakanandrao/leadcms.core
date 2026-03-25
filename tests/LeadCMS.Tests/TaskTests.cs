@@ -9,6 +9,7 @@ using LeadCMS.EmailSync.Tasks;
 using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
+using LeadCMS.Plugin.EmailSync.Configuration;
 using LeadCMS.Plugin.EmailSync.Data;
 using LeadCMS.Services;
 using Microsoft.EntityFrameworkCore;
@@ -84,12 +85,21 @@ public class TaskTests : BaseTestAutoLogin
         var pgDbContext = scope.ServiceProvider.GetRequiredService<PgDbContext>();
         var httpContextHelper = scope.ServiceProvider.GetRequiredService<IHttpContextHelper>();
         var baseConfiguration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
-        var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../"));
+        var domainService = scope.ServiceProvider.GetRequiredService<IDomainService>();
+        var contactService = scope.ServiceProvider.GetRequiredService<IContactService>();
 
         var configuration = new ConfigurationBuilder()
-            .SetBasePath(repoRoot)
             .AddConfiguration(baseConfiguration)
-            .AddJsonFile("plugins/LeadCMS.Plugin.EmailSync/pluginsettings.json", optional: false)
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["EmailSync:EncryptionKey"] = "test-key-123456!",
+                ["EmailSync:CreateContactsForUnknownEmails"] = bool.TrueString,
+                ["Tasks:EmailSyncTask:Enable"] = bool.FalseString,
+                ["Tasks:EmailSyncTask:CronSchedule"] = "0/30 * * * * ?",
+                ["Tasks:EmailSyncTask:RetryCount"] = "2",
+                ["Tasks:EmailSyncTask:RetryInterval"] = "1",
+                ["Tasks:EmailSyncTask:BatchSize"] = "20",
+            })
             .Build();
 
         var existingLogs = pgDbContext.TaskExecutionLogs!
@@ -115,8 +125,8 @@ public class TaskTests : BaseTestAutoLogin
             configuration,
             emailSyncDbContext,
             new TaskStatusService(),
-            new StubDomainService(),
-            new StubContactService());
+            domainService,
+            contactService);
 
         task.SetRunning(false);
         task.IsRunning.Should().BeFalse();
@@ -136,6 +146,71 @@ public class TaskTests : BaseTestAutoLogin
         log.Status.Should().Be(TaskExecutionStatus.Completed);
         log.Result.Should().NotBeNullOrWhiteSpace();
         log.Result.Should().Contain("Processed 0 IMAP accounts");
+    }
+
+    [Fact]
+    public async Task ExecuteEmailSyncTask_WithProductionPlaceholderKey_ShouldFailAndStoreResult()
+    {
+        using var scope = App.Services.CreateScope();
+        var pgDbContext = scope.ServiceProvider.GetRequiredService<PgDbContext>();
+        var httpContextHelper = scope.ServiceProvider.GetRequiredService<IHttpContextHelper>();
+        var baseConfiguration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+        var domainService = scope.ServiceProvider.GetRequiredService<IDomainService>();
+        var contactService = scope.ServiceProvider.GetRequiredService<IContactService>();
+
+        var configuration = new ConfigurationBuilder()
+            .AddConfiguration(baseConfiguration)
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ASPNETCORE_ENVIRONMENT"] = "Production",
+                ["EmailSync:EncryptionKey"] = EmailSyncConfigurationValidator.EncryptionKeyPlaceholder,
+                ["EmailSync:CreateContactsForUnknownEmails"] = bool.TrueString,
+                ["Tasks:EmailSyncTask:Enable"] = bool.FalseString,
+                ["Tasks:EmailSyncTask:CronSchedule"] = "0/30 * * * * ?",
+                ["Tasks:EmailSyncTask:RetryCount"] = "2",
+                ["Tasks:EmailSyncTask:RetryInterval"] = "1",
+                ["Tasks:EmailSyncTask:BatchSize"] = "20",
+            })
+            .Build();
+
+        var existingLogs = pgDbContext.TaskExecutionLogs!
+            .Where(log => log.TaskName == EmailSyncTaskName)
+            .ToList();
+
+        if (existingLogs.Count > 0)
+        {
+            pgDbContext.TaskExecutionLogs!.RemoveRange(existingLogs);
+            await pgDbContext.SaveChangesAsync();
+        }
+
+        var emailSyncDbOptions = new DbContextOptionsBuilder<PgDbContext>()
+            .UseNpgsql(
+                pgDbContext.Database.GetDbConnection().ConnectionString,
+                options => options.MigrationsAssembly(typeof(EmailSyncDbContext).Assembly.FullName))
+            .Options;
+
+        await using var emailSyncDbContext = new EmailSyncDbContext(emailSyncDbOptions, configuration, httpContextHelper);
+
+        var task = new EmailSyncTask(
+            configuration,
+            emailSyncDbContext,
+            new TaskStatusService(),
+            domainService,
+            contactService);
+
+        var taskRunner = new TaskRunner(new[] { task }, pgDbContext);
+        var completed = await taskRunner.ExecuteTask(task);
+        completed.Should().BeFalse();
+
+        var log = await pgDbContext.TaskExecutionLogs!
+            .Where(entry => entry.TaskName == EmailSyncTaskName)
+            .OrderByDescending(entry => entry.Id)
+            .FirstOrDefaultAsync();
+
+        log.Should().NotBeNull();
+        log!.Status.Should().Be(TaskExecutionStatus.Pending);
+        log.Result.Should().Contain("placeholder value");
+        log.Result.Should().Contain(EmailSyncConfigurationValidator.EncryptionKeyPlaceholder);
     }
 
     [Fact]
@@ -195,81 +270,5 @@ public class TaskTests : BaseTestAutoLogin
         var config = App.Services.GetRequiredService<IConfiguration>();
         var indexPrefix = config.GetSection("Elastic:IndexPrefix").Get<string>() ?? string.Empty;
         return ElasticHelper.GetIndexName(indexPrefix, typeof(T));
-    }
-
-    private sealed class StubDomainService : IDomainService
-    {
-        public string GetDomainNameByEmail(string email)
-        {
-            return email.Split('@').Last();
-        }
-
-        public Task Verify(Domain domain)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task SaveAsync(Domain item)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task SaveRangeAsync(List<Domain> items)
-        {
-            return Task.CompletedTask;
-        }
-
-        public void SetDBContext(PgDbContext pgDbContext)
-        {
-            _ = pgDbContext;
-        }
-    }
-
-    private sealed class StubContactService : IContactService
-    {
-        public Task<Contact> FindOrCreate(string email, string? ipAddress = null, string? userAgent = null)
-        {
-            return Task.FromResult(new Contact { Email = email });
-        }
-
-        public Task<Contact> FindOrCreateByIdentifiers(string? email = null, string? phone = null, string? ipAddress = null, string? userAgent = null)
-        {
-            return Task.FromResult(new Contact { Email = email });
-        }
-
-        public Task<Contact> FindOrCreateByPhone(string phone, string? ipAddress = null, string? userAgent = null)
-        {
-            return Task.FromResult(new Contact());
-        }
-
-        public Task<Contact> FindOrCreatePotential(string ipAddress, string userAgent)
-        {
-            return Task.FromResult(new Contact());
-        }
-
-        public Task SaveAsync(Contact item)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task SaveRangeAsync(List<Contact> items)
-        {
-            return Task.CompletedTask;
-        }
-
-        public void SetDBContext(PgDbContext pgDbContext)
-        {
-            _ = pgDbContext;
-        }
-
-        public Task Subscribe(Contact contact, string groupName)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task Unsubscribe(string email, string reason, string source, DateTime? createdAt = null)
-        {
-            return Task.CompletedTask;
-        }
     }
 }

@@ -4,7 +4,9 @@
     "IgnoredEmails": [],
     "WhitelistedFolders": [],
     "IgnoredFolderKeywords": [],
-    "EncryptionKey": "fTjWnZr4u7x!A%D*"
+    "EncryptionKey": "$EMAILSYNC__ENCRYPTIONKEY",
+    "CreateContactsForUnknownEmails": true,
+    "AutoCreatedContactTags": []
   },
   "Tasks": {
     "EmailSyncTask": {
