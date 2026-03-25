@@ -15,6 +15,7 @@ The Email Sync Plugin enables LeadCMS to synchronize emails from IMAP accounts, 
 ## Key Features
 
 ### IMAP Integration
+
 - Support for multiple IMAP email accounts
 - Automatic email synchronization on scheduled intervals
 - Secure credential storage with encryption
@@ -22,12 +23,14 @@ The Email Sync Plugin enables LeadCMS to synchronize emails from IMAP accounts, 
 - Configurable sync frequency and batch sizes
 
 ### Email Classification
+
 - **Internal Domains**: Automatically identify internal company emails
 - **External Communications**: Track customer and lead communications
 - **Ignored Emails**: Filter out automated emails and notifications
 - **Email Threading**: Maintain conversation threads for better context
 
 ### Lead Enhancement
+
 - Automatic lead creation from email addresses
 - Email interaction tracking and scoring
 - Communication history integration
@@ -49,6 +52,14 @@ EMAILSYNC__IGNOREDEMAILS__0=noreply@example.com
 EMAILSYNC__IGNOREDEMAILS__1=automated@service.com
 EMAILSYNC__IGNOREDEMAILS__2=do-not-reply@system.com
 
+# Optional IMAP folder whitelist. When set, only these folders and their child folders are synchronized.
+EMAILSYNC__WHITELISTEDFOLDERS__0=INBOX
+EMAILSYNC__WHITELISTEDFOLDERS__1=Clients/Acme
+
+# Optional additional ignored IMAP folder keywords. Built-in defaults are always applied.
+EMAILSYNC__IGNOREDFOLDERKEYWORDS__0=Invoices
+EMAILSYNC__IGNOREDFOLDERKEYWORDS__1=Follow Up
+
 # Encryption key for stored IMAP credentials (32 characters)
 EMAILSYNC__ENCRYPTIONKEY=your-32-character-encryption-key-here
 ```
@@ -60,14 +71,19 @@ EMAILSYNC__ENCRYPTIONKEY=your-32-character-encryption-key-here
 Automatically synchronizes emails from configured IMAP accounts at regular intervals.
 
 **Configuration Options:**
+
 - **Enable**: Enable/disable the task (default: false)
 - **CronSchedule**: When to run the task (default: every 30 seconds)
 - **RetryCount**: Number of retry attempts on failure (default: 2)
 - **RetryInterval**: Minutes between retries (default: 1)
 - **BatchSize**: Number of emails to process per batch (default: 20)
+- **WhitelistedFolders**: Optional list of IMAP folders to sync. If empty, all non-ignored folders are considered.
+- **IgnoredFolderKeywords**: Optional additional folder keywords to exclude. These extend the built-in ignore list.
 
 **What it does:**
+
 - Connects to configured IMAP accounts
+- Filters folders by optional whitelist and ignored-folder keywords
 - Downloads new emails since last synchronization
 - Classifies emails as internal or external
 - Creates or updates lead records based on email addresses
@@ -90,6 +106,7 @@ IMAP accounts are managed through the LeadCMS interface via the IMAP Accounts co
 Each IMAP account requires the following configuration:
 
 **Basic Settings:**
+
 - **Host**: IMAP server hostname (e.g., imap.gmail.com)
 - **Port**: IMAP server port (typically 993 for SSL)
 - **Username**: Email account username
@@ -97,6 +114,7 @@ Each IMAP account requires the following configuration:
 - **Use SSL**: Enable SSL/TLS encryption (recommended)
 
 **Sync Settings:**
+
 - **Enabled**: Enable/disable synchronization for this account
 - **Folders**: Specific folders to synchronize (default: INBOX)
 - **Since Date**: Start date for email synchronization
@@ -107,23 +125,27 @@ Each IMAP account requires the following configuration:
 The plugin works with any IMAP-compatible email provider:
 
 **Gmail:**
+
 - Host: `imap.gmail.com`
 - Port: `993`
 - SSL: `true`
 - Note: Requires app passwords if 2FA is enabled
 
 **Microsoft Outlook/Office 365:**
+
 - Host: `outlook.office365.com`
 - Port: `993`
 - SSL: `true`
 - Note: May require OAuth authentication for some accounts
 
 **Yahoo Mail:**
+
 - Host: `imap.mail.yahoo.com`
 - Port: `993`
 - SSL: `true`
 
 **Custom IMAP Servers:**
+
 - Configure host, port, and SSL settings as provided by your email provider
 
 ## Email Classification Logic
@@ -131,6 +153,7 @@ The plugin works with any IMAP-compatible email provider:
 ### Internal Domain Detection
 
 Emails are classified as internal when:
+
 - Sender domain matches configured internal domains
 - Recipient domain matches configured internal domains
 - Email originates from company email addresses
@@ -138,6 +161,7 @@ Emails are classified as internal when:
 ### External Communication Detection
 
 Emails are classified as external when:
+
 - At least one participant is from an external domain
 - Communication involves leads or customers
 - Email represents customer service or sales communication
@@ -145,26 +169,41 @@ Emails are classified as external when:
 ### Ignored Email Filtering
 
 Emails are excluded from synchronization when:
+
 - Sender address matches ignored email patterns
 - Email contains automated/system-generated markers
 - Email is identified as spam or promotional content
 - Email is from known automated systems (notifications, alerts, etc.)
 
+## Folder Filtering
+
+- **WhitelistedFolders**: If configured, only the listed folder names and their descendants are synchronized.
+- **IgnoredFolderKeywords**: Configured values extend the built-in ignore list used by the plugin.
+- **Built-in ignored keywords**: `Spam`, `Junk`, `Draft`, `Archive`, `Deleted`, `Trash`, `Bin`, `Starred`, `Important`, `Flagged`, `Bulk`, `Clutter`, `Conversation History`, `Notes`, `Calendar`, `Contacts`, `Tasks`
+- **Examples**:
+  - `INBOX` includes `INBOX` and `INBOX/Leads`
+  - `Clients/Acme` includes `Clients/Acme` and `Clients/Acme/2026`
+  - `INBOX/Spam` is still excluded if `Spam` is part of `IgnoredFolderKeywords`
+  - If `WhitelistedFolders` is empty, the plugin falls back to syncing all folders except ignored ones
+
 ## Use Cases
 
 ### Sales Team Communication Tracking
+
 - **Lead Nurturing**: Track all email communications with prospects
 - **Sales Pipeline**: Enhance lead scoring with email interaction data
 - **Follow-up Management**: Identify leads requiring follow-up based on email history
 - **Response Time Analysis**: Monitor sales team response times
 
 ### Customer Service Management
+
 - **Support History**: Maintain complete customer communication history
 - **Issue Tracking**: Track customer issues and resolutions via email
 - **Escalation Management**: Identify unresponded customer emails
 - **Service Quality**: Analyze response times and customer satisfaction
 
 ### Marketing Campaign Analysis
+
 - **Email Campaign Tracking**: Track responses to marketing emails
 - **Lead Source Attribution**: Identify lead sources from email interactions
 - **Engagement Analysis**: Analyze email engagement patterns

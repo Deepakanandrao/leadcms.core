@@ -22,6 +22,27 @@ namespace LeadCMS.EmailSync.Tasks
 {
     public class EmailSyncTask : BaseTask
     {
+        internal static readonly string[] DefaultIgnoredFolderKeywords = new[]
+        {
+            "Spam",
+            "Junk",
+            "Draft",
+            "Archive",
+            "Deleted",
+            "Trash",
+            "Bin",
+            "Starred",
+            "Important",
+            "Flagged",
+            "Bulk",
+            "Clutter",
+            "Conversation History",
+            "Notes",
+            "Calendar",
+            "Contacts",
+            "Tasks",
+        };
+
         private readonly EmailSyncDbContext dbContext;
 
         private readonly int batchSize;
@@ -29,6 +50,8 @@ namespace LeadCMS.EmailSync.Tasks
         private readonly string[] internalDomains;
 
         private readonly string[] ignoredEmails;
+
+        private readonly string[] whitelistedFolders;
 
         private readonly string[] ignoredFolderKeywords;
 
@@ -58,8 +81,11 @@ namespace LeadCMS.EmailSync.Tasks
             var ignored = configuration.GetSection("EmailSync:IgnoredEmails")!.Get<string[]>();
             ignoredEmails = (ignored != null) ? ignored : new string[0];
 
+            var whitelist = configuration.GetSection("EmailSync:WhitelistedFolders")!.Get<string[]>();
+            whitelistedFolders = (whitelist != null) ? whitelist : new string[0];
+
             var folderKeywords = configuration.GetSection("EmailSync:IgnoredFolderKeywords")!.Get<string[]>();
-            ignoredFolderKeywords = (folderKeywords != null) ? folderKeywords : new string[0];
+            ignoredFolderKeywords = GetIgnoredFolderKeywords(folderKeywords);
 
             domainService.SetDBContext(dbContext);
             contactsService.SetDBContext(dbContext);
@@ -87,7 +113,7 @@ namespace LeadCMS.EmailSync.Tasks
 
                             foreach (var folder in folders)
                             {
-                                if (IsFolderIgnored(folder.FullName, ignoredFolderKeywords))
+                                if (!ShouldSyncFolder(folder.FullName, whitelistedFolders, ignoredFolderKeywords))
                                 {
                                     continue;
                                 }
@@ -117,6 +143,58 @@ namespace LeadCMS.EmailSync.Tasks
 
             return Array.Exists(keywords, keyword =>
                 folderFullName.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+        }
+
+        internal static string[] GetIgnoredFolderKeywords(string[]? additionalKeywords)
+        {
+            if (additionalKeywords == null || additionalKeywords.Length == 0)
+            {
+                return DefaultIgnoredFolderKeywords;
+            }
+
+            return DefaultIgnoredFolderKeywords
+                .Concat(additionalKeywords.Where(keyword => !string.IsNullOrWhiteSpace(keyword)).Select(keyword => keyword.Trim()))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        internal static bool IsFolderWhitelisted(string folderFullName, string[] folders)
+        {
+            if (folders.Length == 0)
+            {
+                return true;
+            }
+
+            return folders
+                .Where(folder => !string.IsNullOrWhiteSpace(folder))
+                .Any(folder => FolderMatchesWhitelist(folderFullName, folder.Trim()));
+        }
+
+        internal static bool ShouldSyncFolder(string folderFullName, string[] whitelistedFolders, string[] ignoredKeywords)
+        {
+            return IsFolderWhitelisted(folderFullName, whitelistedFolders)
+                && !IsFolderIgnored(folderFullName, ignoredKeywords);
+        }
+
+        private static bool FolderMatchesWhitelist(string folderFullName, string whitelistedFolder)
+        {
+            if (folderFullName.Equals(whitelistedFolder, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (folderFullName.Length <= whitelistedFolder.Length)
+            {
+                return false;
+            }
+
+            if (!folderFullName.StartsWith(whitelistedFolder, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            var separator = folderFullName[whitelistedFolder.Length];
+            return separator == '/' || separator == '\\' || separator == '.';
         }
 
         private async Task DeleteUnexistedFolders(List<ImapAccountFolder> imapAccountFolders, IList<IMailFolder> folders)

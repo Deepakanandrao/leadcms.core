@@ -10,13 +10,13 @@ namespace LeadCMS.Tests;
 
 public class EmailSyncFolderFilterTests
 {
-    private static readonly string[] DefaultKeywords = new[]
+    private static readonly string[] DefaultKeywords = EmailSyncTask.DefaultIgnoredFolderKeywords;
+
+    private static readonly string[] DefaultWhitelist = new[]
     {
-        "Spam", "Junk", "Draft", "Archive",
-        "Deleted", "Trash", "Bin",
-        "Starred", "Important", "Flagged",
-        "Bulk", "Clutter",
-        "Conversation History", "Notes", "Calendar", "Contacts", "Tasks",
+        "INBOX",
+        "Clients/Acme",
+        "Projects",
     };
 
     [Theory]
@@ -101,5 +101,65 @@ public class EmailSyncFolderFilterTests
     public void IsFolderIgnored_OutlookFoldersContainingKeyword_ReturnsTrue(string folderName)
     {
         EmailSyncTask.IsFolderIgnored(folderName, DefaultKeywords).Should().BeTrue();
+    }
+
+    [Fact]
+    public void GetIgnoredFolderKeywords_WithoutConfiguredAdditions_ReturnsBuiltInDefaults()
+    {
+        EmailSyncTask.GetIgnoredFolderKeywords(Array.Empty<string>()).Should().BeEquivalentTo(DefaultKeywords);
+    }
+
+    [Fact]
+    public void GetIgnoredFolderKeywords_WithConfiguredAdditions_ExtendsBuiltInDefaults()
+    {
+        var keywords = EmailSyncTask.GetIgnoredFolderKeywords(new[] { "Invoices", "Spam", "  Follow Up  ", string.Empty, "   " });
+
+        keywords.Should().Contain(DefaultKeywords);
+        keywords.Should().Contain(new[] { "Invoices", "Follow Up" });
+        keywords.Count(keyword => keyword.Equals("Spam", StringComparison.OrdinalIgnoreCase)).Should().Be(1);
+    }
+
+    [Fact]
+    public void IsFolderWhitelisted_EmptyWhitelist_ReturnsTrue()
+    {
+        EmailSyncTask.IsFolderWhitelisted("INBOX", Array.Empty<string>()).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("INBOX")]
+    [InlineData("INBOX/Leads")]
+    [InlineData("Clients/Acme")]
+    [InlineData("Clients/Acme/2026")]
+    [InlineData("Projects.Active")]
+    public void IsFolderWhitelisted_ExactMatchesAndChildren_ReturnsTrue(string folderName)
+    {
+        EmailSyncTask.IsFolderWhitelisted(folderName, DefaultWhitelist).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("Archive")]
+    [InlineData("Clients/Other")]
+    [InlineData("Project")]
+    [InlineData("Inboxes")]
+    public void IsFolderWhitelisted_NonMatchingFolders_ReturnsFalse(string folderName)
+    {
+        EmailSyncTask.IsFolderWhitelisted(folderName, DefaultWhitelist).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("INBOX")]
+    [InlineData("INBOX/Leads")]
+    public void ShouldSyncFolder_WhitelistedAndNotIgnored_ReturnsTrue(string folderName)
+    {
+        EmailSyncTask.ShouldSyncFolder(folderName, DefaultWhitelist, DefaultKeywords).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("Spam")]
+    [InlineData("Clients/Other")]
+    [InlineData("INBOX/Spam")]
+    public void ShouldSyncFolder_NotWhitelistedOrIgnored_ReturnsFalse(string folderName)
+    {
+        EmailSyncTask.ShouldSyncFolder(folderName, DefaultWhitelist, DefaultKeywords).Should().BeFalse();
     }
 }
