@@ -590,7 +590,7 @@ When a sequence is `Active`:
 
 ## 15. Runtime Background Execution
 
-Sequence execution is driven by a background task, following the same `BaseTask` pattern used by `CampaignSendTask` and `ContactScheduledEmailTask`.
+Sequence execution is driven by a background task, following the same `BaseTask` pattern used by `CampaignSendTask`.
 
 ### 15.1 SequenceSendTask
 

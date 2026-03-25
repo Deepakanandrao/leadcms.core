@@ -37,7 +37,6 @@
 
 | Area                                    | Change                                                                                          |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `ContactScheduledEmailTask`             | Skips contacts without email (logs warning, marks `Failed`); null-safe `Timezone ?? 0`          |
 | `SendgridController`                    | Deduplication changed from `e.Contact!.Email` to `e.ContactId` (works for null-email contacts)  |
 | `DefaultLeadNotificationMessageBuilder` | `leadInfo.Email ?? string.Empty` in template args; conditional email line in text notifications |
 | `SubscribeController`                   | Defensive null-email guards before confirmation/unsubscribe email sends                         |
