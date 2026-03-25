@@ -115,8 +115,23 @@ public static class PatchDtoExtensions
         where TDto : IPatchDto
         where TEntity : class
     {
+        var nullabilityContext = new System.Reflection.NullabilityInfoContext();
+
+        // Collect surrogate identity property names to skip
+        var surrogateIdentityNames = typeof(TEntity)
+            .GetCustomAttributes(typeof(DataAnnotations.SurrogateIdentityAttribute), true)
+            .Cast<DataAnnotations.SurrogateIdentityAttribute>()
+            .Select(a => a.PropertyName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         foreach (var propertyName in dto.NullProperties)
         {
+            // Skip identity properties (they are used for matching, not for data updates)
+            if (surrogateIdentityNames.Contains(propertyName))
+            {
+                continue;
+            }
+
             var propertyInfo = typeof(TEntity).GetProperty(
                 propertyName,
                 System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);
@@ -128,6 +143,16 @@ public static class PatchDtoExtensions
                 if (propertyType.IsValueType && Nullable.GetUnderlyingType(propertyType) == null)
                 {
                     continue;
+                }
+
+                // Skip non-nullable reference types (e.g. string vs string?)
+                if (!propertyType.IsValueType)
+                {
+                    var nullabilityInfo = nullabilityContext.Create(propertyInfo);
+                    if (nullabilityInfo.WriteState != System.Reflection.NullabilityState.Nullable)
+                    {
+                        continue;
+                    }
                 }
 
                 // Skip required properties (they can't be set to null)

@@ -87,7 +87,7 @@ public class Comment : BaseEntity, ITranslatable
     [ForeignKey("ParentId")]
     public virtual Comment? Parent { get; set; }
 
-    public string Key { get; set; } = string.Empty;
+    public string? Key { get; set; }
 
     [Searchable]
     [Column(TypeName = "jsonb")]
