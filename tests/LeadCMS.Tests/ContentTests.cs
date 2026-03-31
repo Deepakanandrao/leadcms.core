@@ -223,6 +223,73 @@ public class ContentTests : SimpleTableTests<Content, TestContent, ContentUpdate
     }
 
     [Fact]
+    public async Task PutContent_WithSeoMetadata_ShouldPersistForSeoEnabledType()
+    {
+        var typeUid = $"seo-put-{Guid.NewGuid():N}";
+        await EnsureContentTypeAsync(typeUid, supportsPreviewSlug: false, supportsSeo: true);
+
+        var created = await PostTest<ContentDetailsDto>(
+            itemsUrl,
+            new TestContent(Guid.NewGuid().ToString("N"))
+            {
+                Type = typeUid,
+            },
+            HttpStatusCode.Created);
+
+        created.Should().NotBeNull();
+
+        var seo = new SeoMetadataDto
+        {
+            MetaTitle = "Updated SEO title",
+            MetaDescription = "Updated SEO description that is long enough to look realistic.",
+            CanonicalUrl = "https://example.com/blog/updated-seo-title",
+            OpenGraphTitle = "Updated SEO OG Title",
+            OpenGraphDescription = "Updated SEO OG Description",
+            OpenGraphImageUrl = "/api/images/updated-seo-og.png",
+            Robots = "index,follow",
+            Keywords = new[] { "updated", "seo", "metadata" },
+        };
+
+        var putDto = new ContentCreateDto
+        {
+            Title = created!.Title,
+            Description = created.Description,
+            Body = created.Body,
+            CoverImageUrl = created.CoverImageUrl,
+            CoverImageAlt = created.CoverImageAlt,
+            Slug = created.Slug,
+            PreviewSlug = created.PreviewSlug,
+            Seo = seo,
+            Type = created.Type,
+            Author = created.Author,
+            Language = created.Language,
+            TranslationKey = created.TranslationKey,
+            Category = created.Category,
+            Tags = created.Tags,
+            AllowComments = created.AllowComments,
+            Source = created.Source,
+            PublishedAt = created.PublishedAt,
+        };
+
+        var putResponse = await Request(HttpMethod.Put, $"{itemsUrl}/{created.Id}", putDto);
+        putResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var updatedContent = await putResponse.Content.ReadAsStringAsync();
+        var updated = JsonHelper.Deserialize<ContentDetailsDto>(updatedContent);
+
+        updated.Should().NotBeNull();
+        updated!.Seo.Should().NotBeNull();
+        updated.Seo!.MetaTitle.Should().Be(seo.MetaTitle);
+        updated.Seo.MetaDescription.Should().Be(seo.MetaDescription);
+        updated.Seo.CanonicalUrl.Should().Be(seo.CanonicalUrl);
+        updated.Seo.OpenGraphTitle.Should().Be(seo.OpenGraphTitle);
+        updated.Seo.OpenGraphDescription.Should().Be(seo.OpenGraphDescription);
+        updated.Seo.OpenGraphImageUrl.Should().Be(seo.OpenGraphImageUrl);
+        updated.Seo.Robots.Should().Be(seo.Robots);
+        updated.Seo.Keywords.Should().Equal(seo.Keywords);
+    }
+
+    [Fact]
     public async Task ContentType_ShouldPersistSupportsPreviewSlug()
     {
         var uid = $"preview-type-{Guid.NewGuid():N}";

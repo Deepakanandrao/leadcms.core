@@ -377,16 +377,8 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
     {
         var existingEntity = await FindOrThrowNotFound(id);
 
-        // Create a new mapper configuration that maps all properties, including nulls
-        var config = new MapperConfiguration(cfg =>
-        {
-            cfg.CreateMap<ContentCreateDto, Content>()
-                .ForAllMembers(opt => opt.Condition((src, dest, srcMember) => true)); // Always map, including nulls
-        });
-        var fullMapper = config.CreateMapper();
-
-        // Map all properties from the DTO to the existing entity, including nulls
-        fullMapper.Map(value, existingEntity);
+        mapper.Map(value, existingEntity);
+        existingEntity.PublishedAt = value.PublishedAt;
 
         await dbContext.SaveChangesAsync();
 
