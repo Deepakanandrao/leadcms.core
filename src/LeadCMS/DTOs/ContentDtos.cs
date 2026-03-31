@@ -10,6 +10,25 @@ using LeadCMS.Infrastructure;
 
 namespace LeadCMS.DTOs;
 
+public class SeoMetadataDto
+{
+    public string? MetaTitle { get; set; }
+
+    public string? MetaDescription { get; set; }
+
+    public string? CanonicalUrl { get; set; }
+
+    public string? OpenGraphTitle { get; set; }
+
+    public string? OpenGraphDescription { get; set; }
+
+    public string? OpenGraphImageUrl { get; set; }
+
+    public string? Robots { get; set; }
+
+    public string[]? Keywords { get; set; }
+}
+
 public class ContentCreateDto
 {
     [Required]
@@ -31,6 +50,8 @@ public class ContentCreateDto
     public string Slug { get; set; } = string.Empty;
 
     public string? PreviewSlug { get; set; }
+
+    public SeoMetadataDto? Seo { get; set; }
 
     [Required]
     public string Type { get; set; } = string.Empty;
@@ -82,6 +103,8 @@ public class ContentUpdateDto : IPatchDto
     public string? Slug { get; set; }
 
     public string? PreviewSlug { get; set; }
+
+    public SeoMetadataDto? Seo { get; set; }
 
     [MinLength(1)]
     public string? Type { get; set; }

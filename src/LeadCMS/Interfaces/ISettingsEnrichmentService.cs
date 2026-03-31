@@ -39,6 +39,13 @@ public interface ISettingsEnrichmentService
     Task EnrichWithApiSettingsAsync(List<Setting> settings);
 
     /// <summary>
+    /// Enriches settings list with general site link defaults.
+    /// </summary>
+    /// <param name="settings">List of settings to enrich.</param>
+    /// <returns>A task that represents the asynchronous enrichment operation.</returns>
+    Task EnrichWithGeneralSettingsAsync(List<Setting> settings);
+
+    /// <summary>
     /// Enriches settings list with media optimization defaults.
     /// </summary>
     /// <param name="settings">List of settings to enrich.</param>

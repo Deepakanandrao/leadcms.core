@@ -125,6 +125,9 @@ public class ConfigController : ControllerBase
             SettingKeys.MaxDescriptionLength,
             SettingKeys.EnableRealtimeSyntaxValidation,
             SettingKeys.EnableCodeEditorLineNumbers,
+            SettingKeys.GeneralSiteUrl,
+            SettingKeys.GeneralUnsubscribeUrl,
+            SettingKeys.GeneralPrivacyUrl,
             SettingKeys.RequireDigit,
             SettingKeys.RequireUppercase,
             SettingKeys.RequireLowercase,
@@ -157,7 +160,14 @@ public class ConfigController : ControllerBase
 
         await settingsEnrichmentService.EnrichWithContentValidationSettingsAsync(settings);
         await settingsEnrichmentService.EnrichWithIdentitySettingsAsync(settings);
+        await settingsEnrichmentService.EnrichWithGeneralSettingsAsync(settings);
         await settingsEnrichmentService.EnrichWithLeadCaptureSettingsAsync(settings);
+
+        settings.RemoveAll(s =>
+            (s.Key == SettingKeys.GeneralSiteUrl ||
+             s.Key == SettingKeys.GeneralUnsubscribeUrl ||
+             s.Key == SettingKeys.GeneralPrivacyUrl) &&
+            string.IsNullOrWhiteSpace(s.Value));
 
         // Project to dictionary for ConfigDto API response
         var settingsDict = settings.ToDictionary(s => s.Key, s => s.Value);

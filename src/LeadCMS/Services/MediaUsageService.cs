@@ -53,7 +53,13 @@ public class MediaUsageService : IMediaUsageService
     {
         var contentItems = await dbContext.Content!
             .AsNoTracking()
-            .Select(c => new { c.Body, c.CoverImageUrl, c.Type })
+            .Select(c => new
+            {
+                c.Body,
+                c.CoverImageUrl,
+                c.Type,
+                OpenGraphImageUrl = c.Seo != null ? c.Seo.OpenGraphImageUrl : null,
+            })
             .ToListAsync();
 
         var contentsProcessed = 0;
@@ -88,6 +94,8 @@ public class MediaUsageService : IMediaUsageService
                     coverTags.Add(contentTypeTag);
                 }
             }
+
+            CountSeoImageUsage(content.OpenGraphImageUrl, contentTypeTag, mediaUsageCounts, mediaContentTypeTags);
 
             // Count body image usages
             if (string.IsNullOrWhiteSpace(content.Body))
@@ -295,6 +303,34 @@ public class MediaUsageService : IMediaUsageService
     private static (string ScopeUid, string FileName) NormalizeMediaKey(string scopeUid, string fileName)
     {
         return (scopeUid.Trim().ToUpperInvariant(), fileName.Trim().ToUpperInvariant());
+    }
+
+    private void CountSeoImageUsage(
+        string? url,
+        string? contentTypeTag,
+        Dictionary<(string ScopeUid, string FileName), int> mediaUsageCounts,
+        Dictionary<(string ScopeUid, string FileName), HashSet<string>> mediaContentTypeTags)
+    {
+        if (string.IsNullOrWhiteSpace(url) || !TryParseMediaPath(url, out var scopeUid, out var fileName))
+        {
+            return;
+        }
+
+        var key = NormalizeMediaKey(scopeUid, fileName);
+        mediaUsageCounts[key] = mediaUsageCounts.TryGetValue(key, out var count) ? count + 1 : 1;
+
+        if (contentTypeTag == null)
+        {
+            return;
+        }
+
+        if (!mediaContentTypeTags.TryGetValue(key, out var tags))
+        {
+            tags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            mediaContentTypeTags[key] = tags;
+        }
+
+        tags.Add(contentTypeTag);
     }
 
     /// <summary>

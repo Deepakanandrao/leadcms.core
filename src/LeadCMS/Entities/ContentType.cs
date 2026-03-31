@@ -36,4 +36,6 @@ public class ContentType : BaseEntity
     public bool SupportsCoverImage { get; set; } = false;
 
     public bool SupportsPreviewSlug { get; set; } = false;
+
+    public bool SupportsSEO { get; set; } = false;
 }

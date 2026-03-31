@@ -39,6 +39,8 @@ public class Content : BaseEntity, ICommentable, ITranslatable
 
     public string? PreviewSlug { get; set; }
 
+    public SeoMetadata? Seo { get; set; }
+
     [Required]
     [ForeignKey(nameof(ContentType))]
     public string Type { get; set; } = string.Empty;
@@ -70,4 +72,23 @@ public class Content : BaseEntity, ICommentable, ITranslatable
     {
         return "Content";
     }
+}
+
+public class SeoMetadata
+{
+    public string? MetaTitle { get; set; }
+
+    public string? MetaDescription { get; set; }
+
+    public string? CanonicalUrl { get; set; }
+
+    public string? OpenGraphTitle { get; set; }
+
+    public string? OpenGraphDescription { get; set; }
+
+    public string? OpenGraphImageUrl { get; set; }
+
+    public string? Robots { get; set; }
+
+    public string[]? Keywords { get; set; }
 }

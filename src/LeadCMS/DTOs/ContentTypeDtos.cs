@@ -23,6 +23,8 @@ public class ContentTypeCreateDto
     public bool SupportsCoverImage { get; set; } = false;
 
     public bool SupportsPreviewSlug { get; set; } = false;
+
+    public bool SupportsSEO { get; set; } = false;
 }
 
 public class ContentTypeUpdateDto : IPatchDto
@@ -40,6 +42,8 @@ public class ContentTypeUpdateDto : IPatchDto
     public bool? SupportsCoverImage { get; set; }
 
     public bool? SupportsPreviewSlug { get; set; }
+
+    public bool? SupportsSEO { get; set; }
 }
 
 public class ContentTypeDetailsDto : ContentTypeCreateDto
@@ -69,4 +73,7 @@ public class ContentTypeImportDto : BaseImportDto
 
     [Optional]
     public bool? SupportsPreviewSlug { get; set; }
+
+    [Optional]
+    public bool? SupportsSEO { get; set; }
 }

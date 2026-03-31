@@ -8,6 +8,7 @@ using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
+using LeadCMS.Models;
 using LeadCMS.Services;
 
 namespace LeadCMS.Configuration;
@@ -45,6 +46,7 @@ public class AutoMapperProfiles : Profile
         CreateMap<DateTime, DateTime>().ConvertUsing(new DateTimeToUtcConverter());
         CreateMap<DateTime?, DateTime?>().ConvertUsing(new DateTimeToUtcConverter());
         CreateMap<DateTime?, DateTime>().ConvertUsing(new DateTimeToUtcConverter());
+        CreateMap<SeoMetadataDto, SeoMetadata>().ReverseMap();
 
         CreateMap<Comment, CommentCreateDto>().ReverseMap();
         CreateMap<Comment, CommentCreateBaseDto>().ReverseMap();

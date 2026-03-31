@@ -331,6 +331,10 @@ public class PgDbContext : IdentityDbContext<User>
             .HasForeignKey(c => c.Type)
             .HasPrincipalKey(ct => ct.Uid);
 
+        builder.Entity<Content>()
+            .Property(c => c.Seo)
+            .HasColumnType("jsonb");
+
         builder.Entity<EnrichmentWorkItem>()
             .HasOne(w => w.ProviderConfig)
             .WithMany(p => p.WorkItems)

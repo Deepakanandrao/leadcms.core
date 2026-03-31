@@ -96,6 +96,8 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
                         item.CoverImageUrl = mediaResolver.Resolve(item.CoverImageUrl, HttpContext, mode);
                     }
 
+                    ResolveSeoMediaUrls(item, mode);
+
                     item.Body = MediaUriTransformer.Transform(item.Body, mediaResolver, HttpContext, mode);
                 }
             }
@@ -142,6 +144,8 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
                     item.CoverImageUrl = mediaResolver.Resolve(item.CoverImageUrl, HttpContext, mode);
                 }
 
+                ResolveSeoMediaUrls(item, mode);
+
                 item.Body = MediaUriTransformer.Transform(item.Body, mediaResolver, HttpContext, mode);
             }
         }
@@ -187,6 +191,8 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
                 {
                     dto.CoverImageUrl = mediaResolver.Resolve(dto.CoverImageUrl, HttpContext, mode);
                 }
+
+                ResolveSeoMediaUrls(dto, mode);
             }
 
             if (includeTranslations)
@@ -979,6 +985,19 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
             }
 
             content.Translations = translations;
+        }
+    }
+
+    private void ResolveSeoMediaUrls(ContentDetailsDto content, string mode)
+    {
+        if (content.Seo == null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(content.Seo.OpenGraphImageUrl))
+        {
+            content.Seo.OpenGraphImageUrl = mediaResolver.Resolve(content.Seo.OpenGraphImageUrl, HttpContext, mode);
         }
     }
 }

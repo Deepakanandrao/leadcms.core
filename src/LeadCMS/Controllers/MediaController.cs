@@ -1918,12 +1918,16 @@ public class MediaController : ControllerBase
 
         var contents = await pgDbContext.Content!
             .Where(c =>
-                                (c.CoverImageUrl != null &&
-                                 (c.CoverImageUrl.Contains(oldRelativePath) ||
-                                    (oldRelativeOriginal != null && c.CoverImageUrl.Contains(oldRelativeOriginal)))) ||
-                                (c.Body != null &&
-                                 (c.Body.Contains(oldRelativePath) ||
-                                    (oldRelativeOriginal != null && c.Body.Contains(oldRelativeOriginal)))))
+                     (c.CoverImageUrl != null &&
+                      (c.CoverImageUrl.Contains(oldRelativePath) ||
+                        (oldRelativeOriginal != null && c.CoverImageUrl.Contains(oldRelativeOriginal)))) ||
+                     (c.Seo != null &&
+                      c.Seo.OpenGraphImageUrl != null &&
+                      (c.Seo.OpenGraphImageUrl.Contains(oldRelativePath) ||
+                        (oldRelativeOriginal != null && c.Seo.OpenGraphImageUrl.Contains(oldRelativeOriginal)))) ||
+                     (c.Body != null &&
+                      (c.Body.Contains(oldRelativePath) ||
+                        (oldRelativeOriginal != null && c.Body.Contains(oldRelativeOriginal)))))
             .ToListAsync();
 
         var linksUpdated = 0;
@@ -1932,15 +1936,18 @@ public class MediaController : ControllerBase
         {
             var updated = false;
             var coverImageUrl = content.CoverImageUrl;
+            var openGraphImageUrl = content.Seo?.OpenGraphImageUrl;
             var body = content.Body;
 
             linksUpdated += ReplaceOccurrences(coverImageUrl, oldRelativePath, newRelativePath, ref coverImageUrl, ref updated);
+            linksUpdated += ReplaceOccurrences(openGraphImageUrl, oldRelativePath, newRelativePath, ref openGraphImageUrl, ref updated);
 
             // Replace old original name links with new current name (not new original)
             // Both old paths should point to the new current (optimized) file
             if (oldRelativeOriginal != null)
             {
                 linksUpdated += ReplaceOccurrences(coverImageUrl, oldRelativeOriginal, newRelativePath, ref coverImageUrl, ref updated);
+                linksUpdated += ReplaceOccurrences(openGraphImageUrl, oldRelativeOriginal, newRelativePath, ref openGraphImageUrl, ref updated);
             }
 
             linksUpdated += ReplaceOccurrences(body, oldRelativePath, newRelativePath, ref body, ref updated);
@@ -1953,6 +1960,11 @@ public class MediaController : ControllerBase
             if (updated)
             {
                 content.CoverImageUrl = coverImageUrl;
+                if (content.Seo != null)
+                {
+                    content.Seo.OpenGraphImageUrl = openGraphImageUrl;
+                }
+
                 content.Body = body ?? content.Body;
                 pgDbContext.Content!.Update(content);
             }
@@ -2095,6 +2107,8 @@ public class MediaController : ControllerBase
         var contents = await pgDbContext.Content!
             .Where(c =>
                 (c.CoverImageUrl != null && allOldPaths.Any(p => c.CoverImageUrl.Contains(p))) ||
+                (c.Seo != null &&
+                                 (c.Seo.OpenGraphImageUrl != null && allOldPaths.Any(p => c.Seo.OpenGraphImageUrl.Contains(p)))) ||
                 (c.Body != null && allOldPaths.Any(p => c.Body.Contains(p))))
             .ToListAsync();
 
@@ -2104,17 +2118,24 @@ public class MediaController : ControllerBase
         {
             var updated = false;
             var coverImageUrl = content.CoverImageUrl;
+            var openGraphImageUrl = content.Seo?.OpenGraphImageUrl;
             var body = content.Body;
 
             foreach (var (oldPath, newPath) in pathMappings)
             {
                 totalLinksUpdated += ReplaceOccurrences(coverImageUrl, oldPath, newPath, ref coverImageUrl, ref updated);
+                totalLinksUpdated += ReplaceOccurrences(openGraphImageUrl, oldPath, newPath, ref openGraphImageUrl, ref updated);
                 totalLinksUpdated += ReplaceOccurrences(body, oldPath, newPath, ref body, ref updated);
             }
 
             if (updated)
             {
                 content.CoverImageUrl = coverImageUrl;
+                if (content.Seo != null)
+                {
+                    content.Seo.OpenGraphImageUrl = openGraphImageUrl;
+                }
+
                 content.Body = body ?? content.Body;
                 pgDbContext.Content!.Update(content);
             }

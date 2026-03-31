@@ -100,6 +100,17 @@ public class ContentTests : SimpleTableTests<Content, TestContent, ContentUpdate
         var publishedContent = new TestContent
         {
             PublishedAt = DateTime.UtcNow,
+            Seo = new SeoMetadataDto
+            {
+                MetaTitle = "Original SEO title",
+                MetaDescription = "Original SEO description",
+                CanonicalUrl = "https://example.com/original",
+                OpenGraphTitle = "Original OG title",
+                OpenGraphDescription = "Original OG description",
+                OpenGraphImageUrl = "/api/images/original-og.png",
+                Robots = "index,follow",
+                Keywords = new[] { "original", "seo" },
+            },
         };
 
         var contentPath = await PostTest(itemsUrl, publishedContent, HttpStatusCode.Created);
@@ -125,6 +136,7 @@ public class ContentTests : SimpleTableTests<Content, TestContent, ContentUpdate
             Category = string.Empty, // Set to empty string (which should be saved as empty)
             Tags = Array.Empty<string>(),
             AllowComments = false,
+            Seo = null,
             Source = null, // Set to null
             PublishedAt = null, // Set to null
         };
@@ -147,7 +159,67 @@ public class ContentTests : SimpleTableTests<Content, TestContent, ContentUpdate
         updatedItem.Source.Should().BeNull(); // Should be null
         updatedItem.PublishedAt.Should().BeNull(); // Should be null
         updatedItem.AllowComments.Should().BeFalse();
+        updatedItem.Seo.Should().BeNull();
         updatedItem.Tags.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ContentType_ShouldPersistSupportsSEO()
+    {
+        var uid = $"seo-type-{Guid.NewGuid():N}";
+
+        var contentType = await EnsureContentTypeAsync(uid, supportsPreviewSlug: false, supportsSeo: true);
+
+        contentType.Should().NotBeNull();
+        contentType!.SupportsSEO.Should().BeTrue();
+
+        var fetched = await GetTest<ContentTypeDetailsDto>($"{ContentTypesApi}/{contentType.Id}", HttpStatusCode.OK);
+        fetched.Should().NotBeNull();
+        fetched!.SupportsSEO.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task CreateContent_WithSeoMetadata_ShouldPersistForSeoEnabledType()
+    {
+        var typeUid = $"seo-enabled-{Guid.NewGuid():N}";
+        await EnsureContentTypeAsync(typeUid, supportsPreviewSlug: false, supportsSeo: true);
+
+        var seo = new SeoMetadataDto
+        {
+            MetaTitle = "SEO Page Title",
+            MetaDescription = "SEO description that is long enough for a realistic metadata payload.",
+            CanonicalUrl = "https://example.com/blog/seo-page-title",
+            OpenGraphTitle = "SEO OG Title",
+            OpenGraphDescription = "SEO OG description",
+            OpenGraphImageUrl = "/api/images/seo-og.png",
+            Robots = "index,follow",
+            Keywords = new[] { "seo", "metadata", "html" },
+        };
+
+        var content = new TestContent(Guid.NewGuid().ToString("N"))
+        {
+            Type = typeUid,
+            Seo = seo,
+        };
+
+        var created = await PostTest<ContentDetailsDto>(itemsUrl, content, HttpStatusCode.Created);
+
+        created.Should().NotBeNull();
+        created!.Seo.Should().NotBeNull();
+        created.Seo!.MetaTitle.Should().Be(seo.MetaTitle);
+        created.Seo.MetaDescription.Should().Be(seo.MetaDescription);
+        created.Seo.CanonicalUrl.Should().Be(seo.CanonicalUrl);
+        created.Seo.OpenGraphTitle.Should().Be(seo.OpenGraphTitle);
+        created.Seo.OpenGraphDescription.Should().Be(seo.OpenGraphDescription);
+        created.Seo.OpenGraphImageUrl.Should().Be(seo.OpenGraphImageUrl);
+        created.Seo.Robots.Should().Be(seo.Robots);
+        created.Seo.Keywords.Should().Equal(seo.Keywords);
+
+        var fetched = await GetTest<ContentDetailsDto>($"{itemsUrl}/{created.Id}", HttpStatusCode.OK);
+        fetched.Should().NotBeNull();
+        fetched!.Seo.Should().NotBeNull();
+        fetched.Seo!.MetaTitle.Should().Be(seo.MetaTitle);
+        fetched.Seo.Keywords.Should().Equal(seo.Keywords);
     }
 
     [Fact]
@@ -190,7 +262,7 @@ public class ContentTests : SimpleTableTests<Content, TestContent, ContentUpdate
         return from;
     }
 
-    private async Task<ContentTypeDetailsDto?> EnsureContentTypeAsync(string uid, bool supportsPreviewSlug)
+    private async Task<ContentTypeDetailsDto?> EnsureContentTypeAsync(string uid, bool supportsPreviewSlug, bool supportsSeo = false)
     {
         var existing = await GetTest<List<ContentTypeDetailsDto>>($"{ContentTypesApi}?filter[where][uid][eq]={uid}", HttpStatusCode.OK);
         if (existing != null && existing.Count > 0)
@@ -207,6 +279,7 @@ public class ContentTests : SimpleTableTests<Content, TestContent, ContentUpdate
                 SupportsComments = true,
                 SupportsCoverImage = true,
                 SupportsPreviewSlug = supportsPreviewSlug,
+                SupportsSEO = supportsSeo,
             },
             HttpStatusCode.Created);
     }
