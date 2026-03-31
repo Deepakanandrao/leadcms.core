@@ -287,6 +287,99 @@ public class ContentTests : SimpleTableTests<Content, TestContent, ContentUpdate
         updated.Seo.OpenGraphImageUrl.Should().Be(seo.OpenGraphImageUrl);
         updated.Seo.Robots.Should().Be(seo.Robots);
         updated.Seo.Keywords.Should().Equal(seo.Keywords);
+
+        // Verify data survives a database round-trip (GET after PUT)
+        var fetched = await GetTest<ContentDetailsDto>(
+            $"{itemsUrl}/{created.Id}",
+            HttpStatusCode.OK);
+
+        fetched.Should().NotBeNull();
+        fetched!.Seo.Should().NotBeNull();
+        fetched.Seo!.MetaTitle.Should().Be(seo.MetaTitle);
+        fetched.Seo.MetaDescription.Should().Be(seo.MetaDescription);
+        fetched.Seo.CanonicalUrl.Should().Be(seo.CanonicalUrl);
+        fetched.Seo.OpenGraphTitle.Should().Be(seo.OpenGraphTitle);
+        fetched.Seo.OpenGraphDescription.Should().Be(seo.OpenGraphDescription);
+        fetched.Seo.OpenGraphImageUrl.Should().Be(seo.OpenGraphImageUrl);
+        fetched.Seo.Robots.Should().Be(seo.Robots);
+        fetched.Seo.Keywords.Should().Equal(seo.Keywords);
+    }
+
+    [Fact]
+    public async Task PutContent_WithExistingSeo_ShouldUpdateAllSeoFields()
+    {
+        var typeUid = $"seo-update-{Guid.NewGuid():N}";
+        await EnsureContentTypeAsync(typeUid, supportsPreviewSlug: false, supportsSeo: true);
+
+        var initialSeo = new SeoMetadataDto
+        {
+            MetaTitle = "Initial title",
+            MetaDescription = "Initial description",
+        };
+
+        var created = await PostTest<ContentDetailsDto>(
+            itemsUrl,
+            new TestContent(Guid.NewGuid().ToString("N"))
+            {
+                Type = typeUid,
+                Seo = initialSeo,
+            },
+            HttpStatusCode.Created);
+
+        created.Should().NotBeNull();
+        created!.Seo.Should().NotBeNull();
+
+        var updatedSeo = new SeoMetadataDto
+        {
+            MetaTitle = "Updated SEO title",
+            MetaDescription = "Updated SEO description",
+            CanonicalUrl = "https://example.com/updated",
+            OpenGraphTitle = "Updated OG Title",
+            OpenGraphDescription = "Updated OG Description",
+            OpenGraphImageUrl = "/api/images/updated-og.png",
+            Robots = "index,follow",
+            Keywords = new[] { "updated", "seo" },
+        };
+
+        var putDto = new ContentCreateDto
+        {
+            Title = created.Title,
+            Description = created.Description,
+            Body = created.Body,
+            CoverImageUrl = created.CoverImageUrl,
+            CoverImageAlt = created.CoverImageAlt,
+            Slug = created.Slug,
+            PreviewSlug = created.PreviewSlug,
+            Seo = updatedSeo,
+            Type = created.Type,
+            Author = created.Author,
+            Language = created.Language,
+            TranslationKey = created.TranslationKey,
+            Category = created.Category,
+            Tags = created.Tags,
+            AllowComments = created.AllowComments,
+            Source = created.Source,
+            PublishedAt = created.PublishedAt,
+        };
+
+        var putResponse = await Request(HttpMethod.Put, $"{itemsUrl}/{created.Id}", putDto);
+        putResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Verify via GET that all SEO fields survived the database round-trip
+        var fetched = await GetTest<ContentDetailsDto>(
+            $"{itemsUrl}/{created.Id}",
+            HttpStatusCode.OK);
+
+        fetched.Should().NotBeNull();
+        fetched!.Seo.Should().NotBeNull();
+        fetched.Seo!.MetaTitle.Should().Be(updatedSeo.MetaTitle);
+        fetched.Seo.MetaDescription.Should().Be(updatedSeo.MetaDescription);
+        fetched.Seo.CanonicalUrl.Should().Be(updatedSeo.CanonicalUrl);
+        fetched.Seo.OpenGraphTitle.Should().Be(updatedSeo.OpenGraphTitle);
+        fetched.Seo.OpenGraphDescription.Should().Be(updatedSeo.OpenGraphDescription);
+        fetched.Seo.OpenGraphImageUrl.Should().Be(updatedSeo.OpenGraphImageUrl);
+        fetched.Seo.Robots.Should().Be(updatedSeo.Robots);
+        fetched.Seo.Keywords.Should().Equal(updatedSeo.Keywords);
     }
 
     [Fact]

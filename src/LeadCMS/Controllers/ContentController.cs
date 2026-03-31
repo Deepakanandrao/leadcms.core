@@ -379,6 +379,7 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
 
         mapper.Map(value, existingEntity);
         existingEntity.PublishedAt = value.PublishedAt;
+        existingEntity.Seo = mapper.Map<SeoMetadata?>(value.Seo);
 
         await dbContext.SaveChangesAsync();
 
