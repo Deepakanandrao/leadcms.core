@@ -62,6 +62,7 @@ public static class KnownSettingMetadata
         new(SettingKeys.GeneralSiteUrl, false, SettingValueTypes.Text, "Main site URL used in email templates as {{ site_url }}."),
         new(SettingKeys.GeneralUnsubscribeUrl, false, SettingValueTypes.Text, "Unsubscribe URL used in email templates as {{ unsubscribe_url }}."),
         new(SettingKeys.GeneralPrivacyUrl, false, SettingValueTypes.Text, "Privacy policy URL used in email templates as {{ privacy_url }}."),
+        new(SettingKeys.GeneralLastReleaseDate, false, SettingValueTypes.DateTime, "Date and time of the last release."),
 
         new(AiSettingKeys.SiteTopic, false, SettingValueTypes.TextArea, "Main site topic used to guide AI-generated content and templates."),
         new(AiSettingKeys.SiteAudience, false, SettingValueTypes.TextArea, "Target audience profile used for AI-generated content and templates."),

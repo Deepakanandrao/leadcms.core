@@ -20,4 +20,8 @@ public static class SettingValueTypes
     public const string Json = "json";
 
     public const string EmailArray = "email[]";
+
+    public const string Date = "date";
+
+    public const string DateTime = "datetime";
 }

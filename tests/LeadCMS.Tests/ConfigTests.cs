@@ -84,4 +84,37 @@ public class ConfigTests : BaseTest
         Assert.Equal("https://example.com/unsubscribe", configDto.Settings[SettingKeys.GeneralUnsubscribeUrl]);
         Assert.Equal("https://example.com/privacy", configDto.Settings[SettingKeys.GeneralPrivacyUrl]);
     }
+
+    [Fact]
+    public async Task GetConfig_ReturnsLastReleaseDateWhenPresent()
+    {
+        using var scope = App.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<Data.PgDbContext>();
+
+        dbContext.Settings!.Add(new Setting
+        {
+            Key = SettingKeys.GeneralLastReleaseDate,
+            Value = "2026-04-01T14:30:00Z",
+            UserId = null,
+            CreatedAt = DateTime.UtcNow,
+        });
+
+        await dbContext.SaveChangesAsync();
+
+        var configDto = await GetTest<ConfigDto>("/api/config", HttpStatusCode.OK);
+
+        Assert.NotNull(configDto);
+        Assert.NotNull(configDto.Settings);
+        Assert.Equal("2026-04-01T14:30:00Z", configDto.Settings[SettingKeys.GeneralLastReleaseDate]);
+    }
+
+    [Fact]
+    public async Task GetConfig_DoesNotReturnEmptyLastReleaseDate()
+    {
+        var configDto = await GetTest<ConfigDto>("/api/config", HttpStatusCode.OK);
+
+        Assert.NotNull(configDto);
+        Assert.NotNull(configDto.Settings);
+        Assert.False(configDto.Settings.ContainsKey(SettingKeys.GeneralLastReleaseDate));
+    }
 }

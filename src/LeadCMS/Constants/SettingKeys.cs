@@ -33,6 +33,8 @@ public static class SettingKeys
 
     public const string GeneralPrivacyUrl = "General.PrivacyUrl";
 
+    public const string GeneralLastReleaseDate = "General.LastReleaseDate";
+
     // Identity password policy settings
     public const string RequireDigit = "Identity.RequireDigit";
 
