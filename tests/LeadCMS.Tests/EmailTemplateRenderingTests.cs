@@ -26,6 +26,7 @@ public class EmailTemplateRenderingTests : BaseTestAutoLogin
         TrackEntityType<EmailTemplate>();
         TrackEntityType<EmailLog>();
         TrackEntityType<Media>();
+        TrackEntityType<Setting>();
     }
 
     // ────────────────────────────────────────────────────────

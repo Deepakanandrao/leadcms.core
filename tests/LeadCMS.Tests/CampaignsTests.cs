@@ -38,6 +38,7 @@ public class CampaignsTests : BaseTestAutoLogin
         TrackEntityType<DealPipeline>();
         TrackEntityType<DealPipelineStage>();
         TrackEntityType<Deal>();
+        TrackEntityType<Setting>();
     }
 
     // ──────────────────────────────────────────────────

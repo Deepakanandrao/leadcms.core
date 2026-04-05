@@ -10,6 +10,11 @@ namespace LeadCMS.Tests;
 
 public class ConfigTests : BaseTest
 {
+    public ConfigTests()
+    {
+        TrackEntityType<Setting>();
+    }
+
     [Fact]
     public async Task GetConfig_ReturnsContentValidationSettings()
     {
