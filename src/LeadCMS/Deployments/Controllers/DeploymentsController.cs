@@ -3,9 +3,13 @@
 // </copyright>
 
 using System.Security.Claims;
+using System.Security.Cryptography;
+using LeadCMS.Constants;
 using LeadCMS.Core.Deployments.DTOs;
 using LeadCMS.Core.Deployments.Interfaces;
 using LeadCMS.Core.Deployments.Services;
+using LeadCMS.Exceptions;
+using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -17,9 +21,11 @@ namespace LeadCMS.Core.Deployments.Controllers;
 public class DeploymentsController : ControllerBase
 {
     private readonly IDeploymentService deploymentService;
+    private readonly ISettingService settingService;
 
-    public DeploymentsController(IDeploymentService? deploymentService = null)
+    public DeploymentsController(ISettingService settingService, IDeploymentService? deploymentService = null)
     {
+        this.settingService = settingService;
         this.deploymentService = deploymentService ?? new NullDeploymentService();
     }
 
@@ -132,5 +138,42 @@ public class DeploymentsController : ControllerBase
         }
 
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Webhook for external CI/CD pipelines to notify of a completed deployment.
+    /// Authenticates via the <c>X-Deployment-Api-Key</c> header against
+    /// the <c>Deployment.WebhooksApiKey</c> setting and updates
+    /// <c>Deployment.LastSuccessDate</c> to the current UTC time.
+    /// </summary>
+    /// <param name="deploymentApiKey">The deployment API key configured in settings.</param>
+    [HttpPost("notify")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult> NotifyDeployment(
+        [FromHeader(Name = "X-Deployment-Api-Key")] string? deploymentApiKey)
+    {
+        if (string.IsNullOrWhiteSpace(deploymentApiKey))
+        {
+            throw new UnauthorizedException("The X-Deployment-Api-Key header is required.");
+        }
+
+        var configuredKey = await settingService.GetSystemSettingAsync(SettingKeys.DeploymentWebhooksApiKey);
+
+        if (string.IsNullOrWhiteSpace(configuredKey) ||
+            !CryptographicOperations.FixedTimeEquals(
+                System.Text.Encoding.UTF8.GetBytes(deploymentApiKey!),
+                System.Text.Encoding.UTF8.GetBytes(configuredKey)))
+        {
+            throw new UnauthorizedException("The provided deployment API key is not valid.");
+        }
+
+        await settingService.SetSystemSettingAsync(
+            SettingKeys.DeploymentLastSuccessDate,
+            DateTime.UtcNow.ToString("o"));
+
+        return Ok();
     }
 }

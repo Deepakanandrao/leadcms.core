@@ -33,7 +33,10 @@ public static class SettingKeys
 
     public const string GeneralPrivacyUrl = "General.PrivacyUrl";
 
-    public const string GeneralLastReleaseDate = "General.LastReleaseDate";
+    // Deployment settings
+    public const string DeploymentLastSuccessDate = "Deployment.LastSuccessDate";
+
+    public const string DeploymentWebhooksApiKey = "Deployment.WebhooksApiKey";
 
     // Identity password policy settings
     public const string RequireDigit = "Identity.RequireDigit";

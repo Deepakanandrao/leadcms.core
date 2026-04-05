@@ -10,4 +10,9 @@ public class UnauthorizedException : Exception
         : base("Failed to login")
     {
     }
+
+    public UnauthorizedException(string message)
+        : base(message)
+    {
+    }
 }

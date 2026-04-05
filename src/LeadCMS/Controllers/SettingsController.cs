@@ -161,6 +161,7 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
         }
 
         var settingDtos = mapper.Map<List<SettingDetailsDto>>(resultByKey.Values.ToList());
+        SettingListHelper.MaskSecretValues(settingDtos);
         return Ok(settingDtos);
     }
 
@@ -193,6 +194,7 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
         setting = singleSettingList.FirstOrDefault(s => s.Key == key) ?? setting;
 
         var settingDto = mapper.Map<SettingDetailsDto>(setting);
+        SettingListHelper.MaskSecretValue(settingDto);
         return Ok(settingDto);
     }
 
@@ -230,6 +232,7 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
         }
 
         var settingDto = mapper.Map<SettingDetailsDto>(setting);
+        SettingListHelper.MaskSecretValue(settingDto);
         return Ok(settingDto);
     }
 
@@ -289,6 +292,8 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
                 Description = s.Description,
             });
 
+        SettingListHelper.MaskSecretValues(result.Values);
+
         return Ok(result);
     }
 
@@ -325,6 +330,11 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
             Description = result.Description,
         };
 
+        if (SettingListHelper.IsSecret(dto.Type) && !string.IsNullOrEmpty(dto.Value))
+        {
+            dto.Value = SettingListHelper.SecretMask;
+        }
+
         return Ok(dto);
     }
 
@@ -360,6 +370,7 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
         }
 
         var settingDto = mapper.Map<SettingDetailsDto>(setting);
+        SettingListHelper.MaskSecretValue(settingDto);
         return Ok(settingDto);
     }
 
@@ -407,6 +418,7 @@ public class SettingsController : BaseControllerWithImport<Setting, SettingCreat
             .ToListAsync();
 
         var settingDtos = mapper.Map<List<SettingDetailsDto>>(settings);
+        SettingListHelper.MaskSecretValues(settingDtos);
 
         return Ok(settingDtos);
     }

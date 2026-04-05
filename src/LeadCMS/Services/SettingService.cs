@@ -139,6 +139,12 @@ public class SettingService : ISettingService
 
     public async Task SetUserSettingAsync(string key, string? value, string userId)
     {
+        // Reject masked placeholder to prevent accidentally overwriting the real secret
+        if (value == SettingListHelper.SecretMask)
+        {
+            return;
+        }
+
         // Skip saving if value is the same as the global (system-level) setting
         var globalSetting = await dbContext.Settings!
             .Where(s => s.Key == key && s.UserId == null && s.Language == null)
@@ -187,6 +193,12 @@ public class SettingService : ISettingService
 
     public async Task SetSystemSettingAsync(string key, string? value, string? language = null)
     {
+        // Reject masked placeholder to prevent accidentally overwriting the real secret
+        if (value == SettingListHelper.SecretMask)
+        {
+            return;
+        }
+
         // For language-specific settings, skip saving if value matches the global setting
         if (!string.IsNullOrEmpty(language))
         {

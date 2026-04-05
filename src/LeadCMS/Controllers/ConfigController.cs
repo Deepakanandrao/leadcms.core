@@ -128,7 +128,7 @@ public class ConfigController : ControllerBase
             SettingKeys.GeneralSiteUrl,
             SettingKeys.GeneralUnsubscribeUrl,
             SettingKeys.GeneralPrivacyUrl,
-            SettingKeys.GeneralLastReleaseDate,
+            SettingKeys.DeploymentLastSuccessDate,
             SettingKeys.RequireDigit,
             SettingKeys.RequireUppercase,
             SettingKeys.RequireLowercase,

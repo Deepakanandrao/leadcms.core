@@ -3,6 +3,8 @@
 // </copyright>
 
 using System.Text.Json;
+using LeadCMS.Constants;
+using LeadCMS.DTOs;
 using LeadCMS.Entities;
 
 namespace LeadCMS.Helpers;
@@ -12,6 +14,11 @@ namespace LeadCMS.Helpers;
 /// </summary>
 public static class SettingListHelper
 {
+    /// <summary>
+    /// Placeholder shown instead of the actual value for secret settings.
+    /// </summary>
+    public const string SecretMask = "••••••••";
+
     /// <summary>
     /// Gets a string setting value by key.
     /// </summary>
@@ -166,6 +173,54 @@ public static class SettingListHelper
 
         return prefix1 != null && prefix2 != null &&
                string.Equals(prefix1, prefix2, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Returns true if the setting type is <see cref="SettingValueTypes.Secret"/>.
+    /// </summary>
+    public static bool IsSecret(string? type)
+    {
+        return string.Equals(type, SettingValueTypes.Secret, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Masks the value of secret-type settings in a list of DTOs.
+    /// Settings whose value is null/empty remain unchanged (so clients know no value is set).
+    /// </summary>
+    public static void MaskSecretValues(IEnumerable<SettingDetailsDto> settings)
+    {
+        foreach (var s in settings)
+        {
+            if (IsSecret(s.Type) && !string.IsNullOrEmpty(s.Value))
+            {
+                s.Value = SecretMask;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Masks the value of secret-type settings in a collection of value DTOs.
+    /// </summary>
+    public static void MaskSecretValues(IEnumerable<SettingValueDto> settings)
+    {
+        foreach (var s in settings)
+        {
+            if (IsSecret(s.Type) && !string.IsNullOrEmpty(s.Value))
+            {
+                s.Value = SecretMask;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Masks the value of a single secret-type setting DTO.
+    /// </summary>
+    public static void MaskSecretValue(SettingDetailsDto setting)
+    {
+        if (IsSecret(setting.Type) && !string.IsNullOrEmpty(setting.Value))
+        {
+            setting.Value = SecretMask;
+        }
     }
 
     /// <summary>

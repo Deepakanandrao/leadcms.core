@@ -24,4 +24,6 @@ public static class SettingValueTypes
     public const string Date = "date";
 
     public const string DateTime = "datetime";
+
+    public const string Secret = "secret";
 }

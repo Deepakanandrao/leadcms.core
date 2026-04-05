@@ -93,7 +93,7 @@ public class ConfigTests : BaseTest
 
         dbContext.Settings!.Add(new Setting
         {
-            Key = SettingKeys.GeneralLastReleaseDate,
+            Key = SettingKeys.DeploymentLastSuccessDate,
             Value = "2026-04-01T14:30:00Z",
             UserId = null,
             CreatedAt = DateTime.UtcNow,
@@ -105,7 +105,7 @@ public class ConfigTests : BaseTest
 
         Assert.NotNull(configDto);
         Assert.NotNull(configDto.Settings);
-        Assert.Equal("2026-04-01T14:30:00Z", configDto.Settings[SettingKeys.GeneralLastReleaseDate]);
+        Assert.Equal("2026-04-01T14:30:00Z", configDto.Settings[SettingKeys.DeploymentLastSuccessDate]);
     }
 
     [Fact]
@@ -115,6 +115,6 @@ public class ConfigTests : BaseTest
 
         Assert.NotNull(configDto);
         Assert.NotNull(configDto.Settings);
-        Assert.False(configDto.Settings.ContainsKey(SettingKeys.GeneralLastReleaseDate));
+        Assert.False(configDto.Settings.ContainsKey(SettingKeys.DeploymentLastSuccessDate));
     }
 }
