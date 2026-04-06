@@ -59,6 +59,90 @@ public class EmailTemplatesTests : TableWithFKTests<EmailTemplate, TestEmailTemp
         detailsResult.TrueForAll(t => t.EmailGroup != null).Should().BeTrue();
     }
 
+    [Fact]
+    public async Task GetSenderNames_ReturnsDistinctValues()
+    {
+        var fkItem = await CreateFKItem();
+        var fkId = fkItem.Item1;
+
+        var uid1 = Guid.NewGuid().ToString("N")[..8];
+        var uid2 = Guid.NewGuid().ToString("N")[..8];
+
+        var template1 = new TestEmailTemplate(uid1, fkId) { FromName = "Sales Team", Language = "en" };
+        var template2 = new TestEmailTemplate(uid2, fkId) { FromName = "Support Team", Language = "en" };
+
+        await PostTest(itemsUrl, template1, HttpStatusCode.Created);
+        await PostTest(itemsUrl, template2, HttpStatusCode.Created);
+
+        var senderNames = await GetTest<string[]>($"{itemsUrl}/sender-names", HttpStatusCode.OK);
+        senderNames.Should().NotBeNull();
+        senderNames.Should().Contain("Sales Team");
+        senderNames.Should().Contain("Support Team");
+    }
+
+    [Fact]
+    public async Task GetSenderNames_FilteredByLanguage()
+    {
+        var fkItem = await CreateFKItem();
+        var fkId = fkItem.Item1;
+
+        var uid1 = Guid.NewGuid().ToString("N")[..8];
+        var uid2 = Guid.NewGuid().ToString("N")[..8];
+
+        var template1 = new TestEmailTemplate(uid1, fkId) { FromName = "English Sender", Language = "en" };
+        var template2 = new TestEmailTemplate(uid2, fkId) { FromName = "French Sender", Language = "fr" };
+
+        await PostTest(itemsUrl, template1, HttpStatusCode.Created);
+        await PostTest(itemsUrl, template2, HttpStatusCode.Created);
+
+        var senderNames = await GetTest<string[]>($"{itemsUrl}/sender-names?language=fr", HttpStatusCode.OK);
+        senderNames.Should().NotBeNull();
+        senderNames.Should().Contain("French Sender");
+        senderNames.Should().NotContain("English Sender");
+    }
+
+    [Fact]
+    public async Task GetSenderEmails_ReturnsDistinctValues()
+    {
+        var fkItem = await CreateFKItem();
+        var fkId = fkItem.Item1;
+
+        var uid1 = Guid.NewGuid().ToString("N")[..8];
+        var uid2 = Guid.NewGuid().ToString("N")[..8];
+
+        var template1 = new TestEmailTemplate(uid1, fkId) { FromEmail = "sales@example.com", Language = "en" };
+        var template2 = new TestEmailTemplate(uid2, fkId) { FromEmail = "support@example.com", Language = "en" };
+
+        await PostTest(itemsUrl, template1, HttpStatusCode.Created);
+        await PostTest(itemsUrl, template2, HttpStatusCode.Created);
+
+        var senderEmails = await GetTest<string[]>($"{itemsUrl}/sender-emails", HttpStatusCode.OK);
+        senderEmails.Should().NotBeNull();
+        senderEmails.Should().Contain("sales@example.com");
+        senderEmails.Should().Contain("support@example.com");
+    }
+
+    [Fact]
+    public async Task GetSenderEmails_FilteredByLanguage()
+    {
+        var fkItem = await CreateFKItem();
+        var fkId = fkItem.Item1;
+
+        var uid1 = Guid.NewGuid().ToString("N")[..8];
+        var uid2 = Guid.NewGuid().ToString("N")[..8];
+
+        var template1 = new TestEmailTemplate(uid1, fkId) { FromEmail = "en@example.com", Language = "en" };
+        var template2 = new TestEmailTemplate(uid2, fkId) { FromEmail = "de@example.com", Language = "de" };
+
+        await PostTest(itemsUrl, template1, HttpStatusCode.Created);
+        await PostTest(itemsUrl, template2, HttpStatusCode.Created);
+
+        var senderEmails = await GetTest<string[]>($"{itemsUrl}/sender-emails?language=de", HttpStatusCode.OK);
+        senderEmails.Should().NotBeNull();
+        senderEmails.Should().Contain("de@example.com");
+        senderEmails.Should().NotContain("en@example.com");
+    }
+
     protected override async Task<(TestEmailTemplate, string)> CreateItem(string uid, int fkId)
     {
         var emailTemplate = new TestEmailTemplate(uid, fkId);

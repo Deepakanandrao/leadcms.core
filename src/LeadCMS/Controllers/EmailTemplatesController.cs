@@ -93,6 +93,50 @@ public class EmailTemplatesController : BaseController<EmailTemplate, EmailTempl
         return Ok();
     }
 
+    [HttpGet("sender-names")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<string[]>> GetSenderNames([FromQuery] string? language = null)
+    {
+        var query = dbSet.AsQueryable();
+
+        if (!string.IsNullOrEmpty(language))
+        {
+            query = query.Where(t => t.Language == language);
+        }
+
+        var senderNames = await query
+            .Select(t => t.FromName)
+            .Distinct()
+            .Where(name => !string.IsNullOrEmpty(name))
+            .ToArrayAsync();
+
+        return Ok(senderNames);
+    }
+
+    [HttpGet("sender-emails")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<string[]>> GetSenderEmails([FromQuery] string? language = null)
+    {
+        var query = dbSet.AsQueryable();
+
+        if (!string.IsNullOrEmpty(language))
+        {
+            query = query.Where(t => t.Language == language);
+        }
+
+        var senderEmails = await query
+            .Select(t => t.FromEmail)
+            .Distinct()
+            .Where(email => !string.IsNullOrEmpty(email))
+            .ToArrayAsync();
+
+        return Ok(senderEmails);
+    }
+
     [HttpGet("{id}/translation-draft/{language}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
