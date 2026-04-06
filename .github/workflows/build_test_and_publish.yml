@@ -74,7 +74,7 @@ jobs:
           done < <(find ./plugins -name "*.csproj" -not -path "*/obj/*")
 
       - name: Test
-        run: dotnet test --no-build --configuration $BUILD_CONFIG --logger "trx" --verbosity d --results-directory "./"
+        run: dotnet test --no-build --configuration $BUILD_CONFIG --logger "trx" --verbosity normal --results-directory "./"
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
