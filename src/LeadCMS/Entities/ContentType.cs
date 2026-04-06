@@ -38,4 +38,8 @@ public class ContentType : BaseEntity
     public bool SupportsPreviewSlug { get; set; } = false;
 
     public bool SupportsSEO { get; set; } = false;
+
+    public string? SlugPrefix { get; set; }
+
+    public string? SlugPostfix { get; set; }
 }

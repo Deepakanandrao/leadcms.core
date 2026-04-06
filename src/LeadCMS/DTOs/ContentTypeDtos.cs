@@ -25,6 +25,10 @@ public class ContentTypeCreateDto
     public bool SupportsPreviewSlug { get; set; } = false;
 
     public bool SupportsSEO { get; set; } = false;
+
+    public string? SlugPrefix { get; set; }
+
+    public string? SlugPostfix { get; set; }
 }
 
 public class ContentTypeUpdateDto : IPatchDto
@@ -44,6 +48,10 @@ public class ContentTypeUpdateDto : IPatchDto
     public bool? SupportsPreviewSlug { get; set; }
 
     public bool? SupportsSEO { get; set; }
+
+    public string? SlugPrefix { get; set; }
+
+    public string? SlugPostfix { get; set; }
 }
 
 public class ContentTypeDetailsDto : ContentTypeCreateDto
@@ -76,4 +84,10 @@ public class ContentTypeImportDto : BaseImportDto
 
     [Optional]
     public bool? SupportsSEO { get; set; }
+
+    [Optional]
+    public string? SlugPrefix { get; set; }
+
+    [Optional]
+    public string? SlugPostfix { get; set; }
 }

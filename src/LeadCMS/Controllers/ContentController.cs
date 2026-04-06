@@ -10,6 +10,7 @@ using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
 using LeadCMS.Enums;
+using LeadCMS.Exceptions;
 using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
@@ -366,6 +367,37 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         return await syncService.SyncAsync<Content, ContentDetailsDto>(queryProviderFactory, mapper, syncToken, query, includeBase);
     }
 
+    // POST api/content
+    [HttpPost]
+    [ProducesResponseType(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public override async Task<ActionResult<ContentDetailsDto>> Post([FromBody] ContentCreateDto value)
+    {
+        await ValidateSlugAffixAsync(value.Slug, value.Type);
+        return await base.Post(value);
+    }
+
+    // PATCH api/content/5
+    [HttpPatch("{id}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public override async Task<ActionResult<ContentDetailsDto>> Patch(int id, [FromBody] ContentUpdateDto value)
+    {
+        if (!string.IsNullOrEmpty(value.Slug) || !string.IsNullOrEmpty(value.Type))
+        {
+            var existingEntity = await FindOrThrowNotFound(id);
+            var slug = value.Slug ?? existingEntity.Slug;
+            var type = value.Type ?? existingEntity.Type;
+            await ValidateSlugAffixAsync(slug, type);
+        }
+
+        return await base.Patch(id, value);
+    }
+
     // PUT api/content/5
     [HttpPut("{id}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -375,6 +407,8 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public virtual async Task<ActionResult<ContentDetailsDto>> Put(int id, [FromBody] ContentCreateDto value)
     {
+        await ValidateSlugAffixAsync(value.Slug, value.Type);
+
         var existingEntity = await FindOrThrowNotFound(id);
 
         mapper.Map(value, existingEntity);
@@ -991,6 +1025,29 @@ public class ContentController : BaseControllerWithImport<Content, ContentCreate
         if (!string.IsNullOrWhiteSpace(content.Seo.OpenGraphImageUrl))
         {
             content.Seo.OpenGraphImageUrl = mediaResolver.Resolve(content.Seo.OpenGraphImageUrl, HttpContext, mode);
+        }
+    }
+
+    private async Task ValidateSlugAffixAsync(string slug, string contentTypeUid)
+    {
+        var contentType = await dbContext.ContentTypes!
+            .Where(ct => ct.Uid == contentTypeUid)
+            .Select(ct => new { ct.SlugPrefix, ct.SlugPostfix })
+            .FirstOrDefaultAsync();
+
+        if (contentType == null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(contentType.SlugPrefix) && !slug.StartsWith(contentType.SlugPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new UnprocessableEntityException($"Slug must start with '{contentType.SlugPrefix}' for content type '{contentTypeUid}'.");
+        }
+
+        if (!string.IsNullOrEmpty(contentType.SlugPostfix) && !slug.EndsWith(contentType.SlugPostfix, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new UnprocessableEntityException($"Slug must end with '{contentType.SlugPostfix}' for content type '{contentTypeUid}'.");
         }
     }
 }

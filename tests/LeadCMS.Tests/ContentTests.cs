@@ -415,6 +415,101 @@ public class ContentTests : SimpleTableTests<Content, TestContent, ContentUpdate
         created!.PreviewSlug.Should().Be(content.PreviewSlug);
     }
 
+    [Fact]
+    public async Task ContentType_ShouldPersistSlugPrefixAndPostfix()
+    {
+        var uid = $"slug-affix-type-{Guid.NewGuid():N}";
+
+        var contentType = await EnsureContentTypeAsync(uid, slugPrefix: "blog/", slugPostfix: ".html");
+
+        contentType.Should().NotBeNull();
+        contentType!.SlugPrefix.Should().Be("blog/");
+        contentType!.SlugPostfix.Should().Be(".html");
+
+        var fetched = await GetTest<ContentTypeDetailsDto>($"{ContentTypesApi}/{contentType.Id}", HttpStatusCode.OK);
+        fetched.Should().NotBeNull();
+        fetched!.SlugPrefix.Should().Be("blog/");
+        fetched!.SlugPostfix.Should().Be(".html");
+    }
+
+    [Fact]
+    public async Task CreateContent_WithMatchingSlugPrefix_ShouldSucceed()
+    {
+        var typeUid = $"prefix-type-{Guid.NewGuid():N}";
+        await EnsureContentTypeAsync(typeUid, slugPrefix: "blog/");
+
+        var content = new TestContent(Guid.NewGuid().ToString("N"))
+        {
+            Type = typeUid,
+            Slug = $"blog/my-post-{Guid.NewGuid():N}",
+        };
+
+        var created = await PostTest<ContentDetailsDto>(itemsUrl, content, HttpStatusCode.Created);
+        created.Should().NotBeNull();
+        created!.Slug.Should().StartWith("blog/");
+    }
+
+    [Fact]
+    public async Task CreateContent_WithMismatchedSlugPrefix_ShouldReturn422()
+    {
+        var typeUid = $"prefix-fail-{Guid.NewGuid():N}";
+        await EnsureContentTypeAsync(typeUid, slugPrefix: "blog/");
+
+        var content = new TestContent(Guid.NewGuid().ToString("N"))
+        {
+            Type = typeUid,
+            Slug = $"news/my-post-{Guid.NewGuid():N}",
+        };
+
+        var response = await Request(HttpMethod.Post, itemsUrl, content);
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var problemDetails = JsonHelper.Deserialize<ProblemDetails>(responseContent);
+        problemDetails.Should().NotBeNull();
+        problemDetails!.Title.Should().Contain("blog/");
+    }
+
+    [Fact]
+    public async Task CreateContent_WithMismatchedSlugPostfix_ShouldReturn422()
+    {
+        var typeUid = $"postfix-fail-{Guid.NewGuid():N}";
+        await EnsureContentTypeAsync(typeUid, slugPostfix: ".html");
+
+        var content = new TestContent(Guid.NewGuid().ToString("N"))
+        {
+            Type = typeUid,
+            Slug = $"my-post-{Guid.NewGuid():N}",
+        };
+
+        var response = await Request(HttpMethod.Post, itemsUrl, content);
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var problemDetails = JsonHelper.Deserialize<ProblemDetails>(responseContent);
+        problemDetails.Should().NotBeNull();
+        problemDetails!.Title.Should().Contain(".html");
+    }
+
+    [Fact]
+    public async Task PatchContent_WithMismatchedSlugPrefix_ShouldReturn422()
+    {
+        var typeUid = $"prefix-patch-{Guid.NewGuid():N}";
+        await EnsureContentTypeAsync(typeUid, slugPrefix: "blog/");
+
+        var content = new TestContent(Guid.NewGuid().ToString("N"))
+        {
+            Type = typeUid,
+            Slug = $"blog/my-post-{Guid.NewGuid():N}",
+        };
+
+        var created = await PostTest<ContentDetailsDto>(itemsUrl, content, HttpStatusCode.Created);
+        created.Should().NotBeNull();
+
+        var response = await Patch($"{itemsUrl}/{created!.Id}", new ContentUpdateDto { Slug = "news/bad-slug" });
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
     protected override ContentUpdateDto UpdateItem(TestContent to)
     {
         var from = new ContentUpdateDto();
@@ -422,7 +517,12 @@ public class ContentTests : SimpleTableTests<Content, TestContent, ContentUpdate
         return from;
     }
 
-    private async Task<ContentTypeDetailsDto?> EnsureContentTypeAsync(string uid, bool supportsPreviewSlug, bool supportsSeo = false)
+    private async Task<ContentTypeDetailsDto?> EnsureContentTypeAsync(
+        string uid,
+        bool supportsPreviewSlug = false,
+        bool supportsSeo = false,
+        string? slugPrefix = null,
+        string? slugPostfix = null)
     {
         var existing = await GetTest<List<ContentTypeDetailsDto>>($"{ContentTypesApi}?filter[where][uid][eq]={uid}", HttpStatusCode.OK);
         if (existing != null && existing.Count > 0)
@@ -440,6 +540,8 @@ public class ContentTests : SimpleTableTests<Content, TestContent, ContentUpdate
                 SupportsCoverImage = true,
                 SupportsPreviewSlug = supportsPreviewSlug,
                 SupportsSEO = supportsSeo,
+                SlugPrefix = slugPrefix,
+                SlugPostfix = slugPostfix,
             },
             HttpStatusCode.Created);
     }
