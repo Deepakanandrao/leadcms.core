@@ -107,12 +107,11 @@ jobs:
 
       - name: Publish Test Results
         if: github.event.inputs.run_tests == 'true' && (success() || failure())
-        uses: dorny/test-reporter@v1
+        uses: EnricoMi/publish-unit-test-result-action@v2
         with:
-          name: .NET Test Results
-          path: "*.trx"
-          reporter: dotnet-trx
-          fail-on-error: false
+          files: "*.trx"
+          check_name: .NET Test Results
+          action_fail_on_inconclusive: false
 
       - name: Upload NuGet packages
         uses: actions/upload-artifact@v4

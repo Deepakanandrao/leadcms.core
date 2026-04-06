@@ -77,13 +77,12 @@ jobs:
         run: dotnet test --no-build --configuration $BUILD_CONFIG --logger "trx" --verbosity d --results-directory "./"
 
       - name: Publish Test Results
-        uses: dorny/test-reporter@v1
+        uses: EnricoMi/publish-unit-test-result-action@v2
         if: success() || failure()
         with:
-          name: .NET Test Results
-          path: "*.trx"
-          reporter: dotnet-trx
-          fail-on-error: false
+          files: "*.trx"
+          check_name: .NET Test Results
+          action_fail_on_inconclusive: false
 
       - name: Upload NuGet packages
         uses: actions/upload-artifact@v4
