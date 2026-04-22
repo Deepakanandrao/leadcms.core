@@ -18,7 +18,7 @@ namespace LeadCMS.Plugins.AI.Services;
 
 public class OpenAIProviderService : IAIProviderService
 {
-    private const string ImageModel = "gpt-image-1.5";
+    private const string ImageModel = "gpt-image-2";
     private static readonly HashSet<string> SupportedOpenAiImageMimeTypes =
         new(StringComparer.OrdinalIgnoreCase)
         {
