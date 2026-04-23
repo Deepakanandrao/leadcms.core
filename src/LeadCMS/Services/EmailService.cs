@@ -10,7 +10,6 @@ using MailKit;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using MimeKit;
-using MimeKit.Utils;
 
 namespace LeadCMS.Services;
 
@@ -50,7 +49,7 @@ public class EmailService : IEmailService
 
             await client.SendAsync(message);
 
-            return message.MessageId ?? throw new InvalidOperationException("Email message ID was not generated.");
+            return message.MessageId;
         }
         catch (Exception exception)
         {
@@ -82,8 +81,6 @@ public class EmailService : IEmailService
     private static async Task<MimeMessage> GenerateEmailBody(string subject, string fromEmail, string fromName, string[] recipients, string body, List<AttachmentDto>? attachments)
     {
         var message = new MimeMessage();
-
-        message.MessageId = MimeUtils.GenerateMessageId();
 
         message.Subject = subject;
 

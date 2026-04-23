@@ -28,7 +28,7 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.12.0" />
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.11.1" />
     <PackageReference Include="OpenAI" Version="2.8.0" />
     <!-- Insert additional references above this line -->
   </ItemGroup>
