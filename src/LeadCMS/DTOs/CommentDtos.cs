@@ -89,6 +89,10 @@ public class CommentUpdateDto : IPatchDto
 
     public string? Language { get; set; }
 
+    public int? CommentableId { get; set; }
+
+    public int? ParentId { get; set; }
+
     public DateTime? PublishedAt { get; set; }
 
     public CommentStatus? Status { get; set; }

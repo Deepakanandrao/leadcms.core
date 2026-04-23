@@ -579,6 +579,44 @@ public class CommentsTests : TableWithFKTests<Comment, TestComment, CommentUpdat
         comment!.PublishedAt.Should().Be(publishedAt);
     }
 
+    [Fact]
+    public async Task PatchComment_ShouldUpdateParentId()
+    {
+        await CreateFKItemsWithUid();
+
+        var parentUrl = await PostTest(itemsUrl, new TestComment("patch-parent", 1));
+        var parentComment = await GetTest<CommentDetailsDto>(parentUrl);
+        var childUrl = await PostTest(itemsUrl, new TestComment("patch-child", 1));
+
+        await PatchTest(childUrl, new CommentUpdateDto
+        {
+            ParentId = parentComment!.Id,
+        });
+
+        var childComment = await GetTest<CommentDetailsDto>(childUrl);
+
+        childComment.Should().NotBeNull();
+        childComment!.ParentId.Should().Be(parentComment.Id);
+    }
+
+    [Fact]
+    public async Task PatchComment_ShouldUpdateCommentableId()
+    {
+        await CreateFKItemsWithUid();
+
+        var commentUrl = await PostTest(itemsUrl, new TestComment("patch-commentable", 1));
+
+        await PatchTest(commentUrl, new CommentUpdateDto
+        {
+            CommentableId = 2,
+        });
+
+        var comment = await GetTest<CommentDetailsDto>(commentUrl);
+
+        comment.Should().NotBeNull();
+        comment!.CommentableId.Should().Be(2);
+    }
+
     protected override void MustBeEquivalent(object? expected, object? result)
     {
         result.Should().BeEquivalentTo(expected, options => options
