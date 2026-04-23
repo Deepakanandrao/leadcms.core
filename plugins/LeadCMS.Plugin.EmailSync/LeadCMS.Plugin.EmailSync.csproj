@@ -32,7 +32,8 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="MailKit" Version="4.9.0" />
+    <!-- See LeadCMS.csproj for the rationale behind this version pin and NU1902 suppression. -->
+    <PackageReference Include="MailKit" Version="4.9.0" NoWarn="NU1902" />
     <!-- Insert additional references above this line -->
   </ItemGroup>
 

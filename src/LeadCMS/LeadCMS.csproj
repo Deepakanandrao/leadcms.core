@@ -49,8 +49,19 @@
     <PackageReference Include="Fluid.Core" Version="2.31.0" />
     <PackageReference Include="HtmlAgilityPack" Version="1.11.60" />
     <PackageReference Include="libphonenumber-csharp" Version="9.0.25" />
-    <PackageReference Include="MailKit" Version="4.9.0" />
-    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.11.1" />
+    <!--
+         MailKit pinned to 4.11.0: versions 4.12.0+ changed SASL mechanism selection
+         (added native NTLM/GSSAPI on net8.0+, 4.14.1 re-added NTLM to defaults) and
+         4.16.0 modified the SslStream upgrade path. These changes broke authentication
+         and TLS handshakes against SendGrid and Unisender SMTP relays.
+         GHSA-9j88-vvj5-vhgr (STARTTLS response injection, patched in 4.16.0) is not
+         applicable here because we connect with SecureSocketOptions.SslOnConnect
+         (implicit TLS on port 465) — the vulnerable code path is only reached during
+         a STARTTLS upgrade from a plaintext connection. NU1902 is suppressed for this
+         reason. MimeKit is pinned separately to 4.15.1 to pick up the SMTP CRLF
+         injection fix in MAIL FROM / RCPT TO that was bundled with MailKit 4.15.1. -->
+    <PackageReference Include="MailKit" Version="4.9.0" NoWarn="NU1902" />
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.12.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.11" />
     <PackageReference Include="Microsoft.Identity.Web" Version="3.8.4" />
