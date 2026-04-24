@@ -108,11 +108,15 @@ jobs:
           path: tests/LeadCMS.Tests/bin/${{ env.BUILD_CONFIG }}/
 
       - name: Test
-        run: >-
-          dotnet test tests/LeadCMS.Tests/bin/${{ env.BUILD_CONFIG
-          }}/net8.0/LeadCMS.Tests.dll --logger "trx;LogFileName=${{ matrix.group
-          }}.trx" --filter "${ { matrix.filter }}" --verbosity normal
-          --results-directory "${{ github.workspace }}"
+        env:
+          TEST_FILTER: ${{ matrix.filter }}
+          TEST_GROUP: ${{ matrix.group }}
+        run: |
+          dotnet test tests/LeadCMS.Tests/bin/${{ env.BUILD_CONFIG }}/net8.0/LeadCMS.Tests.dll \
+            --logger "trx;LogFileName=${TEST_GROUP}.trx" \
+            --filter "${TEST_FILTER}" \
+            --verbosity normal \
+            --results-directory "${{ github.workspace }}"
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
