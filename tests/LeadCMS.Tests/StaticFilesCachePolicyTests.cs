@@ -43,6 +43,19 @@ public sealed class StaticFilesCachePolicyTests : IDisposable
         AssertCacheControlDirectives(publicAssetResponse, "no-cache", "must-revalidate");
     }
 
+    [Fact]
+    public async Task StaticFiles_ShouldServeCompressedBundle_WhenClientAcceptsBrotli()
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, "/main.3a42981b.js");
+        request.Headers.AcceptEncoding.ParseAdd("br");
+
+        var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Content.Headers.ContentEncoding.Should().Contain("br");
+        response.Headers.Vary.Should().Contain("Accept-Encoding");
+    }
+
     public void Dispose()
     {
         client.Dispose();

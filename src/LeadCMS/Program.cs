@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
+using System.IO.Compression;
 using System.Text;
 using LeadCMS.Configuration;
 using LeadCMS.Controllers;
@@ -27,6 +28,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.AspNetCore.Mvc.Formatters;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -60,6 +62,7 @@ public class Program
         var builder = WebApplication.CreateBuilder(args);
 
         ConfigureCORS(builder);
+        ConfigureResponseCompression(builder);
 
         AppSettingsFiles.ForEach(path =>
         {
@@ -209,6 +212,7 @@ public class Program
         app.UseHttpsRedirection();
         app.UseExceptionHandler("/error");
         app.UseForwardedHeaders();
+        app.UseResponseCompression();
 
         await MigrateOnStartIfRequired(app, builder);
 
@@ -629,6 +633,35 @@ public class Program
                         VaryByHeader = item!.VaryByHeader!,
                     });
             }
+        });
+    }
+
+    private static void ConfigureResponseCompression(WebApplicationBuilder builder)
+    {
+        builder.Services.AddResponseCompression(options =>
+        {
+            options.EnableForHttps = true;
+            options.Providers.Add<BrotliCompressionProvider>();
+            options.Providers.Add<GzipCompressionProvider>();
+            options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[]
+            {
+                "application/javascript",
+                "text/javascript",
+                "text/css",
+                "application/json",
+                "image/svg+xml",
+                "application/wasm",
+            });
+        });
+
+        builder.Services.Configure<BrotliCompressionProviderOptions>(options =>
+        {
+            options.Level = CompressionLevel.Fastest;
+        });
+
+        builder.Services.Configure<GzipCompressionProviderOptions>(options =>
+        {
+            options.Level = CompressionLevel.Fastest;
         });
     }
 
