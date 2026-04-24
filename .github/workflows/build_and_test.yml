@@ -124,3 +124,4 @@ jobs:
         with:
           files: "${{ matrix.group }}.trx"
           check_name: .NET Tests / ${{ matrix.group }}
+          large_files: true
