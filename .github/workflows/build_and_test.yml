@@ -9,17 +9,16 @@ on:
 env:
   BUILD_CONFIG: Release
   DOTNET_VERSION: 8.0.x
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -31,7 +30,7 @@ jobs:
           --no-restore
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: build-output
           path: tests/LeadCMS.Tests/bin/${{ env.BUILD_CONFIG }}/
@@ -89,10 +88,10 @@ jobs:
               fiedName~Password&!FullyQualifiedName~Plugin&!FullyQualifiedName~\
               ChangeLog"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -103,7 +102,7 @@ jobs:
         run: docker compose -f ./docker-compose/docker-compose.tests.yml up -d --wait
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: build-output
           path: tests/LeadCMS.Tests/bin/${{ env.BUILD_CONFIG }}/
@@ -113,11 +112,11 @@ jobs:
           dotnet test tests/LeadCMS.Tests/LeadCMS.Tests.csproj --no-build
           --configuration ${{ env.BUILD_CONFIG }} --logger "trx;LogFileName=${{
           matrix.group }}.trx" --filter "${{ matrix.filter }}" --verbosity
-          normal --results-directory "./"
+          normal --results-directory "${{ github.workspace }}"
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
-        if: success() || failure()
+        if: always()
         with:
-          files: "${{ matrix.group }}.trx"
+          files: "${{ github.workspace }}/${{ matrix.group }}.trx"
           check_name: .NET Tests / ${{ matrix.group }}
