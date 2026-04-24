@@ -2,45 +2,122 @@ name: PR & Develop - Build & Test
 
 on:
   push:
-    branches: ["main", "develop"]
+    branches: [ "main", "develop" ]
   pull_request:
-    branches: ["main", "develop"]
+    branches: [ "main", "develop" ]
+
+env:
+  BUILD_CONFIG: Release
+  DOTNET_VERSION: 8.0.x
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
-    name: Build & Test
+    name: Build
     runs-on: ubuntu-latest
-    permissions:
-      checks: write
-      contents: read
-    env:
-      BUILD_CONFIG: "Release"
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
-
-      - name: Set vm.max_map_count for Elasticsearch
-        run: sudo sysctl -w vm.max_map_count=262144
-
-      - name: docker compose -f ./docker-compose/docker-compose.tests.yml up -d
-        run: docker compose -f ./docker-compose/docker-compose.tests.yml up -d --wait
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore dependencies
         run: dotnet restore
 
       - name: Build
-        run: dotnet build --configuration $BUILD_CONFIG -p:Version=1.0.0 --no-restore
+        run: dotnet build --configuration ${{ env.BUILD_CONFIG }} -p:Version=1.0.0
+          --no-restore
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: tests/LeadCMS.Tests/bin/${{ env.BUILD_CONFIG }}/
+          retention-days: 1
+
+  test:
+    name: Test / ${{ matrix.group }}
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Groups are defined by keyword patterns. Any new test class whose name
+          # contains a group keyword is automatically routed to that group.
+          # Only add a keyword here when introducing an entirely new domain area.
+          # The 'core' group is a catch-all and never needs to be updated.
+          - group: email-campaigns
+            # keywords: Email, Imap, Campaign, Sequence, Deploy
+            filter: "FullyQualifiedName~Email|FullyQualifiedName~Imap|FullyQualifiedName~Ca\
+              mpaign|FullyQualifiedName~Sequence|FullyQualifiedName~Deploy"
+          - group: contacts-crm
+            # keywords: Contact, Deal, Segment, Language, Phone
+            filter: "FullyQualifiedName~Contact|FullyQualifiedName~Deal|FullyQualifiedName~\
+              Segment|FullyQualifiedName~Language|FullyQualifiedName~Phone"
+          - group: content-media
+            # keywords: Content, Media, File, Mdx, Static, Translation, AI, Link
+            filter: "FullyQualifiedName~Content|FullyQualifiedName~Media|FullyQualifiedName\
+              ~File|FullyQualifiedName~Mdx|FullyQualifiedName~Static|FullyQuali\
+              fiedName~Translation|FullyQualifiedName~AI|FullyQualifiedName~Lin\
+              k"
+          - group: settings-auth
+            # keywords: Setting, Config, Auth, Identity, User, Account, Password, Plugin, ChangeLog
+            filter: "FullyQualifiedName~Setting|FullyQualifiedName~Config|FullyQualifiedNam\
+              e~Auth|FullyQualifiedName~Identity|FullyQualifiedName~User|FullyQ\
+              ualifiedName~Account|FullyQualifiedName~Password|FullyQualifiedNa\
+              me~Plugin|FullyQualifiedName~ChangeLog"
+          - group: core
+            # Catch-all: negation of every keyword above.
+            # Self-maintaining — no update needed when adding new test classes.
+            # Only update when a new keyword is added to one of the named groups above.
+            filter: "!FullyQualifiedName~Email&!FullyQualifiedName~Imap&!FullyQualifiedName\
+              ~Campaign&!FullyQualifiedName~Sequence&!FullyQualifiedName~Deploy\
+              &!FullyQualifiedName~Contact&!FullyQualifiedName~Deal&!FullyQuali\
+              fiedName~Segment&!FullyQualifiedName~Language&!FullyQualifiedName\
+              ~Phone&!FullyQualifiedName~Content&!FullyQualifiedName~Media&!Ful\
+              lyQualifiedName~File&!FullyQualifiedName~Mdx&!FullyQualifiedName~\
+              Static&!FullyQualifiedName~Translation&!FullyQualifiedName~AI&!Fu\
+              llyQualifiedName~Link&!FullyQualifiedName~Setting&!FullyQualified\
+              Name~Config&!FullyQualifiedName~Auth&!FullyQualifiedName~Identity\
+              &!FullyQualifiedName~User&!FullyQualifiedName~Account&!FullyQuali\
+              fiedName~Password&!FullyQualifiedName~Plugin&!FullyQualifiedName~\
+              ChangeLog"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Set vm.max_map_count for Elasticsearch
+        run: sudo sysctl -w vm.max_map_count=262144
+
+      - name: Start Docker services
+        run: docker compose -f ./docker-compose/docker-compose.tests.yml up -d --wait
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: tests/LeadCMS.Tests/bin/${{ env.BUILD_CONFIG }}/
 
       - name: Test
-        run: dotnet test --no-build --configuration $BUILD_CONFIG --logger "trx" --verbosity normal --results-directory "./"
+        run: >-
+          dotnet test tests/LeadCMS.Tests/LeadCMS.Tests.csproj --no-build
+          --configuration ${{ env.BUILD_CONFIG }} --logger "trx;LogFileName=${{
+          matrix.group }}.trx" --filter "${{ matrix.filter }}" --verbosity
+          normal --results-directory "./"
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
         if: success() || failure()
         with:
-          files: "*.trx"
-          check_name: .NET Test Results
+          files: "${{ matrix.group }}.trx"
+          check_name: .NET Tests / ${{ matrix.group }}
