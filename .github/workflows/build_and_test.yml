@@ -109,14 +109,14 @@ jobs:
 
       - name: Test
         run: >-
-          dotnet test tests/LeadCMS.Tests/LeadCMS.Tests.csproj --no-build
-          --configuration ${{ env.BUILD_CONFIG }} --logger "trx;LogFileName=${{
-          matrix.group }}.trx" --filter "${{ matrix.filter }}" --verbosity
-          normal --results-directory "${{ github.workspace }}"
+          dotnet test tests/LeadCMS.Tests/bin/${{ env.BUILD_CONFIG
+          }}/net8.0/LeadCMS.Tests.dll --logger "trx;LogFileName=${{ matrix.group
+          }}.trx" --filter "${ { matrix.filter }}" --verbosity normal
+          --results-directory "${{ github.workspace }}"
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
         if: always()
         with:
-          files: "${{ github.workspace }}/${{ matrix.group }}.trx"
+          files: "${{ matrix.group }}.trx"
           check_name: .NET Tests / ${{ matrix.group }}
