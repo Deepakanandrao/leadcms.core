@@ -519,11 +519,7 @@ namespace LeadCMS.Infrastructure
 
             Expression? CreateContainExpression(QueryModelBuilder<T>.WhereUnitData cmd, Expression parameter)
             {
-                Expression? res = null;
-
                 var matchOperation = typeof(Regex).GetMethod("IsMatch", BindingFlags.Static | BindingFlags.Public, new[] { typeof(string), typeof(string), typeof(RegexOptions) });
-                var trueConstant = Expression.Constant(true);
-                var falseConstant = Expression.Constant(false);
                 var regexOptionExpression = Expression.Constant(RegexOptions.IgnoreCase);
 
                 var data = cmd.ParseContainValue(cmd.StringValue);
@@ -545,6 +541,29 @@ namespace LeadCMS.Infrastructure
                 sb.Append('$');
 
                 var valueParameterExpression = Expression.Constant(sb.ToString(), typeof(string));
+
+                var propertyType = cmd.PropertyPath.LeafProperty.PropertyType;
+                if (propertyType == typeof(string[]) ||
+                    (propertyType.IsGenericType && typeof(IEnumerable<string>).IsAssignableFrom(propertyType)))
+                {
+                    // For array/collection of strings: check whether any element matches the pattern
+                    var elementParam = Expression.Parameter(typeof(string), "element");
+                    var regexCall = Expression.Call(matchOperation!, elementParam, valueParameterExpression, regexOptionExpression);
+                    var elementLambda = Expression.Lambda<Func<string, bool>>(regexCall, elementParam);
+
+                    var anyMethod = typeof(Enumerable)
+                        .GetMethods(BindingFlags.Static | BindingFlags.Public)
+                        .First(m => m.Name == "Any" && m.GetParameters().Length == 2)
+                        .MakeGenericMethod(typeof(string));
+
+                    Expression anyCall = Expression.Call(anyMethod, parameter, elementLambda);
+
+                    return cmd.Operation == WOperand.NContains ? Expression.Not(anyCall) : anyCall;
+                }
+
+                var trueConstant = Expression.Constant(true);
+                var falseConstant = Expression.Constant(false);
+                Expression? res = null;
 
                 if (cmd.Operation == WOperand.Contains)
                 {

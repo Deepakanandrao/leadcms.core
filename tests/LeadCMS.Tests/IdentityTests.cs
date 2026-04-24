@@ -92,27 +92,57 @@ public class IdentityLoginTests : BaseTestAutoLogin
     [Fact]
     public async Task LockoutTest()
     {
-        var config = Program.GetApp()!.Configuration;
-        var lockoutConfig = config.GetSection("Identity").Get<IdentityConfig>();
+        using var scope = App.Services.CreateScope();
+        var lockoutConfig = scope.ServiceProvider.GetRequiredService<IConfiguration>()
+            .GetSection("Identity").Get<IdentityConfig>();
+
         lockoutConfig.Should().NotBeNull();
 
         var testLoginDto = new LoginDto()
         { Email = AdminLoginData.Email, Password = "WrongPassword" };
-        // The first times login returns Unauthorized
-        int count = lockoutConfig!.MaxFailedAccessAttempts - 1;
-        for (int i = 0; i < count; i++)
+
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+
+        try
         {
+            // The first times login returns Unauthorized
+            int count = lockoutConfig!.MaxFailedAccessAttempts - 1;
+            for (int i = 0; i < count; i++)
+            {
+                await PostTest<JWTokenDto>(LoginApi, testLoginDto, HttpStatusCode.Unauthorized);
+            }
+
+            // When maximum number of failed attempts is achieved login returns TooManyRequests and blocks the user
+            await PostTest<JWTokenDto>(LoginApi, testLoginDto, HttpStatusCode.TooManyRequests);
+            // When the user is blocked login returns BadRequest
+            await PostTest<JWTokenDto>(LoginApi, testLoginDto, HttpStatusCode.BadRequest);
+            await PostTest<JWTokenDto>(LoginApi, testLoginDto, HttpStatusCode.BadRequest);
+
+            // Re-fetch the user here so the entity has the current ConcurrencyStamp after all
+            // the login attempts that updated AccessFailedCount/LockoutEnd via separate request scopes.
+            // Using a stale entity would cause EF's optimistic concurrency check to silently fail,
+            // leaving the lockout in place.
+            var user = await userManager.FindByEmailAsync(AdminLoginData.Email);
+            user.Should().NotBeNull();
+
+            // Programmatically expire the lockout instead of waiting minutes.
+            // ASP.NET Identity resets AccessFailedCount to 0 when the lockout is triggered,
+            // so after expiry the next wrong-password attempt correctly returns Unauthorized.
+            await userManager.SetLockoutEndDateAsync(user!, DateTimeOffset.UtcNow.AddSeconds(-1));
+
             await PostTest<JWTokenDto>(LoginApi, testLoginDto, HttpStatusCode.Unauthorized);
         }
-
-        // When maximum number of failed attemts is achived login returns TooManyRequests and blocks the user
-        await PostTest<JWTokenDto>(LoginApi, testLoginDto, HttpStatusCode.TooManyRequests);
-        // When the user is blocked login returns BadRequest
-        await PostTest<JWTokenDto>(LoginApi, testLoginDto, HttpStatusCode.BadRequest);
-        await PostTest<JWTokenDto>(LoginApi, testLoginDto, HttpStatusCode.BadRequest);
-        // Wait until the user is unlocked automatically
-        await Task.Delay(TimeSpan.FromMinutes(lockoutConfig!.LockoutTime * 1.1));
-        await PostTest<JWTokenDto>(LoginApi, testLoginDto, HttpStatusCode.Unauthorized);
+        finally
+        {
+            // Always restore the admin user's lockout state so other tests are not affected,
+            // regardless of whether this test passed or failed.
+            var user = await userManager.FindByEmailAsync(AdminLoginData.Email);
+            if (user != null)
+            {
+                await userManager.SetLockoutEndDateAsync(user, null);
+                await userManager.ResetAccessFailedCountAsync(user);
+            }
+        }
     }
 
     private async Task TestBody(string username, string password, HttpStatusCode expectedCode)

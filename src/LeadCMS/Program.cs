@@ -245,7 +245,11 @@ public class Program
 
     public static async Task CreateDefaultIdentity(IServiceScope scope)
     {
-        var defaultRoles = app!.Configuration.GetSection("DefaultRoles").Get<DefaultRolesConfig>()!;
+        // Use IConfiguration from the DI scope rather than app!.Configuration.
+        // Program.app is a static field that can be overwritten and disposed by other
+        // WebApplicationFactory instances in tests. The scope's IConfiguration is always valid.
+        var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+        var defaultRoles = configuration.GetSection("DefaultRoles").Get<DefaultRolesConfig>()!;
 
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
 
@@ -259,7 +263,7 @@ public class Program
 
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
 
-        var defaultUsers = app!.Configuration.GetSection("DefaultUsers").Get<DefaultUsersConfig>()!;
+        var defaultUsers = configuration.GetSection("DefaultUsers").Get<DefaultUsersConfig>()!;
 
         foreach (var defaultUser in defaultUsers)
         {

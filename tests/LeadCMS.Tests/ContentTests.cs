@@ -510,6 +510,134 @@ public class ContentTests : SimpleTableTests<Content, TestContent, ContentUpdate
         response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
     }
 
+    [Fact]
+    public async Task FilterWithStatistics_ByDateLte_HighPrecisionTimestamp_ShouldReturnOk()
+    {
+        var uid = Guid.NewGuid().ToString("N");
+        await PostTest<ContentDetailsDto>(itemsUrl, new TestContent(uid), HttpStatusCode.Created);
+
+        // Use a timestamp with 7 fractional digits (round-trip format) in the future so all records are included
+        var futureTimestamp = DateTime.UtcNow.AddDays(1).ToString("O");
+        var url = $"{itemsUrl}/with-statistics?filter[where][updatedAt][lte]={Uri.EscapeDataString(futureTimestamp)}" +
+                  $"&filter[where][createdAt][lte]={Uri.EscapeDataString(futureTimestamp)}" +
+                  $"&filter[where][publishedAt][lte]={Uri.EscapeDataString(futureTimestamp)}";
+
+        var response = await GetTest(url, HttpStatusCode.OK);
+        var content = await response.Content.ReadAsStringAsync();
+        var result = JsonHelper.Deserialize<ContentWithStatisticsDto>(content);
+
+        result.Should().NotBeNull();
+        result!.Content.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task FilterByTagsContains_WithWildcard_ShouldReturnMatchingContent()
+    {
+        var uid = Guid.NewGuid().ToString("N");
+        var uniqueTag = $"WildcardTest{uid[..8]}";
+        var content = new TestContent(uid)
+        {
+            Tags = new[] { uniqueTag },
+        };
+
+        await PostTest<ContentDetailsDto>(itemsUrl, content, HttpStatusCode.Created);
+
+        var pattern = Uri.EscapeDataString($"*{uid[..8]}*");
+        var result = await GetTest<List<ContentDetailsDto>>(
+            $"{itemsUrl}?filter[where][tags][contains]={pattern}",
+            HttpStatusCode.OK);
+
+        result.Should().NotBeNull();
+        result.Should().Contain(c => c.Tags.Contains(uniqueTag));
+    }
+
+    [Fact]
+    public async Task FilterByTagsContains_ExactMatch_ShouldNotMatchSuperstring()
+    {
+        // Tags: one item has "MyTag", another has "MyTag1" (which contains "MyTag" as a substring).
+        // Exact-match search (no wildcards) must return only the item whose tag is exactly "MyTag".
+        var uid = Guid.NewGuid().ToString("N");
+        var baseTag = $"ExactTag{uid[..8]}";
+        var superTag = $"{baseTag}Extra";
+
+        var exactItem = new TestContent($"{uid}a")
+        {
+            Tags = new[] { baseTag },
+        };
+
+        var superItem = new TestContent($"{uid}b")
+        {
+            Tags = new[] { superTag },
+        };
+
+        await PostTest<ContentDetailsDto>(itemsUrl, exactItem, HttpStatusCode.Created);
+        await PostTest<ContentDetailsDto>(itemsUrl, superItem, HttpStatusCode.Created);
+
+        // No wildcards → regex becomes ^baseTag$, so only the exact match is returned
+        var result = await GetTest<List<ContentDetailsDto>>(
+            $"{itemsUrl}?filter[where][tags][contains]={Uri.EscapeDataString(baseTag)}",
+            HttpStatusCode.OK);
+
+        result.Should().NotBeNull();
+        result.Should().Contain(c => c.Tags.Contains(baseTag));
+        result.Should().NotContain(c => c.Tags.Contains(superTag));
+    }
+
+    [Fact]
+    public async Task FilterByTagsNContains_ExactMatch_ShouldExcludeItemsWithTag()
+    {
+        var uid = Guid.NewGuid().ToString("N");
+        var excludedTag = $"ExcludeTag{uid[..8]}";
+
+        var withTag = new TestContent($"{uid}a")
+        {
+            Tags = new[] { excludedTag },
+        };
+
+        var withoutTag = new TestContent($"{uid}b")
+        {
+            Tags = new[] { $"OtherTag{uid[..8]}" },
+        };
+
+        await PostTest<ContentDetailsDto>(itemsUrl, withTag, HttpStatusCode.Created);
+        await PostTest<ContentDetailsDto>(itemsUrl, withoutTag, HttpStatusCode.Created);
+
+        var result = await GetTest<List<ContentDetailsDto>>(
+            $"{itemsUrl}?filter[where][tags][ncontains]={Uri.EscapeDataString(excludedTag)}",
+            HttpStatusCode.OK);
+
+        result.Should().NotBeNull();
+        result.Should().NotContain(c => c.Tags.Contains(excludedTag));
+    }
+
+    [Fact]
+    public async Task FilterByTagsNContains_WithWildcard_ShouldExcludePartialTagMatches()
+    {
+        var uid = Guid.NewGuid().ToString("N");
+        var sharedPrefix = $"Shared{uid[..8]}";
+
+        var itemWithMatchingTag = new TestContent($"{uid}a")
+        {
+            Tags = new[] { $"{sharedPrefix}Alpha" },
+        };
+
+        var itemWithNonMatchingTag = new TestContent($"{uid}b")
+        {
+            Tags = new[] { $"Unrelated{uid[..8]}" },
+        };
+
+        await PostTest<ContentDetailsDto>(itemsUrl, itemWithMatchingTag, HttpStatusCode.Created);
+        await PostTest<ContentDetailsDto>(itemsUrl, itemWithNonMatchingTag, HttpStatusCode.Created);
+
+        var pattern = Uri.EscapeDataString($"*{sharedPrefix}*");
+        var result = await GetTest<List<ContentDetailsDto>>(
+            $"{itemsUrl}?filter[where][tags][ncontains]={pattern}",
+            HttpStatusCode.OK);
+
+        result.Should().NotBeNull();
+        result.Should().NotContain(c => c.Tags.Any(t => t.StartsWith(sharedPrefix, StringComparison.OrdinalIgnoreCase)));
+    }
+
     protected override ContentUpdateDto UpdateItem(TestContent to)
     {
         var from = new ContentUpdateDto();

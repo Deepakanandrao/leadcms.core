@@ -3,6 +3,7 @@
 // </copyright>
 
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace LeadCMS.Tests;
 
@@ -90,7 +91,7 @@ public sealed class StaticFilesCachePolicyTests : IDisposable
         actualDirectives.Should().BeEquivalentTo(expectedDirectives);
     }
 
-    private sealed class StaticFilesTestApplication : TestApplication
+    private sealed class StaticFilesTestApplication : WebApplicationFactory<Program>
     {
         private StaticFilesTestApplication()
         {

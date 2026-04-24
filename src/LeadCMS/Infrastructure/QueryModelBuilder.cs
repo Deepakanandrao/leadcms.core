@@ -663,7 +663,7 @@ namespace LeadCMS.Infrastructure
                     }
                     else
                     {
-                        if (GetUnderlyingPropertyType() == typeof(DateTime) && DateTime.TryParseExact(sv, "yyyy-MM-dd'T'HH:mm:ss.fffK", CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out var date))
+                        if (GetUnderlyingPropertyType() == typeof(DateTime) && DateTime.TryParse(sv, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out var date))
                         {
                             result.Add(date);
                         }
