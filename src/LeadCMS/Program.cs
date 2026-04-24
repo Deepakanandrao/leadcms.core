@@ -27,6 +27,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.AspNetCore.Mvc.Formatters;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.OpenApi.Models;
@@ -214,7 +215,7 @@ public class Program
         app.UseSwagger();
         app.UseSwaggerUI();
         app.UseDefaultFiles();
-        app.UseStaticFiles();
+        app.UseStaticFiles(CreateStaticFileOptions());
 
         app.UseAuthentication();
         app.UseAuthorization();
@@ -231,7 +232,7 @@ public class Program
         {
             app.UseSpa(spa =>
             {
-                // works out of the box, no configuration required
+                spa.Options.DefaultPageStaticFileOptions = CreateSpaDefaultPageStaticFileOptions();
             });
         }
 
@@ -629,6 +630,30 @@ public class Program
                     });
             }
         });
+    }
+
+    private static StaticFileOptions CreateStaticFileOptions()
+    {
+        return new StaticFileOptions
+        {
+            OnPrepareResponse = context =>
+            {
+                context.Context.Response.Headers["Cache-Control"] = CacheHeaderPolicies.GetStaticAssetCacheControl(
+                    context.File.Name,
+                    context.Context.Request.Path.Value);
+            },
+        };
+    }
+
+    private static StaticFileOptions CreateSpaDefaultPageStaticFileOptions()
+    {
+        return new StaticFileOptions
+        {
+            OnPrepareResponse = context =>
+            {
+                context.Context.Response.Headers["Cache-Control"] = CacheHeaderPolicies.NoCacheMustRevalidate;
+            },
+        };
     }
 
     private static void ConfigureEmailServices(WebApplicationBuilder builder)

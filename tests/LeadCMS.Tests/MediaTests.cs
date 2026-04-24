@@ -113,6 +113,21 @@ public class MediaTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task GetMedia_WithVersionQuery_ShouldUseLongTermImmutableCaching()
+    {
+        const string scopeUid = "media-cache-versioned";
+        const string fileName = "cache-versioned.png";
+
+        var imageBytes = LoadEmbeddedResource("cover-sample.png");
+        var created = await UploadMediaAsync(imageBytes, fileName, scopeUid);
+
+        var response = await GetTest($"/api/media/{scopeUid}/{created.Name}?v=test123", HttpStatusCode.OK);
+
+        response.Headers.GetValues("Cache-Control").Should().ContainSingle()
+            .Which.Should().Be("public, max-age=31536000, immutable");
+    }
+
+    [Fact]
     public async Task GetMedia_ByOriginalName_ShouldReturnOriginalData()
     {
         await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "true");

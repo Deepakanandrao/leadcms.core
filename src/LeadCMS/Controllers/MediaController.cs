@@ -225,7 +225,6 @@ public class MediaController : ControllerBase
     [HttpGet]
     [AllowAnonymous]
     [Route("{*pathToFile}")]
-    [ResponseCache(CacheProfileName = "ImageResponse")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
@@ -280,6 +279,8 @@ public class MediaController : ControllerBase
         string lastModifiedString = lastModified.ToUniversalTime().ToString("R"); // RFC1123
 
         // Set ETag and Last-Modified headers
+        Response.Headers["Cache-Control"] = CacheHeaderPolicies.GetMediaCacheControl(Request.Query["v"].ToString());
+        Response.Headers["Vary"] = "User-Agent";
         Response.Headers["ETag"] = etag;
         Response.Headers["Last-Modified"] = lastModifiedString;
 
