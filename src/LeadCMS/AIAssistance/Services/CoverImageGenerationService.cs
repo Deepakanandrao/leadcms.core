@@ -51,8 +51,8 @@ public class CoverImageGenerationService : ICoverImageGenerationService
             request.ContentTitle,
             request.ContentSlug);
 
-        // Step 1: Get sample cover images (user-provided or from recent content)
-        var sampleImages = await GetSampleImagesAsync(request.SampleImagePaths);
+        // Step 1: Get sample cover images (user-provided only; no automatic fallback to recent covers)
+        var sampleImages = await GetSampleImagesAsync(request.SampleImagePaths, allowRecentFallback: false);
 
         // Step 2: Get blog cover image requirements from settings
         var coverImageRequirements = await GetCoverImageRequirementsAsync();
@@ -220,6 +220,14 @@ public class CoverImageGenerationService : ICoverImageGenerationService
         promptParts.Add($"Content Title: {request.ContentTitle}");
         promptParts.Add($"Content Description: {request.ContentDescription}");
 
+        if (!string.IsNullOrWhiteSpace(request.ContentBody))
+        {
+            var excerpt = request.ContentBody.Length > 500
+                ? request.ContentBody.Substring(0, 500)
+                : request.ContentBody;
+            promptParts.Add($"Content Excerpt: {excerpt}");
+        }
+
         // User's specific prompt if provided
         if (!string.IsNullOrWhiteSpace(request.Prompt))
         {
@@ -229,26 +237,19 @@ public class CoverImageGenerationService : ICoverImageGenerationService
         // Style guidance from sample images
         if (sampleImages.Count > 0)
         {
-            promptParts.Add("\nStyle guidance based on existing cover images in this blog:");
+            promptParts.Add("\nStyle references provided:");
             var references = sampleImages
                 .Select((s, i) =>
                 {
                     var description = string.IsNullOrWhiteSpace(s.Description)
                         ? string.Empty
                         : $" — {s.Description}";
-                    return $"- Sample {i + 1}: {s.FileName}{description}";
+                    return $"- Reference {i + 1}: {s.FileName}{description}";
                 })
                 .ToList();
 
-            if (references.Count > 0)
-            {
-                promptParts.AddRange(references);
-                promptParts.Add("Please maintain visual consistency with these existing cover images.");
-            }
-            else
-            {
-                promptParts.Add("There are existing cover images in the blog. Generate an image that would fit well alongside them.");
-            }
+            promptParts.AddRange(references);
+            promptParts.Add("Use these as abstract style references for color palette and mood only — do not copy specific objects, characters, or compositions from them, unless specifically requested in the user prompt.");
         }
 
         // Blog-specific cover image requirements
@@ -261,8 +262,9 @@ public class CoverImageGenerationService : ICoverImageGenerationService
         promptParts.Add("\nGeneral guidelines:");
         promptParts.Add("- Create a visually striking image suitable for a blog post cover");
         promptParts.Add("- Ensure the image has good visual hierarchy and composition");
-        promptParts.Add("- Make sure the image is relevant to the article topic");
+        promptParts.Add("- Create imagery that is unique and directly inspired by the specific article topic — avoid generic stock-photo aesthetics");
         promptParts.Add("- Use colors and composition that will work well with text overlays if needed");
+        promptParts.Add("- Do not reuse visual elements, characters, or objects from reference images, unless specifically requested in the user prompt");
 
         return string.Join("\n", promptParts);
     }
@@ -275,6 +277,14 @@ public class CoverImageGenerationService : ICoverImageGenerationService
         {
             request.Prompt,
         };
+
+        if (!string.IsNullOrWhiteSpace(request.ContentBody))
+        {
+            var excerpt = request.ContentBody.Length > 500
+                ? request.ContentBody.Substring(0, 500)
+                : request.ContentBody;
+            promptParts.Add($"\nContent Excerpt: {excerpt}");
+        }
 
         if (sampleImages.Count > 0)
         {

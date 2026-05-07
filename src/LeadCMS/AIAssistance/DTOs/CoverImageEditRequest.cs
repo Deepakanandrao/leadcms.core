@@ -34,6 +34,11 @@ public class CoverImageEditRequest
     public string ContentDescription { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the optional body/content of the article. The first 500 characters are used to provide additional context for image editing.
+    /// </summary>
+    public string? ContentBody { get; set; }
+
+    /// <summary>
     /// Gets or sets the user's prompt describing the desired edits to the cover image.
     /// </summary>
     [Required(ErrorMessage = "Prompt is required")]

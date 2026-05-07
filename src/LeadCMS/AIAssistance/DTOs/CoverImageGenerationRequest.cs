@@ -30,6 +30,11 @@ public class CoverImageGenerationRequest
     public string ContentSlug { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the optional body/content of the article. The first 500 characters are used to provide additional context for image generation.
+    /// </summary>
+    public string? ContentBody { get; set; }
+
+    /// <summary>
     /// Gets or sets an optional prompt with specific ideas for the cover image.
     /// </summary>
     public string? Prompt { get; set; }
