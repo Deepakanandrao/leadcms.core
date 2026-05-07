@@ -397,37 +397,15 @@ public class AIAssistanceTests : BaseTestAutoLogin
     }
 
     [Fact]
-    public async Task CoverImageGeneration_WithoutSampleImagePaths_UsesRecentCoverImages()
+    public async Task CoverImageGeneration_WithoutSampleImagePaths_SendsNoSampleImages()
     {
         await SetSystemSettingAsync(SettingKeys.MediaEnableOptimisation, "false");
         await SetSystemSettingAsync(SettingKeys.MediaMaxDimensions, "5000x5000");
 
-        TrackEntityType<Content>();
-
-        var sampleBytes = LoadEmbeddedResource("cover-sample.png");
-        var sampleMedia = await UploadMediaAsync(sampleBytes, "recent-cover.png", "recent-cover-scope");
-
-        var contentCreate = new ContentCreateDto
-        {
-            Title = "Recent Cover Content",
-            Description = "This content references a cover image for sampling.",
-            Body = "Body for recent cover content.",
-            Slug = "recent-cover-content",
-            Type = "blog-post",
-            Author = "Tester",
-            Language = "en",
-            Category = "Product",
-            Tags = new[] { "Tag1" },
-            AllowComments = true,
-            CoverImageUrl = $"/api/media/{sampleMedia.ScopeUid}/{sampleMedia.Name}",
-        };
-
-        await PostTest("/api/content", contentCreate, HttpStatusCode.Created);
-
         var request = new CoverImageGenerationRequest
         {
             ContentTitle = "Auto Samples",
-            ContentDescription = "No sample paths provided, should use recent covers.",
+            ContentDescription = "No sample paths provided, no samples should be sent to the AI provider.",
             ContentSlug = "ai-cover-auto-samples",
         };
 
@@ -437,9 +415,7 @@ public class AIAssistanceTests : BaseTestAutoLogin
 
         var lastRequest = TestAIProviderService.GetLastImageRequest();
         lastRequest.Should().NotBeNull();
-        lastRequest!.SampleImages.Should().NotBeEmpty();
-        lastRequest.SampleImages.Should().Contain(s => s.FileName == sampleMedia.Name);
-        lastRequest.Prompt.Should().Contain(sampleMedia.Name);
+        lastRequest!.SampleImages.Should().BeEmpty();
     }
 
     [Fact]
