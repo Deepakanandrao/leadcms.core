@@ -1,0 +1,122 @@
+name: Reusable - Matrix Tests
+
+on:
+    workflow_call:
+        inputs:
+            build-artifact-name:
+                description: "Name of the artifact containing compiled test binaries"
+                required: true
+                type: string
+            build-config:
+                description: "Build configuration (Release or Debug)"
+                required: false
+                type: string
+                default: Release
+            dotnet-version:
+                description: ".NET SDK version"
+                required: false
+                type: string
+                default: 8.0.x
+
+jobs:
+    test:
+        name: Test / ${{ matrix.group }}
+        runs-on: ubuntu-latest
+        permissions:
+            checks: write
+            contents: read
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    # Groups match on the CLASS NAME only, not method names.
+                    # The pattern "FullyQualifiedName~.Tests.Keyword" anchors on the
+                    # LeadCMS.Tests.<ClassName> boundary, so a method like
+                    # ContactTests.SendEmailTest() does NOT bleed into email-campaigns.
+                    # Add a keyword only when introducing a new domain test class prefix.
+                    # The 'core' group is a catch-all and never needs to be updated.
+                    - group: email-campaigns
+                      # class prefixes: Email, Imap, Campaign, Sequence, Deploy
+                      filter: "FullyQualifiedName~.Tests.Email|FullyQualifiedName~.Tests.Imap|FullyQu\
+                          alifiedName~.Tests.Campaign|FullyQualifiedName~.Tests\
+                          .Sequence|FullyQualifiedName~.Tests.Deploy"
+                    - group: contacts-crm
+                      # class prefixes: Contact, Deal, Segment, Language, Phone
+                      filter: "FullyQualifiedName~.Tests.Contact|FullyQualifiedName~.Tests.Deal|Fully\
+                          QualifiedName~.Tests.Segment|FullyQualifiedName~.Test\
+                          s.Language|FullyQualifiedName~.Tests.Phone"
+                    - group: content-media
+                      # class prefixes: Content, Media, File, Mdx, Static, Translation, AI, Link
+                      filter: "FullyQualifiedName~.Tests.Content|FullyQualifiedName~.Tests.Media|Full\
+                          yQualifiedName~.Tests.File|FullyQualifiedName~.Tests.\
+                          Mdx|FullyQualifiedName~.Tests.Static|FullyQualifiedNa\
+                          me~.Tests.Translation|FullyQualifiedName~.Tests.AI|Fu\
+                          llyQualifiedName~.Tests.Link"
+                    - group: settings-auth
+                      # class prefixes: Setting, Config, Auth, Identity, User, Account, Password, Plugin, ChangeLog
+                      filter: "FullyQualifiedName~.Tests.Setting|FullyQualifiedName~.Tests.Config|Ful\
+                          lyQualifiedName~.Tests.Auth|FullyQualifiedName~.Tests\
+                          .Identity|FullyQualifiedName~.Tests.User|FullyQualifi\
+                          edName~.Tests.Account|FullyQualifiedName~.Tests.Passw\
+                          ord|FullyQualifiedName~.Tests.Plugin|FullyQualifiedNa\
+                          me~.Tests.ChangeLog"
+                    - group: core
+                      # Catch-all: negation of every class prefix above.
+                      # Self-maintaining — no update needed when adding new test classes.
+                      # Only update when a new keyword is added to one of the named groups above.
+                      filter: "!FullyQualifiedName~.Tests.Email&!FullyQualifiedName~.Tests.Imap&!Full\
+                          yQualifiedName~.Tests.Campaign&!FullyQualifiedName~.T\
+                          ests.Sequence&!FullyQualifiedName~.Tests.Deploy&!Full\
+                          yQualifiedName~.Tests.Contact&!FullyQualifiedName~.Te\
+                          sts.Deal&!FullyQualifiedName~.Tests.Segment&!FullyQua\
+                          lifiedName~.Tests.Language&!FullyQualifiedName~.Tests\
+                          .Phone&!FullyQualifiedName~.Tests.Content&!FullyQuali\
+                          fiedName~.Tests.Media&!FullyQualifiedName~.Tests.File\
+                          &!FullyQualifiedName~.Tests.Mdx&!FullyQualifiedName~.\
+                          Tests.Static&!FullyQualifiedName~.Tests.Translation&!\
+                          FullyQualifiedName~.Tests.AI&!FullyQualifiedName~.Tes\
+                          ts.Link&!FullyQualifiedName~.Tests.Setting&!FullyQual\
+                          ifiedName~.Tests.Config&!FullyQualifiedName~.Tests.Au\
+                          th&!FullyQualifiedName~.Tests.Identity&!FullyQualifie\
+                          dName~.Tests.User&!FullyQualifiedName~.Tests.Account&\
+                          !FullyQualifiedName~.Tests.Password&!FullyQualifiedNa\
+                          me~.Tests.Plugin&!FullyQualifiedName~.Tests.ChangeLog"
+        steps:
+            - name: Checkout (for docker-compose files)
+              uses: actions/checkout@v4
+
+            - name: Setup .NET
+              uses: actions/setup-dotnet@v4
+              with:
+                  dotnet-version: ${{ inputs.dotnet-version }}
+
+            - name: Set vm.max_map_count for Elasticsearch
+              run: sudo sysctl -w vm.max_map_count=262144
+
+            - name: Start Docker services
+              run: docker compose -f ./docker-compose/docker-compose.tests.yml up -d --wait
+
+            - name: Download build artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: ${{ inputs.build-artifact-name }}
+                  path: tests/LeadCMS.Tests/bin/${{ inputs.build-config }}/
+
+            - name: Test
+              env:
+                  TEST_FILTER: ${{ matrix.filter }}
+                  TEST_GROUP: ${{ matrix.group }}
+              run: |
+                  dotnet test tests/LeadCMS.Tests/bin/${{ inputs.build-config }}/net8.0/LeadCMS.Tests.dll \
+                    --logger "trx;LogFileName=${TEST_GROUP}.trx" \
+                    --filter "${TEST_FILTER}" \
+                    --verbosity normal \
+                    --results-directory "${{ github.workspace }}"
+
+            - name: Publish Test Results
+              uses: EnricoMi/publish-unit-test-result-action@v2
+              if: always()
+              with:
+                  files: "${{ matrix.group }}.trx"
+                  check_name: .NET Tests / ${{ matrix.group }}
+                  large_files: true
