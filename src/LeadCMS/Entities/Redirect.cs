@@ -1,15 +1,17 @@
-// <copyright file="RedirectDto.cs" company="WavePoint Co. Ltd.">
+// <copyright file="Redirect.cs" company="WavePoint Co. Ltd.">
 // Licensed under the MIT license. See LICENSE file in the samples root for full license information.
 // </copyright>
 
 using System.ComponentModel.DataAnnotations;
-using System.Text.Json.Serialization;
+using System.ComponentModel.DataAnnotations.Schema;
+using LeadCMS.DataAnnotations;
 using LeadCMS.Enums;
-using LeadCMS.Infrastructure;
 
-namespace LeadCMS.DTOs;
+namespace LeadCMS.Entities;
 
-public class RedirectCreateDto
+[Table("redirect")]
+[SupportsChangeLog]
+public class Redirect : BaseEntity
 {
     // --- Source ---
 
@@ -17,6 +19,7 @@ public class RedirectCreateDto
     public RedirectSourceType SourceType { get; set; }
 
     // Used when SourceType = InternalPath
+    [Searchable]
     public string? FromPath { get; set; }
 
     // Used when SourceType = ContentSlug
@@ -46,47 +49,10 @@ public class RedirectCreateDto
     public string? ToSlug { get; set; }
 
     public int? ToContentId { get; set; }
-}
-
-public class RedirectUpdateDto : IPatchDto
-{
-    [JsonIgnore]
-    public HashSet<string> NullProperties { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-    public RedirectSourceType? SourceType { get; set; }
-
-    public string? FromPath { get; set; }
-
-    public string? FromLanguage { get; set; }
-
-    public string? FromSlug { get; set; }
-
-    public int? FromContentId { get; set; }
-
-    public RedirectKind? Kind { get; set; }
-
-    public RedirectTargetType? TargetType { get; set; }
-
-    public string? ToUrl { get; set; }
-
-    public string? ToPath { get; set; }
-
-    public string? ToLanguage { get; set; }
-
-    public string? ToSlug { get; set; }
-
-    public int? ToContentId { get; set; }
-}
-
-public class RedirectDetailsDto : RedirectCreateDto
-{
-    public int Id { get; set; }
 
     public bool IsAutoDiscovered { get; set; }
 
     public bool IsAutoDiscoverySuppressed { get; set; }
-
-    public DateTime CreatedAt { get; set; }
-
-    public DateTime? UpdatedAt { get; set; }
 }
+
+

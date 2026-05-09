@@ -463,3 +463,6 @@ logs/
 mailpit_auth
 *.pem
 site-content
+
+## Serena MCP Server files
+.serena/

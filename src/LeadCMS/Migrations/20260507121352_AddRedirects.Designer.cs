@@ -7,6 +7,7 @@ using LeadCMS.Entities;
 using LeadCMS.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -15,9 +16,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LeadCMS.Migrations
 {
     [DbContext(typeof(PgDbContext))]
-    partial class PgDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260507121352_AddRedirects")]
+    partial class AddRedirects
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -3001,10 +3004,6 @@ namespace LeadCMS.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_auto_discovered");
 
-                    b.Property<bool>("IsAutoDiscoverySuppressed")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_auto_discovery_suppressed");
-
                     b.Property<int>("Kind")
                         .HasColumnType("integer")
                         .HasColumnName("kind");
@@ -3059,21 +3058,6 @@ namespace LeadCMS.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_redirect");
-
-                    b.HasIndex("FromContentId")
-                        .IsUnique()
-                        .HasDatabaseName("ix_redirect_from_content_id")
-                        .HasFilter("\"source_type\" = 2");
-
-                    b.HasIndex("FromPath")
-                        .IsUnique()
-                        .HasDatabaseName("ix_redirect_from_path")
-                        .HasFilter("\"source_type\" = 0");
-
-                    b.HasIndex("FromLanguage", "FromSlug")
-                        .IsUnique()
-                        .HasDatabaseName("ix_redirect_from_language_from_slug")
-                        .HasFilter("\"source_type\" = 1 AND NOT \"is_auto_discovery_suppressed\"");
 
                     b.ToTable("redirect", (string)null);
                 });

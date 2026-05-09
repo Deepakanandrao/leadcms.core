@@ -145,7 +145,7 @@ public abstract class SimpleTableTests<T, TC, TU, TS> : BaseTestAutoLogin
     }
 
     [Fact]
-    public async Task ValidWherePropertyType()
+    public virtual async Task ValidWherePropertyType()
     {
         var query = string.Empty;
         var typeProperties = typeof(T).GetProperties();

@@ -92,6 +92,8 @@ public class PgDbContext : IdentityDbContext<User>
 
     public virtual DbSet<Link>? Links { get; set; }
 
+    public virtual DbSet<Redirect>? Redirects { get; set; }
+
     public virtual DbSet<LinkLog>? LinkLogs { get; set; }
 
     public virtual DbSet<Domain>? Domains { get; set; }
@@ -425,6 +427,28 @@ public class PgDbContext : IdentityDbContext<User>
             .WithMany(c => c.Enrollments)
             .HasForeignKey(e => e.ContactId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // Redirect: global filter to hide suppressed entries from all normal queries
+        builder.Entity<Redirect>().HasQueryFilter(r => !r.IsAutoDiscoverySuppressed);
+
+        // Redirect: unique source per type.
+        // ContentSlug is the only type that can be auto-discovered, so its index excludes
+        // suppressed rows (soft-deleted) to allow re-use of the slot when suppression is lifted.
+        // InternalPath and ContentId entries are always physically deleted, so no suppression filter needed.
+        builder.Entity<Redirect>()
+            .HasIndex(r => r.FromPath)
+            .IsUnique()
+            .HasFilter("\"source_type\" = 0");
+
+        builder.Entity<Redirect>()
+            .HasIndex("FromLanguage", "FromSlug")
+            .IsUnique()
+            .HasFilter("\"source_type\" = 1 AND NOT \"is_auto_discovery_suppressed\"");
+
+        builder.Entity<Redirect>()
+            .HasIndex(r => r.FromContentId)
+            .IsUnique()
+            .HasFilter("\"source_type\" = 2");
     }
 
     private DateTime GetDateWithKind(DateTime date)

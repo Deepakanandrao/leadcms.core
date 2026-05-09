@@ -6,6 +6,7 @@ using AutoMapper;
 using LeadCMS.Core.Sequences.DTOs;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
+using LeadCMS.Enums;
 using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
 using LeadCMS.Models;
@@ -42,6 +43,9 @@ public class AutoMapperProfiles : Profile
         CreateMap<Dictionary<string, string>?, Dictionary<string, string>>().ConvertUsing((src, dest) => src ?? dest);
         CreateMap<string?[], string?[]>().ConvertUsing((src, dest) => src ?? dest);
         CreateMap<CommentStatus?, CommentStatus>().ConvertUsing((src, dest) => src ?? dest);
+        CreateMap<RedirectKind?, RedirectKind>().ConvertUsing((src, dest) => src ?? dest);
+        CreateMap<RedirectSourceType?, RedirectSourceType>().ConvertUsing((src, dest) => src ?? dest);
+        CreateMap<RedirectTargetType?, RedirectTargetType>().ConvertUsing((src, dest) => src ?? dest);
 
         CreateMap<DateTime, DateTime>().ConvertUsing(new DateTimeToUtcConverter());
         CreateMap<DateTime?, DateTime?>().ConvertUsing(new DateTimeToUtcConverter());
@@ -323,6 +327,19 @@ public class AutoMapperProfiles : Profile
 
         // Task execution log mappings
         CreateMap<TaskExecutionLog, TaskExecutionLogDetailsDto>()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+
+        // Redirect mappings
+        CreateMap<Redirect, RedirectCreateDto>().ReverseMap();
+        CreateMap<Redirect, RedirectUpdateDto>()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+        CreateMap<RedirectUpdateDto, Redirect>()
+            .WithPatchDtoSupport()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+        CreateMap<RedirectUpdateDto, RedirectCreateDto>()
+            .WithPatchDtoSupport()
+            .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
+        CreateMap<Redirect, RedirectDetailsDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
     }
 
