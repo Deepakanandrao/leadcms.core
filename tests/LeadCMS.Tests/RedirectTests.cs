@@ -47,7 +47,7 @@ public class RedirectTests : SimpleTableTests<Redirect, TestRedirect, RedirectUp
 
         redirect.Should().NotBeNull();
         redirect!.IsAutoDiscovered.Should().BeTrue();
-        redirect!.Kind.Should().Be(RedirectKind.Permanent);
+        redirect!.Kind.Should().Be(RedirectKind.Temporary);
         redirect!.TargetType.Should().Be(RedirectTargetType.ContentSlug);
     }
 

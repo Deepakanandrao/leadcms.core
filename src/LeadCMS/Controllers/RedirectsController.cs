@@ -109,10 +109,10 @@ public class RedirectsController : BaseController<Redirect, RedirectCreateDto, R
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<List<RedirectDetailsDto>>> Discover()
+    public async Task<ActionResult<List<RedirectDetailsDto>>> Discover([FromQuery] string? query)
     {
         await redirectService.DiscoverAsync();
-        return await Get(null);
+        return await Get(query);
     }
 }
 

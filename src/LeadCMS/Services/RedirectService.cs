@@ -54,7 +54,7 @@ public class RedirectService : IRedirectService
                     SourceType = RedirectSourceType.ContentSlug,
                     FromLanguage = item.OldLanguage,
                     FromSlug = item.OldSlug,
-                    Kind = RedirectKind.Permanent,
+                    Kind = RedirectKind.Temporary,
                     TargetType = RedirectTargetType.ContentSlug,
                     ToLanguage = item.NewLanguage,
                     ToSlug = item.NewSlug,
