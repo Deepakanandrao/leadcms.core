@@ -94,8 +94,6 @@ public class RedirectDetailsDto : RedirectCreateDto
 
     public bool IsAutoDiscovered { get; set; }
 
-    public bool IsAutoDiscoverySuppressed { get; set; }
-
     public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }

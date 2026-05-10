@@ -330,11 +330,14 @@ public class AutoMapperProfiles : Profile
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
 
         // Redirect mappings
-        CreateMap<Redirect, RedirectCreateDto>().ReverseMap();
+        CreateMap<Redirect, RedirectCreateDto>()
+            .ReverseMap()
+            .ForMember(dest => dest.IsAutoDiscovered, opt => opt.Ignore());
         CreateMap<Redirect, RedirectUpdateDto>()
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<RedirectUpdateDto, Redirect>()
             .WithPatchDtoSupport()
+            .ForMember(dest => dest.IsAutoDiscovered, opt => opt.Ignore())
             .ForAllMembers(m => m.Condition(PropertyNeedsMapping));
         CreateMap<RedirectUpdateDto, RedirectCreateDto>()
             .WithPatchDtoSupport()
