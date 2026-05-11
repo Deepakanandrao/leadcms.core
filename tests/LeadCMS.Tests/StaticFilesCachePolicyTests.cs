@@ -4,6 +4,7 @@
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 
 namespace LeadCMS.Tests;
 
@@ -105,6 +106,12 @@ public sealed class StaticFilesCachePolicyTests : IDisposable
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
+            // Disable DB migration: this factory only serves static files and has no database needs.
+            // Without this override, Program.Main picks up MigrateOnStart=true from the base
+            // appsettings.json and tries port 5432, which is unavailable in CI (Docker exposes 15432).
+            builder.ConfigureAppConfiguration((_, config) =>
+                config.AddInMemoryCollection(new Dictionary<string, string?> { ["MigrateOnStart"] = "false" }));
+
             builder.UseWebRoot(configuredWebRootPath);
         }
     }

@@ -249,15 +249,7 @@ public class TestApplication : WebApplicationFactory<Program>
 
     private void RenewDatabase(PgDbContext context)
     {
-        try
-        {
-            context.Database.EnsureDeleted();
-            context.Database.Migrate();
-        }
-        catch
-        {
-            Thread.Sleep(1000);
-            RenewDatabase(context);
-        }
+        context.Database.EnsureDeleted();
+        context.Database.Migrate();
     }
 }
