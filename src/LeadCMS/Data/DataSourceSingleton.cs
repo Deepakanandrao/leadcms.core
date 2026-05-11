@@ -28,6 +28,15 @@ public static class DataSourceSingleton
         return instance;
     }
 
+    public static void Reset()
+    {
+        lock (InstanceLock)
+        {
+            instance?.Dispose();
+            instance = null;
+        }
+    }
+
     private static NpgsqlDataSource BuildDataSource(IConfiguration configuration)
     {
         var postgresConfig = configuration.GetSection("Postgres").Get<PostgresConfig>();

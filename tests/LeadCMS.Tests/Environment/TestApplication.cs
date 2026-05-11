@@ -47,18 +47,8 @@ public class TestApplication : WebApplicationFactory<Program>
                 return;
             }
 
-            using (var scope = Services.CreateScope())
-            {
-                var dataContext = scope.ServiceProvider.GetRequiredService<PgDbContext>();
-
-                // Initialize database schema and seed data
-                RenewDatabase(dataContext);
-
-                // Create default identity (admin user, roles, etc.)
-                Program.CreateDefaultIdentity(scope).Wait();
-
-                databaseInitialized = true;
-            }
+            RenewDatabase();
+            databaseInitialized = true;
         }
     }
 
@@ -87,14 +77,7 @@ public class TestApplication : WebApplicationFactory<Program>
     {
         lock (LockObject)
         {
-            using (var scope = Services.CreateScope())
-            {
-                var dataContext = scope.ServiceProvider.GetRequiredService<PgDbContext>();
-
-                // Full database reset - recreate schema and seed data
-                RenewDatabase(dataContext);
-                Program.CreateDefaultIdentity(scope).Wait();
-            }
+            RenewDatabase();
         }
     }
 
@@ -249,9 +232,22 @@ public class TestApplication : WebApplicationFactory<Program>
         return tables.ToList();
     }
 
-    private void RenewDatabase(PgDbContext context)
+    private void RenewDatabase()
     {
-        context.Database.EnsureDeleted();
-        context.Database.Migrate();
+        using (var scope = Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<PgDbContext>();
+            context.Database.EnsureDeleted();
+            context.Database.CloseConnection();
+        }
+
+        DataSourceSingleton.Reset();
+
+        using (var scope = Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<PgDbContext>();
+            context.Database.Migrate();
+            Program.CreateDefaultIdentity(scope).Wait();
+        }
     }
 }

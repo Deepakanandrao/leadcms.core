@@ -50,6 +50,12 @@ namespace LeadCMS.Infrastructure
         {
             try
             {
+                if (!await dbContext.Database.CanConnectAsync())
+                {
+                    Log.Information("Skipping task runner because the database is unavailable");
+                    return;
+                }
+
                 if (!IsPrimaryNode())
                 {
                     Log.Information("This is not the current primary node for task execution");
@@ -142,6 +148,11 @@ namespace LeadCMS.Infrastructure
 
         private (PostgresDistributedLockHandle?, PrimaryNodeStatus) GetPrimaryStatus()
         {
+            if (!dbContext.Database.CanConnect())
+            {
+                return (null, PrimaryNodeStatus.Unknown);
+            }
+
             var postgresConfig = dbContext.Configuration.GetSection("Postgres").Get<PostgresConfig>()!;
             var primaryNodeLockData = LockManager.GetNoWaitLock(TaskRunnerNodeLockKey, postgresConfig.ConnectionString);
             if (primaryNodeLockData.Item2)
