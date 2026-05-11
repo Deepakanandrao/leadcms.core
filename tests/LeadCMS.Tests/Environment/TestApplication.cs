@@ -202,9 +202,11 @@ public class TestApplication : WebApplicationFactory<Program>
         }
         catch (Exception ex)
         {
-            // If truncate fails, fall back to full database renewal
-            Console.WriteLine($"Truncate failed: {ex.Message}. Falling back to full database renewal.");
-            RenewDatabase(context);
+            // Do NOT call RenewDatabase here. EnsureDeleted() issues DROP DATABASE which
+            // kills all active connections to the shared TestApplication singleton, causing
+            // subsequent tests to fail with "57P01: terminating connection" or missing schema.
+            // If truncation fails, log it and let the next test deal with leftover data.
+            Console.WriteLine($"Truncate failed: {ex.Message}");
         }
     }
 
