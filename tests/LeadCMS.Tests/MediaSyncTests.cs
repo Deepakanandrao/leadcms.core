@@ -200,6 +200,30 @@ public class MediaSyncTests : BaseTestAutoLogin
     }
 
     [Fact]
+    public async Task Sync_DeletedThenReuploadedFile_ShouldNotAppearInDeleted()
+    {
+        // Arrange: upload a file and get a sync token
+        await UploadMediaAsync("sync-reupload-1.png", "sync-reupload");
+        var initialSync = await GetSyncResult("/api/media/sync");
+        var syncToken = initialSync!.NextSyncToken;
+
+        // Act: delete the file and then re-upload a new file with the same path
+        await DeleteTest($"/api/media/sync-reupload/sync-reupload-1.png");
+        await UploadMediaAsync("sync-reupload-1.png", "sync-reupload");
+
+        // Sync with the token
+        var syncResult = await GetSyncResult($"/api/media/sync?syncToken={syncToken}");
+
+        // Assert: the re-uploaded file should appear in items
+        syncResult.Should().NotBeNull();
+        syncResult!.Items.Should().NotBeNull();
+        syncResult.Items.Should().Contain(i => i.ScopeUid == "sync-reupload" && i.Name == "sync-reupload-1.png");
+
+        // The path must NOT appear in deleted — it was re-created after the delete
+        syncResult.Deleted.Should().NotContain(d => d.ScopeUid == "sync-reupload" && d.Name == "sync-reupload-1.png");
+    }
+
+    [Fact]
     public async Task Sync_NewFileAfterSync_ShouldReturnOnlyNewFile()
     {
         // Arrange: upload initial file and sync

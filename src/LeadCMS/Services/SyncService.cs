@@ -109,6 +109,27 @@ public class SyncService : ISyncService
                     }
                 }
 
+                // Filter out deleted paths that have since been re-uploaded.
+                // If a live Media record exists at the same ScopeUid+Name the delete is stale.
+                if (deletedPaths.Any())
+                {
+                    var scopeUids = deletedPaths.Select(d => d.ScopeUid).Distinct().ToList();
+                    var names = deletedPaths.Select(d => d.Name).Distinct().ToList();
+
+                    var reuploadedPaths = await dbContext.Set<Media>().AsNoTracking()
+                        .Where(m => scopeUids.Contains(m.ScopeUid) && names.Contains(m.Name))
+                        .Select(m => new { m.ScopeUid, m.Name })
+                        .ToListAsync();
+
+                    var reuploadedSet = reuploadedPaths
+                        .Select(m => (m.ScopeUid, m.Name))
+                        .ToHashSet();
+
+                    deletedPaths = deletedPaths
+                        .Where(d => !reuploadedSet.Contains((d.ScopeUid, d.Name)))
+                        .ToList();
+                }
+
                 // Max changelog time across both Deleted and Modified
                 var changeLogMaxTime = await dbContext.ChangeLogs!.AsNoTracking()
                     .Where(cl => cl.ObjectType == nameof(Media) && cl.CreatedAt > lastSyncTime &&
