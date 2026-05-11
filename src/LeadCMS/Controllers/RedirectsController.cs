@@ -6,10 +6,13 @@ using AutoMapper;
 using LeadCMS.Data;
 using LeadCMS.DTOs;
 using LeadCMS.Entities;
+using LeadCMS.Exceptions;
+using LeadCMS.Helpers;
 using LeadCMS.Infrastructure;
 using LeadCMS.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace LeadCMS.Controllers;
 
@@ -60,6 +63,13 @@ public class RedirectsController : BaseController<Redirect, RedirectCreateDto, R
     {
         var existing = await FindOrThrowNotFound(id);
 
+        if (existing.IsAutoDiscovered && HasFromOrToChange(value))
+        {
+            throw new UnprocessableEntityException(
+                "Auto-discovered redirects are read-only except for the Kind field. " +
+                "Delete the redirect to suppress it permanently.");
+        }
+
         // Build post-patch state for validation by mapping the existing entity to a CreateDto,
         // then overlaying the incoming update fields (NullProperties handling is automatic via WithPatchDtoSupport).
         var merged = mapper.Map<RedirectCreateDto>(existing);
@@ -84,9 +94,23 @@ public class RedirectsController : BaseController<Redirect, RedirectCreateDto, R
 
         if (entity.IsAutoDiscovered)
         {
-            // Auto-discovered redirects are always ContentSlug type. Suppress instead of
-            // physically deleting so the discovery process does not recreate the entry.
+            // Suppress instead of physically deleting so the discovery process does not
+            // recreate the entry. The record is hidden from normal queries by the global
+            // query filter on IsAutoDiscoverySuppressed.
             entity.IsAutoDiscoverySuppressed = true;
+            await dbContext.SaveChangesAsync();
+
+            // Manually record a Deleted ChangeLog entry so that sync clients see this
+            // redirect as deleted. The automatic ChangeLog produced above is a Modified
+            // entry (setting the suppression flag) which is invisible to the sync query.
+            dbContext.ChangeLogs!.Add(new ChangeLog
+            {
+                ObjectType = nameof(Redirect),
+                EntityState = EntityState.Deleted,
+                CreatedAt = DateTime.UtcNow,
+                ObjectId = entity.Id,
+                Data = JsonHelper.Serialize(entity),
+            });
             await dbContext.SaveChangesAsync();
         }
         else
@@ -113,6 +137,37 @@ public class RedirectsController : BaseController<Redirect, RedirectCreateDto, R
     {
         await redirectService.DiscoverAsync();
         return await Get(query);
+    }
+
+    private static bool HasFromOrToChange(RedirectUpdateDto value)
+    {
+        var restrictedFields = new[]
+        {
+            nameof(RedirectUpdateDto.SourceType),
+            nameof(RedirectUpdateDto.FromPath),
+            nameof(RedirectUpdateDto.FromLanguage),
+            nameof(RedirectUpdateDto.FromSlug),
+            nameof(RedirectUpdateDto.FromContentId),
+            nameof(RedirectUpdateDto.TargetType),
+            nameof(RedirectUpdateDto.ToUrl),
+            nameof(RedirectUpdateDto.ToPath),
+            nameof(RedirectUpdateDto.ToLanguage),
+            nameof(RedirectUpdateDto.ToSlug),
+            nameof(RedirectUpdateDto.ToContentId),
+        };
+
+        return value.SourceType != null
+            || value.FromPath != null
+            || value.FromLanguage != null
+            || value.FromSlug != null
+            || value.FromContentId != null
+            || value.TargetType != null
+            || value.ToUrl != null
+            || value.ToPath != null
+            || value.ToLanguage != null
+            || value.ToSlug != null
+            || value.ToContentId != null
+            || Array.Exists(restrictedFields, f => value.NullProperties.Contains(f));
     }
 }
 

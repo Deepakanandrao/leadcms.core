@@ -4,6 +4,7 @@
 
 using LeadCMS.Enums;
 using LeadCMS.Helpers;
+using LeadCMS.Infrastructure;
 
 namespace LeadCMS.Tests;
 
@@ -13,6 +14,7 @@ public class RedirectTests : SimpleTableTests<Redirect, TestRedirect, RedirectUp
         : base("/api/redirects")
     {
         TrackEntityType<Content>();
+        TrackEntityType<ChangeLog>();
     }
 
     [Fact]
@@ -360,8 +362,8 @@ public class RedirectTests : SimpleTableTests<Redirect, TestRedirect, RedirectUp
     public async Task Discover_WithWhereFilter_ReturnsOnlyMatchingRedirects()
     {
         var uid = Guid.NewGuid().ToString("N")[..8];
-        var pathMatch = $"/filter-match-{uid}";
-        var pathNoMatch = $"/filter-nomatch-{uid}";
+        var pathMatch = $"filter-match-{uid}";
+        var pathNoMatch = $"filter-nomatch-{uid}";
 
         // Create two manual redirects with different paths.
         await PostTest("/api/redirects", new RedirectCreateDto
@@ -426,10 +428,193 @@ public class RedirectTests : SimpleTableTests<Redirect, TestRedirect, RedirectUp
         redirects!.Should().HaveCount(1);
     }
 
+    // -------------------------------------------------------------------------
+    // Sync tests for auto-discovered redirects
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Sync_AfterDeleteAutoDiscoveredRedirect_ShouldAppearInDeleted()
+    {
+        var uid = Guid.NewGuid().ToString("N")[..8];
+        var oldSlug = $"sync-del-auto-{uid}";
+        var newSlug = $"sync-del-auto-new-{uid}";
+
+        // Create content and rename slug to produce an auto-discovered redirect.
+        var content = new TestContent(uid);
+        content.Slug = oldSlug;
+        var location = await PostTest("/api/content", content);
+        var created = await GetTest<ContentDetailsDto>(location);
+        await PatchTest($"/api/content/{created!.Id}", new ContentUpdateDto { Slug = newSlug });
+        await Request(HttpMethod.Post, "/api/redirects/discover", new object());
+
+        // Capture sync token after all initial data is in place.
+        var initialSync = await GetRedirectSyncResult("/api/redirects/sync");
+        var syncToken = initialSync!.NextSyncToken;
+        syncToken.Should().NotBeNullOrWhiteSpace();
+
+        // Find the auto-discovered redirect.
+        var listResponse = await GetRequest("/api/redirects");
+        var listJson = await listResponse.Content.ReadAsStringAsync();
+        var allRedirects = JsonHelper.Deserialize<List<RedirectDetailsDto>>(listJson);
+        var autoRedirect = allRedirects!.First(r => r.IsAutoDiscovered && r.FromSlug == oldSlug);
+
+        // Delete the auto-discovered redirect.
+        await DeleteTest($"/api/redirects/{autoRedirect.Id}");
+
+        // Sync with the token.
+        var syncResult = await GetRedirectSyncResult($"/api/redirects/sync?syncToken={syncToken}");
+
+        // Assert: the deleted redirect must appear in the Deleted list.
+        syncResult.Should().NotBeNull();
+        syncResult!.Deleted.Should().Contain(autoRedirect.Id, "deleting an auto-discovered redirect must be visible to sync clients");
+    }
+
+    // -------------------------------------------------------------------------
+    // Auto-discovered redirect editing restrictions
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Patch_AutoDiscoveredRedirect_WithFromChange_ShouldReturn422()
+    {
+        var uid = Guid.NewGuid().ToString("N")[..8];
+        var oldSlug = $"patch-auto-from-{uid}";
+        var newSlug = $"patch-auto-from-new-{uid}";
+
+        // Set up auto-discovered redirect.
+        var content = new TestContent(uid);
+        content.Slug = oldSlug;
+        var location = await PostTest("/api/content", content);
+        var created = await GetTest<ContentDetailsDto>(location);
+        await PatchTest($"/api/content/{created!.Id}", new ContentUpdateDto { Slug = newSlug });
+        await Request(HttpMethod.Post, "/api/redirects/discover", new object());
+
+        var listResponse = await GetRequest("/api/redirects");
+        var listJson = await listResponse.Content.ReadAsStringAsync();
+        var allRedirects = JsonHelper.Deserialize<List<RedirectDetailsDto>>(listJson);
+        var autoRedirect = allRedirects!.First(r => r.IsAutoDiscovered && r.FromSlug == oldSlug);
+
+        // Try to change a "from" field.
+        var response = await Request(
+            HttpMethod.Patch,
+            $"/api/redirects/{autoRedirect.Id}",
+            new RedirectUpdateDto { FromSlug = $"changed-slug-{uid}" });
+
+        response.StatusCode.Should().Be(
+            HttpStatusCode.UnprocessableEntity,
+            "changing source/target attributes of an auto-discovered redirect must be forbidden");
+    }
+
+    [Fact]
+    public async Task Patch_AutoDiscoveredRedirect_WithToChange_ShouldReturn422()
+    {
+        var uid = Guid.NewGuid().ToString("N")[..8];
+        var oldSlug = $"patch-auto-to-{uid}";
+        var newSlug = $"patch-auto-to-new-{uid}";
+
+        // Set up auto-discovered redirect.
+        var content = new TestContent(uid);
+        content.Slug = oldSlug;
+        var location = await PostTest("/api/content", content);
+        var created = await GetTest<ContentDetailsDto>(location);
+        await PatchTest($"/api/content/{created!.Id}", new ContentUpdateDto { Slug = newSlug });
+        await Request(HttpMethod.Post, "/api/redirects/discover", new object());
+
+        var listResponse = await GetRequest("/api/redirects");
+        var listJson = await listResponse.Content.ReadAsStringAsync();
+        var allRedirects = JsonHelper.Deserialize<List<RedirectDetailsDto>>(listJson);
+        var autoRedirect = allRedirects!.First(r => r.IsAutoDiscovered && r.FromSlug == oldSlug);
+
+        // Try to change a "to" field.
+        var response = await Request(
+            HttpMethod.Patch,
+            $"/api/redirects/{autoRedirect.Id}",
+            new RedirectUpdateDto { ToSlug = $"changed-target-{uid}" });
+
+        response.StatusCode.Should().Be(
+            HttpStatusCode.UnprocessableEntity,
+            "changing source/target attributes of an auto-discovered redirect must be forbidden");
+    }
+
+    [Fact]
+    public async Task Patch_AutoDiscoveredRedirect_ChangingKind_ShouldSucceed()
+    {
+        var uid = Guid.NewGuid().ToString("N")[..8];
+        var oldSlug = $"patch-kind-{uid}";
+        var newSlug = $"patch-kind-new-{uid}";
+
+        // Set up auto-discovered redirect (defaults to Temporary).
+        var content = new TestContent(uid);
+        content.Slug = oldSlug;
+        var location = await PostTest("/api/content", content);
+        var created = await GetTest<ContentDetailsDto>(location);
+        await PatchTest($"/api/content/{created!.Id}", new ContentUpdateDto { Slug = newSlug });
+        await Request(HttpMethod.Post, "/api/redirects/discover", new object());
+
+        var listResponse = await GetRequest("/api/redirects");
+        var listJson = await listResponse.Content.ReadAsStringAsync();
+        var allRedirects = JsonHelper.Deserialize<List<RedirectDetailsDto>>(listJson);
+        var autoRedirect = allRedirects!.First(r => r.IsAutoDiscovered && r.FromSlug == oldSlug);
+        autoRedirect.Kind.Should().Be(RedirectKind.Temporary);
+
+        // Change Kind to Permanent — this must be allowed.
+        var response = await Request(
+            HttpMethod.Patch,
+            $"/api/redirects/{autoRedirect.Id}",
+            new RedirectUpdateDto { Kind = RedirectKind.Permanent });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, "changing the Kind of an auto-discovered redirect must be allowed");
+
+        var updated = JsonHelper.Deserialize<RedirectDetailsDto>(await response.Content.ReadAsStringAsync());
+        updated!.Kind.Should().Be(RedirectKind.Permanent);
+    }
+
     protected override RedirectUpdateDto UpdateItem(TestRedirect to)
     {
         var from = new RedirectUpdateDto();
         to.ToPath = from.ToPath = $"{to.ToPath}-updated";
         return from;
+    }
+
+    private async Task<RedirectSyncResult?> GetRedirectSyncResult(string url)
+    {
+        var response = await GetRequest(url);
+
+        if (response.StatusCode == HttpStatusCode.NoContent)
+        {
+            string? token = null;
+            if (response.Headers.TryGetValues(ResponseHeaderNames.NextSyncToken, out var tokenValues))
+            {
+                token = tokenValues.FirstOrDefault();
+            }
+
+            return new RedirectSyncResult
+            {
+                Response = new SyncResponseDto<RedirectDetailsDto, int>(),
+                NextSyncToken = token,
+            };
+        }
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var content = await response.Content.ReadAsStringAsync();
+        var syncResponse = JsonHelper.Deserialize<SyncResponseDto<RedirectDetailsDto, int>>(content);
+
+        var result = new RedirectSyncResult { Response = syncResponse! };
+
+        if (response.Headers.TryGetValues(ResponseHeaderNames.NextSyncToken, out var values))
+        {
+            result.NextSyncToken = values.FirstOrDefault();
+        }
+
+        return result;
+    }
+
+    private class RedirectSyncResult
+    {
+        public SyncResponseDto<RedirectDetailsDto, int> Response { get; set; } = new();
+
+        public List<int> Deleted => Response.Deleted;
+
+        public string? NextSyncToken { get; set; }
     }
 }
