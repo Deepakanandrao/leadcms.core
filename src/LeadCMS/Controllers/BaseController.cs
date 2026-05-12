@@ -151,7 +151,7 @@ namespace LeadCMS.Controllers
         }
 
         [HttpGet("export")]
-        [Produces("text/csv", "text/json")]
+        [Produces("text/csv", "application/json", "text/json")]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
         public virtual async Task<ActionResult<List<TD>>> Export([FromQuery] string? query)

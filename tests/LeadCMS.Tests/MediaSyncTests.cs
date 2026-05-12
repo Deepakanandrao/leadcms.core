@@ -244,6 +244,27 @@ public class MediaSyncTests : BaseTestAutoLogin
         syncResult.Items.Should().NotContain(i => i.Id == media1.Id);
     }
 
+    [Fact]
+    public async Task Sync_WithLimit_ShouldReturnLimitedChangedItems()
+    {
+        // Arrange: establish a sync token before creating the files under test
+        var initialSync = await GetSyncResult("/api/media/sync");
+        var syncToken = initialSync!.NextSyncToken;
+
+        await UploadMediaAsync("sync-limit-1.png", "sync-limit");
+        await UploadMediaAsync("sync-limit-2.png", "sync-limit");
+        await UploadMediaAsync("sync-limit-3.png", "sync-limit");
+
+        // Act
+        var syncResult = await GetSyncResult($"/api/media/sync?filter[limit]=2&syncToken={syncToken}");
+
+        // Assert
+        syncResult.Should().NotBeNull();
+        syncResult!.Items.Should().HaveCount(2);
+        syncResult.Items.Should().OnlyContain(i => i.ScopeUid == "sync-limit");
+        syncResult.NextSyncToken.Should().NotBeNullOrWhiteSpace();
+    }
+
     private async Task<MediaDetailsDto> UploadMediaAsync(string fileName, string scopeUid)
     {
         var contentTypeProvider = new FileExtensionContentTypeProvider();

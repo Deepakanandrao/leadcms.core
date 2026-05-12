@@ -225,7 +225,17 @@ namespace LeadCMS.Infrastructure
                         continue;
                     }
 
-                    var pi = command.ParseProperty<T>();
+                    PropertyInfo? pi;
+                    try
+                    {
+                        pi = command.ParseProperty<T>();
+                    }
+                    catch (QueryException)
+                    {
+                        // Unknown field name — silently skip (e.g. virtual UI-only columns)
+                        continue;
+                    }
+
                     if (value)
                     {
                         trueFields.Add(pi);

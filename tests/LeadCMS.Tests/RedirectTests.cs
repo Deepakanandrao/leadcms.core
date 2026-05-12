@@ -148,6 +148,88 @@ public class RedirectTests : SimpleTableTests<Redirect, TestRedirect, RedirectUp
     }
 
     [Fact]
+    public async Task Discover_WhenSlugRenamedBack_RemovesStaleReverseAndNoCycleExists()
+    {
+        // Reproduce the A→B then B→A scenario:
+        // 1. Slug renamed A→B: discovery creates A→B.
+        // 2. Slug renamed back B→A: discovery must remove the stale A→B and create B→A.
+        // Result: only B→A exists; no cycle.
+        var uid = Guid.NewGuid().ToString("N")[..8];
+        var slugA = $"cycle-a-{uid}";
+        var slugB = $"cycle-b-{uid}";
+
+        var content = new TestContent(uid);
+        content.Slug = slugA;
+
+        var location = await PostTest("/api/content", content);
+        var created = await GetTest<ContentDetailsDto>(location);
+
+        // Rename A → B and discover: creates A→B.
+        await PatchTest($"/api/content/{created!.Id}", new ContentUpdateDto { Slug = slugB });
+        var firstDiscover = await Request(HttpMethod.Post, "/api/redirects/discover", new object());
+        firstDiscover.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Rename back B → A and discover: must remove A→B and create B→A.
+        await PatchTest($"/api/content/{created!.Id}", new ContentUpdateDto { Slug = slugA });
+        var secondDiscover = await Request(HttpMethod.Post, "/api/redirects/discover", new object());
+        secondDiscover.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var json = await secondDiscover.Content.ReadAsStringAsync();
+        var redirects = JsonHelper.Deserialize<List<RedirectDetailsDto>>(json);
+
+        redirects.Should().NotBeNull();
+
+        redirects!.Should().NotContain(
+            r => r.FromSlug == slugA && r.ToSlug == slugB,
+            "stale A→B redirect must have been removed to prevent a cycle");
+
+        redirects!.Should().Contain(
+            r => r.IsAutoDiscovered &&
+                 r.SourceType == RedirectSourceType.ContentSlug &&
+                 r.FromSlug == slugB && r.ToSlug == slugA,
+            "B→A redirect must exist so old-URL users are still served");
+    }
+
+    [Fact]
+    public async Task Discover_WhenSlugCyclesOverThreeRenames_NoCycleExists()
+    {
+        // slug1→slug2→slug3→slug1 rename history.
+        // After the third rename, discovery must remove slug2→slug3 (the cycle-closing link)
+        // and create slug3→slug1. Result: slug1→slug2 and slug3→slug1; no cycle.
+        var uid = Guid.NewGuid().ToString("N")[..8];
+        var slug1 = $"tri-a-{uid}";
+        var slug2 = $"tri-b-{uid}";
+        var slug3 = $"tri-c-{uid}";
+
+        var content = new TestContent(uid);
+        content.Slug = slug1;
+        var location = await PostTest("/api/content", content);
+        var created = await GetTest<ContentDetailsDto>(location);
+
+        await PatchTest($"/api/content/{created!.Id}", new ContentUpdateDto { Slug = slug2 });
+        await Request(HttpMethod.Post, "/api/redirects/discover", new object());
+
+        await PatchTest($"/api/content/{created!.Id}", new ContentUpdateDto { Slug = slug3 });
+        await Request(HttpMethod.Post, "/api/redirects/discover", new object());
+
+        await PatchTest($"/api/content/{created!.Id}", new ContentUpdateDto { Slug = slug1 });
+        var response = await Request(HttpMethod.Post, "/api/redirects/discover", new object());
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var json = await response.Content.ReadAsStringAsync();
+        var redirects = JsonHelper.Deserialize<List<RedirectDetailsDto>>(json);
+        redirects.Should().NotBeNull();
+
+        redirects!.Should().NotContain(
+            r => r.FromSlug == slug2 && r.ToSlug == slug3,
+            "slug2→slug3 must be removed as it would close the cycle");
+
+        redirects!.Should().Contain(
+            r => r.IsAutoDiscovered && r.FromSlug == slug3 && r.ToSlug == slug1,
+            "slug3→slug1 must exist");
+    }
+
+    [Fact]
     public async Task Discover_ReturnsAllStoredRedirects()
     {
         var manual = new TestRedirect(Guid.NewGuid().ToString("N")[..8]);
@@ -566,6 +648,58 @@ public class RedirectTests : SimpleTableTests<Redirect, TestRedirect, RedirectUp
 
         var updated = JsonHelper.Deserialize<RedirectDetailsDto>(await response.Content.ReadAsStringAsync());
         updated!.Kind.Should().Be(RedirectKind.Permanent);
+    }
+
+    [Fact]
+    public async Task Export_WithCsvAcceptHeader_Returns200WithCsvContent()
+    {
+        var uid = Guid.NewGuid().ToString("N")[..8];
+        await PostTest<RedirectDetailsDto>(itemsUrl, new TestRedirect(uid));
+
+        var request = new HttpRequestMessage(HttpMethod.Get, $"{itemsUrl}/export");
+        request.Headers.Authorization = GetAuthenticationHeaderValue();
+        request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("text/csv"));
+
+        var response = await client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK, $"export with Accept: text/csv should succeed, got: {await response.Content.ReadAsStringAsync()}");
+
+        var content = await response.Content.ReadAsStringAsync();
+        content.Should().NotBeEmpty();
+        content.Should().Contain("fromPath");
+    }
+
+    [Fact]
+    public async Task Export_WithKnownFieldsAndCsvHeader_Returns200WithSelectedColumns()
+    {
+        var uid = Guid.NewGuid().ToString("N")[..8];
+        await PostTest<RedirectDetailsDto>(itemsUrl, new TestRedirect(uid));
+
+        // Simulate the admin UI sending filter[field] params for real columns.
+        // Virtual UI-only columns (starting with underscore) must be silently skipped.
+        var url = $"{itemsUrl}/export?filter[field][id]=true&filter[field][sourceType]=true";
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = GetAuthenticationHeaderValue();
+        request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("text/csv"));
+
+        var response = await client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK, $"export with real fields should succeed, got: {await response.Content.ReadAsStringAsync()}");
+    }
+
+    [Fact]
+    public async Task Export_WithVirtualUiFieldParams_Returns200IgnoringUnknownFields()
+    {
+        var uid = Guid.NewGuid().ToString("N")[..8];
+        await PostTest<RedirectDetailsDto>(itemsUrl, new TestRedirect(uid));
+
+        // The admin UI passes virtual column names prefixed with underscore alongside real ones.
+        // Unknown properties should be silently ignored, not cause a 400 or 406.
+        var url = $"{itemsUrl}/export?filter[field][id]=true&filter[field][_status]=true&filter[field][sourceType]=true&filter[field][_source]=true&filter[field][_target]=true&filter[field][_actions]=true";
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = GetAuthenticationHeaderValue();
+        request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("text/csv"));
+
+        var response = await client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK, $"virtual UI fields should be silently ignored, got: {await response.Content.ReadAsStringAsync()}");
     }
 
     protected override RedirectUpdateDto UpdateItem(TestRedirect to)

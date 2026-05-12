@@ -49,6 +49,8 @@ public class RedirectService : IRedirectService
 
             if (existing == null)
             {
+                await RemoveCycleClosingRedirectAsync(item.OldLanguage, item.OldSlug, item.NewLanguage, item.NewSlug);
+
                 dbContext.Set<Redirect>().Add(new Redirect
                 {
                     SourceType = RedirectSourceType.ContentSlug,
@@ -63,6 +65,8 @@ public class RedirectService : IRedirectService
             }
             else if (existing.IsAutoDiscovered)
             {
+                await RemoveCycleClosingRedirectAsync(item.OldLanguage, item.OldSlug, item.NewLanguage, item.NewSlug);
+
                 // Only update auto-discovered entries; preserve manual edits.
                 existing.ToLanguage = item.NewLanguage;
                 existing.ToSlug = item.NewSlug;
@@ -101,6 +105,60 @@ public class RedirectService : IRedirectService
 
             _ => false,
         };
+    }
+
+    /// <summary>
+    /// Walks the auto-discovered ContentSlug chain starting from <paramref name="toSlug"/> and
+    /// removes the first redirect whose target is <paramref name="fromSlug"/>. This is the
+    /// redirect that would close a cycle were the new <paramref name="fromSlug"/>→<paramref
+    /// name="toSlug"/> redirect added. Handles both the simple two-hop case (direct reverse)
+    /// and longer chains such as slug1→slug2→slug3 when slug3→slug1 is being created.
+    /// </summary>
+    private async Task RemoveCycleClosingRedirectAsync(
+        string? fromLanguage, string? fromSlug, string? toLanguage, string? toSlug)
+    {
+        if (fromLanguage == null || fromSlug == null || toLanguage == null || toSlug == null)
+        {
+            return;
+        }
+
+        const int maxHops = 20;
+        var currentLanguage = toLanguage;
+        var currentSlug = toSlug;
+        var visited = new HashSet<string>();
+
+        for (var hop = 0; hop < maxHops; hop++)
+        {
+            if (!visited.Add($"{currentLanguage}/{currentSlug}"))
+            {
+                break; // Already-existing cycle unrelated to the new redirect.
+            }
+
+            var next = await dbContext.Set<Redirect>()
+                .FirstOrDefaultAsync(r =>
+                    r.IsAutoDiscovered &&
+                    r.SourceType == RedirectSourceType.ContentSlug &&
+                    r.FromLanguage == currentLanguage &&
+                    r.FromSlug == currentSlug);
+
+            if (next == null)
+            {
+                break;
+            }
+
+            // This redirect's target equals the source of the redirect we are about to create
+            // — removing it breaks the cycle at the correct point.
+            if (next.TargetType == RedirectTargetType.ContentSlug &&
+                next.ToLanguage == fromLanguage &&
+                next.ToSlug == fromSlug)
+            {
+                dbContext.Set<Redirect>().Remove(next);
+                return;
+            }
+
+            currentLanguage = next.ToLanguage;
+            currentSlug = next.ToSlug;
+        }
     }
 
     private async Task CheckNoCycleAsync(RedirectCreateDto dto, int? excludeId)

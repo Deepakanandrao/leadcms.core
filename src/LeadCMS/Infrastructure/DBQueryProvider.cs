@@ -30,7 +30,14 @@ namespace LeadCMS.Infrastructure
 
         public Array? DynamicResults { get; private set; }
 
-        public async Task<QueryResult<T>> GetResult()
+        public int Skip => queryBuilder.Skip;
+
+        public void SetBuiltQuery(IQueryable<T> query)
+        {
+            BuiltQuery = query;
+        }
+
+        public void ApplyFilters()
         {
             if (queryBuilder.Ids != null && queryBuilder.Ids.Count > 0)
             {
@@ -39,14 +46,24 @@ namespace LeadCMS.Infrastructure
 
             AddWhereCommands();
             AddSearchCommands();
+        }
+
+        public void ApplyPaging()
+        {
+            AddSkipCommand();
+            AddLimitCommand();
+        }
+
+        public async Task<QueryResult<T>> GetResult()
+        {
+            ApplyFilters();
 
             var totalCount = BuiltQuery.Count();
             IList<T>? records;
 
             ApplyIncludes();
             AddOrderCommands();
-            AddSkipCommand();
-            AddLimitCommand();
+            ApplyPaging();
             if (queryBuilder.SelectData.IsSelect)
             {
                 records = await GetSelectResult();

@@ -138,7 +138,9 @@ public class SyncService : ISyncService
                     .MaxAsync() ?? null;
 
                 return new DeletedInfo<MediaDeletedDto>(deletedPaths, changeLogMaxTime);
-            });
+            },
+            projectItems: ProjectMediaDetailsAsync,
+            getItemSyncTime: item => item.UpdatedAt ?? item.CreatedAt);
     }
 
     /// <summary>
@@ -191,6 +193,93 @@ public class SyncService : ISyncService
         return null;
     }
 
+    private IQueryable<TEntity> ApplySyncTimestampFilter<TEntity>(IQueryable<TEntity> queryable, DateTime lastSyncTime)
+        where TEntity : BaseEntityWithId
+    {
+        var hasCreatedAt = typeof(IHasCreatedAt).IsAssignableFrom(typeof(TEntity));
+        var hasUpdatedAt = typeof(IHasUpdatedAt).IsAssignableFrom(typeof(TEntity));
+
+        if (hasCreatedAt && hasUpdatedAt)
+        {
+            return queryable.Where(e =>
+                (EF.Property<DateTime?>(e, nameof(IHasUpdatedAt.UpdatedAt)) != null &&
+                    EF.Property<DateTime?>(e, nameof(IHasUpdatedAt.UpdatedAt)) > lastSyncTime) ||
+                    EF.Property<DateTime>(e, nameof(IHasCreatedAt.CreatedAt)) > lastSyncTime);
+        }
+
+        if (hasCreatedAt)
+        {
+            return queryable.Where(e => EF.Property<DateTime>(e, nameof(IHasCreatedAt.CreatedAt)) > lastSyncTime);
+        }
+
+        if (hasUpdatedAt)
+        {
+            return queryable.Where(e =>
+                EF.Property<DateTime?>(e, nameof(IHasUpdatedAt.UpdatedAt)) != null &&
+                    EF.Property<DateTime?>(e, nameof(IHasUpdatedAt.UpdatedAt)) > lastSyncTime);
+        }
+
+        return queryable;
+    }
+
+    private IQueryable<TEntity> ApplySyncOrdering<TEntity>(IQueryable<TEntity> queryable)
+        where TEntity : BaseEntityWithId
+    {
+        var hasCreatedAt = typeof(IHasCreatedAt).IsAssignableFrom(typeof(TEntity));
+        var hasUpdatedAt = typeof(IHasUpdatedAt).IsAssignableFrom(typeof(TEntity));
+
+        if (hasCreatedAt && hasUpdatedAt)
+        {
+            return queryable
+                .OrderBy(e => EF.Property<DateTime?>(e, nameof(IHasUpdatedAt.UpdatedAt)) ?? EF.Property<DateTime>(e, nameof(IHasCreatedAt.CreatedAt)))
+                .ThenBy(e => e.Id);
+        }
+
+        if (hasCreatedAt)
+        {
+            return queryable
+                .OrderBy(e => EF.Property<DateTime>(e, nameof(IHasCreatedAt.CreatedAt)))
+                .ThenBy(e => e.Id);
+        }
+
+        if (hasUpdatedAt)
+        {
+            return queryable
+                .OrderBy(e => EF.Property<DateTime?>(e, nameof(IHasUpdatedAt.UpdatedAt)))
+                .ThenBy(e => e.Id);
+        }
+
+        return queryable.OrderBy(e => e.Id);
+    }
+
+    private async Task<List<MediaDetailsDto>> ProjectMediaDetailsAsync(IQueryable<Media> queryable)
+    {
+        return await queryable
+            .Select(media => new MediaDetailsDto
+            {
+                Id = media.Id,
+                ScopeUid = media.ScopeUid,
+                Name = media.Name,
+                OriginalName = media.OriginalName,
+                Description = media.Description,
+                Size = media.Size,
+                OriginalSize = media.OriginalSize,
+                Width = media.Width,
+                Height = media.Height,
+                OriginalWidth = media.OriginalWidth,
+                OriginalHeight = media.OriginalHeight,
+                Extension = media.Extension,
+                OriginalExtension = media.OriginalExtension,
+                MimeType = media.MimeType,
+                OriginalMimeType = media.OriginalMimeType,
+                Tags = media.Tags,
+                UsageCount = media.UsageCount,
+                CreatedAt = media.CreatedAt,
+                UpdatedAt = media.UpdatedAt,
+            })
+            .ToListAsync();
+    }
+
     /// <summary>
     /// Core sync logic shared by all entity types. The <paramref name="resolveDeleted"/> delegate
     /// is responsible for querying the ChangeLog and returning the deleted payload (which can be
@@ -204,7 +293,9 @@ public class SyncService : ISyncService
         IMapper mapper,
         string? syncToken,
         bool includeBase,
-        Func<DateTime, Task<DeletedInfo<TDeleted>>> resolveDeleted)
+        Func<DateTime, Task<DeletedInfo<TDeleted>>> resolveDeleted,
+        Func<IQueryable<TEntity>, Task<List<TDto>>>? projectItems = null,
+        Func<TDto, DateTime?>? getItemSyncTime = null)
         where TEntity : BaseEntityWithId, new()
         where TDto : class
     {
@@ -228,29 +319,49 @@ public class SyncService : ISyncService
         var dbQueryProvider = qp as DBQueryProvider<TEntity>;
         var dbSet = dbContext.Set<TEntity>();
 
+        IQueryable<TEntity> queryable;
+        long totalChangedCount;
+
         if (dbQueryProvider != null)
         {
+            dbQueryProvider.ApplyFilters();
             dbQueryProvider.ApplyIncludes();
+            queryable = ApplySyncTimestampFilter(dbQueryProvider.BuiltQuery, lastSyncTime);
+            totalChangedCount = await queryable.LongCountAsync();
+            queryable = ApplySyncOrdering(queryable);
+            dbQueryProvider.SetBuiltQuery(queryable);
+            dbQueryProvider.ApplyPaging();
+            queryable = dbQueryProvider.BuiltQuery;
+        }
+        else
+        {
+            queryable = ApplySyncTimestampFilter(dbSet.AsNoTracking(), lastSyncTime);
+            totalChangedCount = await queryable.LongCountAsync();
+            queryable = ApplySyncOrdering(queryable);
         }
 
-        IQueryable<TEntity> queryable = dbQueryProvider != null ? dbQueryProvider.BuiltQuery : dbSet.AsNoTracking();
+        List<TEntity>? changedEntities = null;
+        List<TDto> items;
 
-        // EF Core cannot translate interface casts, so fetch and filter in memory
-        // TODO: Optimize this if possible
-        var allEntities = await queryable.ToListAsync();
-        var changedEntities = allEntities.Where(e =>
-            (e is IHasUpdatedAt updated && updated.UpdatedAt != null && updated.UpdatedAt > lastSyncTime) ||
-            (e is IHasCreatedAt created && created.CreatedAt > lastSyncTime))
-            .ToList();
+        if (projectItems != null)
+        {
+            items = await projectItems(queryable);
+        }
+        else
+        {
+            changedEntities = await queryable.ToListAsync();
+            items = mapper.Map<List<TDto>>(changedEntities);
+        }
 
-        var items = mapper.Map<List<TDto>>(changedEntities);
+        var skippedChangedCount = dbQueryProvider?.Skip ?? 0;
+        var hasMoreChangedEntities = totalChangedCount > skippedChangedCount + items.Count;
         DtoCleanupHelper.RemoveSecondLevelObjects(items);
 
         // Resolve base versions from ChangeLog for three-way merge support.
         // Base versions are only relevant when explicitly requested via includeBase,
         // a syncToken is provided (incremental sync), and there are changed entities.
         Dictionary<int, TDto>? baseItems = null;
-        if (includeBase && !string.IsNullOrEmpty(syncToken) && changedEntities.Any())
+        if (includeBase && changedEntities != null && !string.IsNullOrEmpty(syncToken) && changedEntities.Any())
         {
             baseItems = new Dictionary<int, TDto>();
             // Identify entities that existed before lastSyncTime (modified, not newly created)
@@ -334,7 +445,14 @@ public class SyncService : ISyncService
 
         // Determine nextSyncToken (max updated_at/created_at/deleted)
         DateTime? maxTime = null;
-        if (changedEntities.Any())
+        if (getItemSyncTime != null && items.Any())
+        {
+            maxTime = items
+                .Select(getItemSyncTime)
+                .Where(dt => dt != null)
+                .Max();
+        }
+        else if (changedEntities != null && changedEntities.Any())
         {
             List<DateTime?> allTimes = new List<DateTime?>();
             foreach (var e in changedEntities)
@@ -359,7 +477,7 @@ public class SyncService : ISyncService
             }
         }
 
-        if (deletedInfo.MaxTime != null && (maxTime == null || deletedInfo.MaxTime > maxTime))
+        if (!hasMoreChangedEntities && deletedInfo.MaxTime != null && (maxTime == null || deletedInfo.MaxTime > maxTime))
         {
             maxTime = deletedInfo.MaxTime;
         }
@@ -372,7 +490,7 @@ public class SyncService : ISyncService
         if (response != null)
         {
             response.Headers.Append(ResponseHeaderNames.NextSyncToken, token);
-            response.Headers.Append(ResponseHeaderNames.TotalCount, (dbQueryProvider?.BuiltQuery.Count() ?? items.Count).ToString());
+            response.Headers.Append(ResponseHeaderNames.TotalCount, totalChangedCount.ToString());
             response.Headers.Append(ResponseHeaderNames.AccessControlExposeHeader, ResponseHeaderNames.TotalCount);
         }
 

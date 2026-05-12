@@ -90,7 +90,7 @@ public class AuthenticationExtensionsTests : BaseTestAutoLogin
     public async Task DeviceAuthService_GeneratesValidUserCodes()
     {
         // Arrange
-        using var scope = Program.GetApp()!.Services.CreateScope();
+        using var scope = App.Services.CreateScope();
         var deviceAuthService = scope.ServiceProvider.GetRequiredService<IDeviceAuthService>();
 
         // Act
@@ -108,7 +108,7 @@ public class AuthenticationExtensionsTests : BaseTestAutoLogin
     public async Task DeviceAuthService_PollNonExistentDevice_ReturnsExpired()
     {
         // Arrange
-        using var scope = Program.GetApp()!.Services.CreateScope();
+        using var scope = App.Services.CreateScope();
         var deviceAuthService = scope.ServiceProvider.GetRequiredService<IDeviceAuthService>();
 
         // Act
@@ -124,7 +124,7 @@ public class AuthenticationExtensionsTests : BaseTestAutoLogin
     public async Task DeviceAuthService_VerifyInvalidUserCode_ReturnsFalse()
     {
         // Arrange
-        using var scope = Program.GetApp()!.Services.CreateScope();
+        using var scope = App.Services.CreateScope();
         var deviceAuthService = scope.ServiceProvider.GetRequiredService<IDeviceAuthService>();
         var claims = new List<System.Security.Claims.Claim>
         {
@@ -142,7 +142,7 @@ public class AuthenticationExtensionsTests : BaseTestAutoLogin
     public async Task DeviceAuthService_CompleteFlow_WorksCorrectly()
     {
         // Arrange
-        using var scope = Program.GetApp()!.Services.CreateScope();
+        using var scope = App.Services.CreateScope();
         var deviceAuthService = scope.ServiceProvider.GetRequiredService<IDeviceAuthService>();
         var claims = new List<System.Security.Claims.Claim>
         {

@@ -5,6 +5,7 @@
 using System.Net.Http.Headers;
 using LeadCMS.Configuration;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace LeadCMS.Tests;
 
@@ -39,7 +40,9 @@ public class BaseTestAutoLogin : BaseTest
 
     private static LoginDto GetLoginDtoFromConfiguration()
     {
-        var defaultUser = Program.GetApp()!.Configuration.GetSection("DefaultUsers").Get<DefaultUsersConfig>()![0];
+        using var scope = App.Services.CreateScope();
+        var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+        var defaultUser = configuration.GetSection("DefaultUsers").Get<DefaultUsersConfig>()![0];
         return new LoginDto()
         {
             Email = defaultUser.Email,
