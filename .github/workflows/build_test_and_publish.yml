@@ -2,37 +2,84 @@
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-net
 
 name: Release - Build, Test & Publish
+run-name: "Release - Build, Test & Publish #${{ github.run_number }}"
 
 on:
   release:
-    types: [ published ]
+    types: [published]
 
 jobs:
-  # Job 1: Build application
+  # Job 0: Compute version from source
+  compute-version:
+    name: Compute Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.set-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read base version from source
+        id: read-version
+        run: |
+          BASE=$(grep -oP '(?<=<ReleaseVersion>)[^<]+' src/LeadCMS/LeadCMS.csproj | cut -d. -f1,2)
+          echo "base_version=$BASE" >> $GITHUB_OUTPUT
+      - name: Set version
+        id: set-version
+        run: echo "version=${{ steps.read-version.outputs.base_version }}.${{ github.run_number }}" >> $GITHUB_OUTPUT
+
+  # Job 1: Build frontend
+  build-frontend:
+    name: Build Frontend
+    needs: compute-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout frontend (leadcms.admin)
+        uses: actions/checkout@v4
+        with:
+          repository: LeadCMS/leadcms.admin
+          ref: main
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Update package.json version
+        run: npm version ${{ needs.compute-version.outputs.version }} --no-git-tag-version
+
+      - name: Set frontend environment variables
+        run: |
+          echo "TINYMCE_API_KEY=${{ secrets.TINYMCE_API_KEY }}" > ./.env
+          echo "VERSION=${{ needs.compute-version.outputs.version }}" >> ./.env
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Upload frontend build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+          retention-days: 1
+
+  # Job 2: Build application
   build-app:
     name: Build Application
+    needs: compute-version
     runs-on: ubuntu-latest
     env:
       BUILD_CONFIG: "Release"
     outputs:
-      version: ${{ steps.branch_name.outputs.value }}
-      is_prerelease: ${{ steps.check_prerelease.outputs.is_prerelease }}
+      version: ${{ steps.passthrough.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract version from tag
-        shell: bash
-        run: echo "value=$(echo ${GITHUB_REF#refs/tags/v})" >> $GITHUB_OUTPUT
-        id: branch_name
-
-      - name: Check if prerelease
-        id: check_prerelease
-        run: |
-          if [[ "${{ steps.branch_name.outputs.value }}" == *"pre"* ]]; then
-            echo "is_prerelease=true" >> $GITHUB_OUTPUT
-          else
-            echo "is_prerelease=false" >> $GITHUB_OUTPUT
-          fi
+      - name: Pass version through
+        id: passthrough
+        run: echo "version=${{ needs.compute-version.outputs.version }}" >> $GITHUB_OUTPUT
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -52,7 +99,7 @@ jobs:
 
       - name: Build
         run: dotnet build --configuration $BUILD_CONFIG -p:Version=${{
-          steps.branch_name.outputs.value }} --no-restore
+          steps.passthrough.outputs.version }} --no-restore
 
       - name: Pack plugins for NuGet
         run: |
@@ -60,8 +107,8 @@ jobs:
             dotnet pack "$project" \
               --configuration $BUILD_CONFIG \
               --no-build \
-              -p:Version=${{ steps.branch_name.outputs.value }} \
-              -p:PackageVersion=${{ steps.branch_name.outputs.value }} \
+              -p:Version=${{ steps.passthrough.outputs.version }} \
+              -p:PackageVersion=${{ steps.passthrough.outputs.version }} \
               -p:IsPackable=true
           done < <(find ./plugins -name "*.csproj" -not -path "*/obj/*")
 
@@ -94,7 +141,7 @@ jobs:
   build-docker:
     name: Build Docker (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
-    needs: [ build-app, test-app ]
+    needs: [build-frontend, build-app, test-app]
     strategy:
       matrix:
         include:
@@ -105,6 +152,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: ./src/LeadCMS/wwwroot
 
       - name: Set up QEMU (only for cross-platform builds)
         if: matrix.platform != runner.arch
@@ -177,21 +230,11 @@ jobs:
           username: ${{ secrets.DOCKER_API_USERNAME }}
           password: ${{ secrets.DOCKER_API_KEY }}
 
-      - name: Create manifest list and push (stable release)
-        if: ${{ needs.build-app.outputs.is_prerelease == 'false' }}
+      - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
           docker buildx imagetools create \
             --tag leadcms/core:latest \
-            --tag leadcms/core:${{ needs.build-app.outputs.version }} \
-            $(printf 'leadcms/core@sha256:%s ' *)
-
-      - name: Create manifest list and push (prerelease)
-        if: ${{ needs.build-app.outputs.is_prerelease == 'true' }}
-        working-directory: /tmp/digests
-        run: |
-          docker buildx imagetools create \
-            --tag leadcms/core:develop \
             --tag leadcms/core:${{ needs.build-app.outputs.version }} \
             $(printf 'leadcms/core@sha256:%s ' *)
 
@@ -203,7 +246,7 @@ jobs:
   publish-nuget:
     name: Publish to NuGet
     runs-on: ubuntu-latest
-    needs: [ build-app, test-app ]
+    needs: [build-app, test-app]
     steps:
       - name: Download NuGet packages
         uses: actions/download-artifact@v4
@@ -220,3 +263,19 @@ jobs:
         run: dotnet nuget push ./packages/**/*.nupkg --source
           'https://api.nuget.org/v3/index.json' --api-key
           ${{secrets.NUGET_API_KEY}} --skip-duplicate
+
+  # Job 6: Tag the release commit
+  tag-release:
+    name: Tag Release
+    runs-on: ubuntu-latest
+    needs: [compute-version, merge-docker, publish-nuget]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create and push version tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag v${{ needs.compute-version.outputs.version }}
+          git push origin v${{ needs.compute-version.outputs.version }}

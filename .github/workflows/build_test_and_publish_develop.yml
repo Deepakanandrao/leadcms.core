@@ -1,4 +1,5 @@
 name: Manual - Build, Test & Publish
+run-name: "Manual - Build, Test & Publish #${{ github.run_number }} (develop)"
 
 on:
   workflow_dispatch:
@@ -8,15 +9,31 @@ on:
         required: false
         default: true
         type: boolean
-      version:
-        description: "Release Version"
-        required: true
-        type: string
 
 jobs:
+  # Compute the version for this build
+  compute-version:
+    name: Compute Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.set-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: "develop"
+      - name: Read base version from source
+        id: read-version
+        run: |
+          BASE=$(grep -oP '(?<=<ReleaseVersion>)[^<]+' src/LeadCMS/LeadCMS.csproj | cut -d. -f1,2)
+          echo "base_version=$BASE" >> $GITHUB_OUTPUT
+      - name: Set version
+        id: set-version
+        run: echo "version=${{ steps.read-version.outputs.base_version }}.${{ github.run_number }}-pre" >> $GITHUB_OUTPUT
+
   # Job 1a: Build frontend (runs in parallel with backend)
   build-frontend:
     name: Build Frontend
+    needs: compute-version
     runs-on: ubuntu-latest
     steps:
       - name: Checkout frontend (leadcms.admin)
@@ -31,10 +48,13 @@ jobs:
           node-version: "24"
           cache: "npm"
 
+      - name: Update package.json version
+        run: npm version ${{ needs.compute-version.outputs.version }} --no-git-tag-version
+
       - name: Set frontend environment variables
         run: |
           echo "TINYMCE_API_KEY=${{ secrets.TINYMCE_API_KEY }}" > ./.env
-          echo "VERSION=${{ github.event.inputs.version }}" >> ./.env
+          echo "VERSION=${{ needs.compute-version.outputs.version }}" >> ./.env
 
       - name: Install frontend dependencies
         run: npm ci
@@ -52,6 +72,7 @@ jobs:
   # Job 1b: Build backend (runs in parallel with frontend)
   build-backend:
     name: Build Backend
+    needs: compute-version
     runs-on: ubuntu-latest
     env:
       BUILD_CONFIG: "Release"
@@ -78,7 +99,7 @@ jobs:
 
       - name: Build
         run: dotnet build --configuration $BUILD_CONFIG -p:Version=${{
-          github.event.inputs.version }} --no-restore
+          needs.compute-version.outputs.version }} --no-restore
 
       - name: Pack plugins for NuGet
         run: |
@@ -86,8 +107,8 @@ jobs:
             dotnet pack "$project" \
               --configuration $BUILD_CONFIG \
               --no-build \
-              -p:Version=${{ github.event.inputs.version }} \
-              -p:PackageVersion=${{ github.event.inputs.version }} \
+              -p:Version=${{ needs.compute-version.outputs.version }} \
+              -p:PackageVersion=${{ needs.compute-version.outputs.version }} \
               -p:IsPackable=true
           done < <(find ./plugins -name "*.csproj" -not -path "*/obj/*")
 
@@ -121,9 +142,10 @@ jobs:
   build-docker:
     name: Build Docker (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
-    needs: [ build-frontend, build-backend, test-backend ]
+    needs: [compute-version, build-frontend, build-backend, test-backend]
     if: |
       always() &&
+      needs.compute-version.result == 'success' &&
       needs.build-frontend.result == 'success' &&
       needs.build-backend.result == 'success' &&
       (needs.test-backend.result == 'success' || needs.test-backend.result == 'skipped')
@@ -197,7 +219,7 @@ jobs:
   merge-docker:
     name: Create Multi-Platform Image
     runs-on: ubuntu-latest
-    needs: build-docker
+    needs: [compute-version, build-docker]
     steps:
       - name: Download digests
         uses: actions/download-artifact@v4
@@ -220,19 +242,19 @@ jobs:
         run: |
           docker buildx imagetools create \
             --tag leadcms/core:develop \
-            --tag leadcms/core:${{ github.event.inputs.version }} \
+            --tag leadcms/core:${{ needs.compute-version.outputs.version }} \
             $(printf 'leadcms/core@sha256:%s ' *)
 
       - name: Inspect image
         run: |
           docker buildx imagetools inspect leadcms/core:develop
-          docker buildx imagetools inspect leadcms/core:${{ github.event.inputs.version }}
+          docker buildx imagetools inspect leadcms/core:${{ needs.compute-version.outputs.version }}
 
   # Job 4: Publish to NuGet (can run in parallel with Docker merge)
   publish-nuget:
     name: Publish to NuGet
     runs-on: ubuntu-latest
-    needs: [ build-backend, test-backend ]
+    needs: [build-backend, test-backend]
     if: |
       always() &&
       needs.build-backend.result == 'success' &&
@@ -253,3 +275,21 @@ jobs:
         run: dotnet nuget push ./packages/**/*.nupkg --source
           'https://api.nuget.org/v3/index.json' --api-key
           ${{secrets.NUGET_API_KEY}} --skip-duplicate
+
+  # Job 5: Tag the release commit
+  tag-release:
+    name: Tag Release
+    runs-on: ubuntu-latest
+    needs: [compute-version, merge-docker, publish-nuget]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: "develop"
+      - name: Create and push version tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag v${{ needs.compute-version.outputs.version }}
+          git push origin v${{ needs.compute-version.outputs.version }}

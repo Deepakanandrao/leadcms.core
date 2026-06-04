@@ -7,7 +7,7 @@
     <RootNamespace>LeadCMS</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <UserSecretsId>98270385-43f2-4d3c-11d5-02d0d77fc2d9</UserSecretsId>
-    <ReleaseVersion>1.5.17-pre</ReleaseVersion>
+    <ReleaseVersion>1.5</ReleaseVersion>
     <AssemblyName>LeadCMS</AssemblyName>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageId>LeadCMS</PackageId>
@@ -61,7 +61,7 @@
          reason. MimeKit is pinned separately to 4.15.1 to pick up the SMTP CRLF
          injection fix in MAIL FROM / RCPT TO that was bundled with MailKit 4.15.1. -->
     <PackageReference Include="MailKit" Version="4.9.0" NoWarn="NU1902" />
-    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.12.0" />
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.13.1" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.11" />
     <PackageReference Include="Microsoft.Identity.Web" Version="3.8.4" />
