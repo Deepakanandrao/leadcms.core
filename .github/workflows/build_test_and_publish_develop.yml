@@ -195,6 +195,7 @@ jobs:
           context: ./
           file: src/LeadCMS/Dockerfile
           platforms: ${{ matrix.platform }}
+          build-args: VERSION=${{ needs.compute-version.outputs.version }}
           outputs: type=image,name=leadcms/core,push-by-digest=true,name-canonical=true,push=true
           cache-from: type=registry,ref=leadcms/core:buildcache-${{
             steps.platform.outputs.suffix }}

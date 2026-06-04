@@ -5,23 +5,35 @@ WORKDIR /app
 EXPOSE 80
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+ARG VERSION=0.0.0
 WORKDIR /src
 COPY ["src/LeadCMS/LeadCMS.csproj", "src/LeadCMS/"]
 RUN dotnet restore "src/LeadCMS/LeadCMS.csproj"
 COPY . .
 WORKDIR "/src"
-RUN dotnet build "LeadCMS.sln" -c Release -o /app/build
+RUN dotnet build "LeadCMS.sln" -c Release -o /app/build \
+    -p:Version=$VERSION -p:IncludeSourceRevisionInInformationalVersion=false
 
 FROM build AS publish
-RUN dotnet publish "./src/LeadCMS/LeadCMS.csproj" -c Release -o /app/publish /p:UseAppHost=false
-RUN dotnet publish "./plugins/LeadCMS.Plugin.EmailSync/LeadCMS.Plugin.EmailSync.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.EmailSync /p:UseAppHost=false
-RUN dotnet publish "./plugins/LeadCMS.Plugin.ReverseProxy/LeadCMS.Plugin.ReverseProxy.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.ReverseProxy /p:UseAppHost=false
-RUN dotnet publish "./plugins/LeadCMS.Plugin.SendGrid/LeadCMS.Plugin.SendGrid.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.SendGrid /p:UseAppHost=false
-RUN dotnet publish "./plugins/LeadCMS.Plugin.Sms/LeadCMS.Plugin.Sms.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.Sms /p:UseAppHost=false
-RUN dotnet publish "./plugins/LeadCMS.Plugin.Vsto/LeadCMS.Plugin.Vsto.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.Vsto /p:UseAppHost=false
-RUN dotnet publish "./plugins/LeadCMS.Plugin.Site/LeadCMS.Plugin.Site.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.Site /p:UseAppHost=false
-RUN dotnet publish "./plugins/LeadCMS.Plugin.AI/LeadCMS.Plugin.AI.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.AI /p:UseAppHost=false
-RUN dotnet publish "./plugins/LeadCMS.Plugin.Deploy/LeadCMS.Plugin.Deploy.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.Deploy /p:UseAppHost=false
+ARG VERSION=0.0.0
+RUN dotnet publish "./src/LeadCMS/LeadCMS.csproj" -c Release -o /app/publish /p:UseAppHost=false \
+    -p:Version=$VERSION -p:IncludeSourceRevisionInInformationalVersion=false
+RUN dotnet publish "./plugins/LeadCMS.Plugin.EmailSync/LeadCMS.Plugin.EmailSync.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.EmailSync /p:UseAppHost=false \
+    -p:Version=$VERSION -p:IncludeSourceRevisionInInformationalVersion=false
+RUN dotnet publish "./plugins/LeadCMS.Plugin.ReverseProxy/LeadCMS.Plugin.ReverseProxy.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.ReverseProxy /p:UseAppHost=false \
+    -p:Version=$VERSION -p:IncludeSourceRevisionInInformationalVersion=false
+RUN dotnet publish "./plugins/LeadCMS.Plugin.SendGrid/LeadCMS.Plugin.SendGrid.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.SendGrid /p:UseAppHost=false \
+    -p:Version=$VERSION -p:IncludeSourceRevisionInInformationalVersion=false
+RUN dotnet publish "./plugins/LeadCMS.Plugin.Sms/LeadCMS.Plugin.Sms.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.Sms /p:UseAppHost=false \
+    -p:Version=$VERSION -p:IncludeSourceRevisionInInformationalVersion=false
+RUN dotnet publish "./plugins/LeadCMS.Plugin.Vsto/LeadCMS.Plugin.Vsto.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.Vsto /p:UseAppHost=false \
+    -p:Version=$VERSION -p:IncludeSourceRevisionInInformationalVersion=false
+RUN dotnet publish "./plugins/LeadCMS.Plugin.Site/LeadCMS.Plugin.Site.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.Site /p:UseAppHost=false \
+    -p:Version=$VERSION -p:IncludeSourceRevisionInInformationalVersion=false
+RUN dotnet publish "./plugins/LeadCMS.Plugin.AI/LeadCMS.Plugin.AI.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.AI /p:UseAppHost=false \
+    -p:Version=$VERSION -p:IncludeSourceRevisionInInformationalVersion=false
+RUN dotnet publish "./plugins/LeadCMS.Plugin.Deploy/LeadCMS.Plugin.Deploy.csproj" -c Release -o /app/publish/plugins/LeadCMS.Plugin.Deploy /p:UseAppHost=false \
+    -p:Version=$VERSION -p:IncludeSourceRevisionInInformationalVersion=false
 
 FROM base AS final
 RUN apk add --no-cache icu-libs
