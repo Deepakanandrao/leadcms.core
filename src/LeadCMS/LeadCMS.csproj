@@ -61,7 +61,7 @@
          reason. MimeKit is pinned separately to 4.15.1 to pick up the SMTP CRLF
          injection fix in MAIL FROM / RCPT TO that was bundled with MailKit 4.15.1. -->
     <PackageReference Include="MailKit" Version="4.9.0" NoWarn="NU1902" />
-    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.13.1" />
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.16.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.11" />
     <PackageReference Include="Microsoft.Identity.Web" Version="3.8.4" />
