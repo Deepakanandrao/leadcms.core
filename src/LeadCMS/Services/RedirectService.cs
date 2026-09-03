@@ -67,11 +67,20 @@ public class RedirectService : IRedirectService
             {
                 await RemoveCycleClosingRedirectAsync(item.OldLanguage, item.OldSlug, item.NewLanguage, item.NewSlug);
 
-                // Only update auto-discovered entries; preserve manual edits.
-                existing.ToLanguage = item.NewLanguage;
-                existing.ToSlug = item.NewSlug;
-                existing.TargetType = RedirectTargetType.ContentSlug;
-                existing.UpdatedAt = DateTime.UtcNow;
+                // Only update auto-discovered entries; preserve manual edits. Write only when
+                // the target actually moved: assigning UpdatedAt unconditionally marked every
+                // auto-discovered redirect Modified on each discovery run, which appended a
+                // ChangeLog row and advanced the sync token, so every client re-downloaded the
+                // whole set on every pull even when nothing had changed.
+                if (existing.ToLanguage != item.NewLanguage ||
+                    existing.ToSlug != item.NewSlug ||
+                    existing.TargetType != RedirectTargetType.ContentSlug)
+                {
+                    existing.ToLanguage = item.NewLanguage;
+                    existing.ToSlug = item.NewSlug;
+                    existing.TargetType = RedirectTargetType.ContentSlug;
+                    existing.UpdatedAt = DateTime.UtcNow;
+                }
             }
         }
 

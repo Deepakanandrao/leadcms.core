@@ -101,6 +101,81 @@ public class RedirectTests : SimpleTableTests<Redirect, TestRedirect, RedirectUp
     }
 
     [Fact]
+    public async Task Discover_WhenNothingChanged_LeavesExistingAutoRedirectUntouched()
+    {
+        // A discovery run over unchanged content must not write. Assigning UpdatedAt
+        // unconditionally marked every auto-discovered redirect Modified, appending a
+        // ChangeLog row and advancing the sync token, so every SDK pull re-downloaded
+        // the whole redirect set even though nothing had changed.
+        var uid = Guid.NewGuid().ToString("N")[..8];
+        var oldSlug = $"redir-idem-old-{uid}";
+        var newSlug = $"redir-idem-new-{uid}";
+
+        var content = new TestContent(uid);
+        content.Slug = oldSlug;
+
+        var location = await PostTest("/api/content", content);
+        var created = await GetTest<ContentDetailsDto>(location);
+
+        await PatchTest($"/api/content/{created!.Id}", new ContentUpdateDto { Slug = newSlug });
+
+        var firstDiscover = await Request(HttpMethod.Post, "/api/redirects/discover", new object());
+        firstDiscover.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var afterFirst = JsonHelper.Deserialize<List<RedirectDetailsDto>>(
+            await firstDiscover.Content.ReadAsStringAsync());
+        var beforeRerun = afterFirst!.Single(r =>
+            r.SourceType == RedirectSourceType.ContentSlug && r.FromSlug == oldSlug);
+
+        // Second run with no intervening content change.
+        var secondDiscover = await Request(HttpMethod.Post, "/api/redirects/discover", new object());
+        secondDiscover.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var afterSecond = JsonHelper.Deserialize<List<RedirectDetailsDto>>(
+            await secondDiscover.Content.ReadAsStringAsync());
+        var afterRerun = afterSecond!.Single(r =>
+            r.SourceType == RedirectSourceType.ContentSlug && r.FromSlug == oldSlug);
+
+        afterRerun.Id.Should().Be(beforeRerun.Id);
+        afterRerun.ToSlug.Should().Be(newSlug);
+        afterRerun.UpdatedAt.Should().Be(
+            beforeRerun.UpdatedAt,
+            "a no-op discovery run must not stamp UpdatedAt and dirty the entity");
+    }
+
+    [Fact]
+    public async Task Discover_WhenTargetMoved_StillUpdatesExistingAutoRedirect()
+    {
+        // The guard must not stop a genuine retarget: renaming again has to move the
+        // existing old→mid redirect on to the new slug.
+        var uid = Guid.NewGuid().ToString("N")[..8];
+        var oldSlug = $"redir-move-old-{uid}";
+        var midSlug = $"redir-move-mid-{uid}";
+        var newSlug = $"redir-move-new-{uid}";
+
+        var content = new TestContent(uid);
+        content.Slug = oldSlug;
+
+        var location = await PostTest("/api/content", content);
+        var created = await GetTest<ContentDetailsDto>(location);
+
+        await PatchTest($"/api/content/{created!.Id}", new ContentUpdateDto { Slug = midSlug });
+        (await Request(HttpMethod.Post, "/api/redirects/discover", new object()))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        await PatchTest($"/api/content/{created!.Id}", new ContentUpdateDto { Slug = newSlug });
+        var response = await Request(HttpMethod.Post, "/api/redirects/discover", new object());
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var redirects = JsonHelper.Deserialize<List<RedirectDetailsDto>>(
+            await response.Content.ReadAsStringAsync());
+
+        redirects!.Should().Contain(
+            r => r.IsAutoDiscovered && r.FromSlug == midSlug && r.ToSlug == newSlug,
+            "the newest rename must still be discovered");
+    }
+
+    [Fact]
     public async Task Discover_WhenSlugChangedTwice_CreatesChainedRedirects()
     {
         // The discovery SQL produces one redirect per distinct (old_slug, old_language) pair,
