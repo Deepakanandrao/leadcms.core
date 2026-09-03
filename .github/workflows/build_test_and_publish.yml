@@ -12,19 +12,9 @@ jobs:
   # Job 0: Compute version from source
   compute-version:
     name: Compute Version
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.set-version.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Read base version from source
-        id: read-version
-        run: |
-          BASE=$(grep -oP '(?<=<ReleaseVersion>)[^<]+' src/LeadCMS/LeadCMS.csproj | cut -d. -f1,2)
-          echo "base_version=$BASE" >> $GITHUB_OUTPUT
-      - name: Set version
-        id: set-version
-        run: echo "version=${{ steps.read-version.outputs.base_version }}.${{ github.run_number }}" >> $GITHUB_OUTPUT
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-compute-version.yml
 
   # Job 1: Build frontend
   build-frontend:

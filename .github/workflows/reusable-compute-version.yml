@@ -1,0 +1,70 @@
+name: Reusable - Compute Version
+
+on:
+    workflow_call:
+        inputs:
+            ref:
+                description: "Git ref to read <ReleaseVersion> from (default: the triggering ref)"
+                required: false
+                type: string
+                default: ""
+            prerelease:
+                description: "Append the -pre suffix"
+                required: false
+                type: boolean
+                default: false
+        outputs:
+            version:
+                description: "Computed version, e.g. 1.5.155 or 1.5.155-pre"
+                value: ${{ jobs.compute.outputs.version }}
+
+jobs:
+    compute:
+        name: Compute Version
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+        outputs:
+            version: ${{ steps.compute.outputs.version }}
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: ${{ inputs.ref }}
+                  # Full history so the already-published tags below are visible.
+                  fetch-depth: 0
+
+            - name: Compute version
+              id: compute
+              run: |
+                  set -euo pipefail
+
+                  # major.minor come from source; the patch is always the CI run number.
+                  RAW=$(grep -oP '(?<=<ReleaseVersion>)[^<]+' src/LeadCMS/LeadCMS.csproj | head -1)
+                  BASE=$(printf '%s' "$RAW" | grep -oP '^\d+\.\d+' || true)
+                  if [ -z "$BASE" ]; then
+                    echo "::error file=src/LeadCMS/LeadCMS.csproj::Could not parse major.minor from <ReleaseVersion> (got '$RAW')"
+                    exit 1
+                  fi
+
+                  PATCH=${{ github.run_number }}
+
+                  # run_number counts per workflow file, so the release and develop
+                  # workflows advance independently. Never emit a patch at or below one
+                  # already tagged for this major.minor, or a release build would undercut
+                  # prereleases that are already on NuGet and Docker Hub.
+                  BASE_RE=${BASE//./\\.}
+                  HIGHEST=$(git tag -l "v${BASE}.*" \
+                    | sed -nE "s/^v${BASE_RE}\.([0-9]+).*/\1/p" \
+                    | sort -n | tail -1)
+                  if [ -n "$HIGHEST" ] && [ "$PATCH" -le "$HIGHEST" ]; then
+                    echo "run_number $PATCH is not ahead of tagged patch $HIGHEST; using $((HIGHEST + 1))"
+                    PATCH=$((HIGHEST + 1))
+                  fi
+
+                  SUFFIX=""
+                  if [ "${{ inputs.prerelease }}" = "true" ]; then
+                    SUFFIX="-pre"
+                  fi
+
+                  echo "version=${BASE}.${PATCH}${SUFFIX}" >> "$GITHUB_OUTPUT"
+                  echo "Computed version: ${BASE}.${PATCH}${SUFFIX}"
